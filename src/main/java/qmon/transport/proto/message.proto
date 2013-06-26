@@ -1,0 +1,25 @@
+package qmon.transport.proto;
+
+message Tag {
+	required string name     = 1;
+	required string value    = 2;
+};
+
+message Event {
+	required bytes message       = 1;
+	repeated Tag tags            = 2;
+};
+
+message Batch {
+  optional int64 correlation        = 1;
+  repeated Event event     = 2;
+}
+
+message BatchReply {
+  enum Status {
+    OK = 1;
+    FAIL = 2;
+  }
+  optional int64 correlation        = 1;
+  required Status status   = 2;
+}
