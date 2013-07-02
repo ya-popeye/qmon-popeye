@@ -10,11 +10,7 @@ class ParserActor extends Actor with ActorLogging {
   def receive = {
     case ParseRequest(data) => {
       try {
-        val b = Batch.newBuilder()
-        for (ev <- new JsonToEventsParser(data)) yield {
-          b.addEvent(ev)
-        }
-        sender ! ParseResult(b.build())
+        sender ! ParseResult(new JsonToEventsParser(data).toList)
       } catch {
         case ex: Throwable => sender ! Failure(ex)
         throw ex
@@ -25,7 +21,7 @@ class ParserActor extends Actor with ActorLogging {
 
 case class ParseRequest(data: Array[Byte])
 
-case class ParseResult(batch: Batch)
+case class ParseResult(batch: List[Event])
 
 class JsonToEventsParser(data: Array[Byte]) extends Traversable[Event] {
 

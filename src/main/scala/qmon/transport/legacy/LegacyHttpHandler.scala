@@ -15,14 +15,18 @@ import org.codehaus.jackson.{JsonParseException, JsonFactory}
 import qmon.transport.proto.Message.{Event, Batch}
 import akka.actor.SupervisorStrategy.{Stop, Escalate}
 import scala.util.{Failure, Success}
+import qmon.transport.kafka.Queue
+import java.util.concurrent.TimeoutException
 
 
 /**
  * @author Andrey Stepachev
  */
-class LegacyHttpHandler extends Actor with SprayActorLogging {
+class LegacyHttpHandler(kafkaProducer: ActorRef) extends Actor with SprayActorLogging {
 
   implicit val timeout: Timeout = 1.second // for the actor 'asks'
+  val kafkaTimeout: Timeout = new Timeout(context.system.settings.config
+      .getDuration("kafka.transport.send.timeout").asInstanceOf[FiniteDuration])
 
   import context.dispatcher
 
@@ -46,14 +50,21 @@ class LegacyHttpHandler extends Actor with SprayActorLogging {
     case HttpRequest(POST, Uri.Path("/write"), _, entity, _) =>
       val client = sender
       val parser: ActorRef = context.actorOf(Props[ParserActor])
-      val future = parser ? ParseRequest(entity.buffer)
-      future.onComplete({
-        case Success(batch) => client ! HttpResponse(status = 200, entity = batch.toString)
+
+      val future = for {
+        parsed <- ask(parser, ParseRequest(entity.buffer)).mapTo[ParseResult]
+        stored <- ask(kafkaProducer, Queue(parsed.batch))(kafkaTimeout)
+      } yield {
+        stored
+      }
+      future onComplete {
+        case Success(r) => client ! HttpResponse(200, "Ok")
         case Failure(ex: JsonParseException) =>
           client ! HttpResponse(status = StatusCodes.UnprocessableEntity, entity = ex.getMessage)
         case Failure(ex) =>
-          client ! HttpResponse(status = StatusCodes.InternalServerError, entity = ex.getStackTraceString)
-      })
+          log.error(ex, "Failed")
+          client ! HttpResponse(status = StatusCodes.InternalServerError, entity = ex.getMessage)
+      }
 
     case HttpRequest(GET, Uri.Path("/server-stats"), _, _, _) =>
       val client = sender

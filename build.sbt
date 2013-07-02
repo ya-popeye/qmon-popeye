@@ -4,7 +4,7 @@ organization := "ru.yandex.qmon"
 
 version := "1.0"
 
-scalaVersion := "2.10.+"
+scalaVersion := "2.10.1"
 
 scalacOptions := Seq("-unchecked", "-deprecation", "-encoding", "utf8")
 
@@ -13,7 +13,7 @@ resolvers ++= Seq(
 )
 
 libraryDependencies ++= Seq(
-    "org.scalatest"         %% "scalatest"  % "2.0.M5b" % "test",
+    "org.scalatest"         %% "scalatest"  % "1.9.1" % "test",
     "com.google.protobuf"   % "protobuf-java"   % "2.4.1",
     "com.yammer.metrics"    % "metrics-core"    % "2.2.0",
     "com.yammer.metrics"    % "metrics-annotation" % "2.2.0",
@@ -27,10 +27,7 @@ libraryDependencies ++= Seq(
     "io.spray"            %   "spray-io"        % sprayVersion,
     "io.spray"            %   "spray-routing"   % sprayVersion,
     "io.spray"            %   "spray-testkit"   % sprayVersion,
-    "org.codehaus.jackson"  %   "jackson-core-asl"      % "1.9.12",
-    "org.specs2"          %%  "specs2"          % "1.14" % "test",
-    "junit"               %   "junit"           % "4.10" % "test",
-    "com.novocode" % "junit-interface" % "0.8" % "test->default"
+    "org.codehaus.jackson"  %   "jackson-core-asl"      % "1.9.12"
 )
 
 
