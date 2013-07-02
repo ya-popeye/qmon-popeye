@@ -1,8 +1,8 @@
-package qmon.transport
+package qmon.transport.legacy
 
 import scala.concurrent.duration._
 import akka.pattern.ask
-import akka.util.{ByteString, Timeout}
+import akka.util.Timeout
 import akka.actor._
 import com.google.protobuf.{ByteString => GoogleByteString}
 import spray.can.Http
@@ -11,28 +11,27 @@ import spray.util._
 import spray.http._
 import HttpMethods._
 import MediaTypes._
-import org.codehaus.jackson.{JsonToken, JsonFactory, JsonParser}
-import spray.routing.HttpServiceActor
-import qmon.transport.proto.Message.Event
+import org.codehaus.jackson.{JsonParseException, JsonFactory}
+import qmon.transport.proto.Message.{Event, Batch}
+import akka.actor.SupervisorStrategy.{Stop, Escalate}
+import scala.util.{Failure, Success}
 
 
 /**
  * @author Andrey Stepachev
  */
-class LegacyHttpHandler extends HttpServiceActor with SprayActorLogging {
+class LegacyHttpHandler extends Actor with SprayActorLogging {
 
   implicit val timeout: Timeout = 1.second // for the actor 'asks'
 
   import context.dispatcher
 
-  // ExecutionContext for the futures and scheduler
-  var remains: ByteString = ByteString.empty
-
-
-  override def preStart() {
-    super.preStart()
-    remains = ByteString.empty
+  override val supervisorStrategy = {
+    OneForOneStrategy()({
+      case _: Exception => Stop
+    })
   }
+
 
   def receive = {
     // when a new connection comes in we register ourselves as the connection handler
@@ -45,10 +44,16 @@ class LegacyHttpHandler extends HttpServiceActor with SprayActorLogging {
       sender ! index
 
     case HttpRequest(POST, Uri.Path("/write"), _, entity, _) =>
-      for (ev <- Events(entity.buffer)) {
-        log.debug(ev.toString)
-      }
-      sender ! index
+      val client = sender
+      val parser: ActorRef = context.actorOf(Props[ParserActor])
+      val future = parser ? ParseRequest(entity.buffer)
+      future.onComplete({
+        case Success(batch) => client ! HttpResponse(status = 200, entity = batch.toString)
+        case Failure(ex: JsonParseException) =>
+          client ! HttpResponse(status = StatusCodes.UnprocessableEntity, entity = ex.getMessage)
+        case Failure(ex) =>
+          client ! HttpResponse(status = StatusCodes.InternalServerError, entity = ex.getStackTraceString)
+      })
 
     case HttpRequest(GET, Uri.Path("/server-stats"), _, _, _) =>
       val client = sender
@@ -113,6 +118,21 @@ class LegacyHttpHandler extends HttpServiceActor with SprayActorLogging {
     )
   )
 
+  def eventsPresentation(events: Traversable[Event]) = {
+    val eventList = events.map({
+      _.toString
+    }).mkString("<br/>")
+    HttpResponse(
+      entity = HttpEntity(`text/html`,
+        <html>
+          <body>
+            <h1>Got events</h1>{eventList}
+          </body>
+        </html>.toString()
+      )
+    )
+  }
+
 
   lazy val index = HttpResponse(
     entity = HttpEntity(`text/html`,
@@ -139,76 +159,8 @@ class LegacyHttpHandler extends HttpServiceActor with SprayActorLogging {
       </html>.toString()
     )
   )
-
 }
 
-case class Events(data: Array[Byte]) extends Traversable[Event] {
-
-  def parseValue[U](metric: String, f: (Event) => U, parser: JsonParser) = {
-    val event = Event.newBuilder()
-    require(parser.getCurrentToken == JsonToken.START_OBJECT)
-    while (parser.nextToken != JsonToken.END_OBJECT) {
-      require(parser.getCurrentToken == JsonToken.FIELD_NAME)
-      parser.nextToken
-      parser.getCurrentName match {
-        case "type" => {
-          require(parser.getText.equalsIgnoreCase("numeric"))
-        }
-        case "timestamp" => {
-          require(parser.getCurrentToken == JsonToken.VALUE_NUMBER_INT)
-          event.setTimestamp(parser.getLongValue)
-        }
-        case "value" => {
-          parser.getCurrentToken match {
-            case JsonToken.VALUE_NUMBER_INT => {
-              event.setIntValue(parser.getLongValue)
-            }
-            case JsonToken.VALUE_NUMBER_FLOAT => {
-              event.setFloatValue(parser.getFloatValue)
-            }
-            case _ => throw new IllegalArgumentException("Value expected to be float or long")
-          }
-        }
-      }
-    }
-    event.setMetric(GoogleByteString.copyFromUtf8(metric))
-    f(event.build())
-    require(parser.getCurrentToken == JsonToken.END_OBJECT)
-  }
-
-  def parseMetric[U](f: (Event) => U, parser: JsonParser) = {
-    require(parser.getCurrentToken == JsonToken.START_OBJECT)
-    parser.nextToken
-    val metric = parser.getCurrentName
-    parser.nextToken match {
-      case JsonToken.START_ARRAY => {
-        while (parser.nextToken() != JsonToken.END_ARRAY) {
-          parseValue(metric, f, parser)
-        }
-      }
-      case JsonToken.START_OBJECT => parseValue(metric, f, parser)
-      case _ => throw new IllegalArgumentException("Object or Array expected, got " + parser.getCurrentToken)
-    }
-  }
-
-  def parseArray[U](f: (Event) => U, parser: JsonParser) = {
-    require(parser.getCurrentToken == JsonToken.START_ARRAY)
-    while (parser.nextToken() != JsonToken.END_ARRAY) {
-      parseMetric(f, parser)
-    }
-    parser.nextToken
-  }
-
-  def foreach[U](f: (Event) => U) {
-    val parser: JsonParser = LegacyHttpHandler.parserFactory.createJsonParser(data)
-
-    parser.nextToken match {
-      case JsonToken.START_ARRAY => parseArray(f, parser)
-      case JsonToken.START_OBJECT => parseMetric(f, parser)
-      case _ => throw new IllegalArgumentException("Object or Array expected, got " + parser.getCurrentToken)
-    }
-  }
-}
 
 object LegacyHttpHandler {
   val parserFactory: JsonFactory = new JsonFactory()

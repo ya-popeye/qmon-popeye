@@ -1,12 +1,11 @@
-package qmon.transport
+package qmon.transport.legacy
 
 import org.scalatest.FlatSpec
-import java.util
 
 /**
  * @author Andrey Stepachev
  */
-class LegacyHttpParserSpec extends FlatSpec {
+class JsonToEventsParserSpec extends FlatSpec {
   var testRequests: Array[String] =
     Array[String](
       "{\"TESTHOST/nobus/test\": [{\"type\": \"numeric\", \"timestamp\": 1364451167, " + "\"value\": 3.14}]}",
@@ -16,7 +15,7 @@ class LegacyHttpParserSpec extends FlatSpec {
 
   "Parser" should "handle valid json" in {
     val v = for (req <- testRequests;
-                 ev <- Events(req.getBytes)) yield {
+                 ev <- new JsonToEventsParser(req.getBytes)) yield {
       assert(ev.getTimestamp == 1364451167)
       assert(ev.getMetric.toStringUtf8 == "TESTHOST/nobus/test")
     }
