@@ -4,28 +4,30 @@ import kafka.server.{KafkaRequestHandler, KafkaServer, KafkaConfig}
 import kafka.common.KafkaException
 import kafka.utils.{Utils, TestUtils}
 import org.apache.log4j.Logger
+import org.apache.log4j.Level
+
 
 /**
  * @author Andrey Stepachev
  */
 trait KafkaServerTestSpec extends ZkTestSpec {
-  val port = TestUtils.choosePort()
-  val props = TestUtils.createBrokerConfig(0, port)
-  val config = new KafkaConfig(props)
-  val configs = List(config)
-  val requestHandlerLogger = Logger.getLogger(classOf[KafkaRequestHandler])
-  var servers: List[KafkaServer] = null
+  def numServers(): Int = 1
+  val kafkaBrokerConfigs = TestUtils.createBrokerConfigs(numServers()).map({conf => new KafkaConfig(conf)})
+  val kafkaRequestHandlerLogger = Logger.getLogger(classOf[KafkaRequestHandler])
+  var kafkaBrokers: List[KafkaServer] = null
+  def kafkaBrokersList = kafkaBrokers.map({s => s.socketServer.host + ":" + s.socketServer.port}).mkString(",")
 
   def withKafkaServer()(body: => Unit) {
+    Logger.getLogger("kafka").setLevel(Level.DEBUG)
     withZk() {
-      if (configs.size <= 0)
+      if (kafkaBrokerConfigs.size <= 0)
         throw new KafkaException("Must suply at least one server config.")
-      servers = configs.map(TestUtils.createServer(_))
+      kafkaBrokers = kafkaBrokerConfigs.map(TestUtils.createServer(_))
       try {
         body
       } finally {
-        servers.map(server => server.shutdown())
-        servers.map(server => server.config.logDirs.map(Utils.rm(_)))
+        kafkaBrokers.map(server => server.shutdown())
+        kafkaBrokers.map(server => server.config.logDirs.map(Utils.rm(_)))
       }
     }
   }

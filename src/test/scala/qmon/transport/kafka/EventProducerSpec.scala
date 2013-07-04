@@ -1,0 +1,64 @@
+package qmon.transport.kafka
+
+import qmon.transport.test.{AkkaTestKitSpec, KafkaServerTestSpec}
+import scala.concurrent.duration._
+import kafka.utils.Logging
+import akka.testkit.TestActorRef
+import com.typesafe.config.{ConfigFactory, Config}
+import qmon.transport.proto.Message.{Tag, Event}
+import com.google.protobuf.{ByteString => GByteString}
+import akka.pattern.ask
+import scala.compat.Platform
+import akka.util.Timeout
+import scala.concurrent.Await
+import org.apache.log4j.Level
+import kafka.admin.CreateTopicCommand
+import kafka.utils.TestUtils._
+import kafka.message.MessageAndMetadata
+
+/**
+ * @author Andrey Stepachev
+ */
+class EventProducerSpec extends AkkaTestKitSpec("ProducerTest") with KafkaServerTestSpec with Logging {
+
+  override def numServers() = 1
+
+  val topic = "test"
+  implicit val timeout: Timeout = 5 seconds
+
+  "Producer" should "should publish events" in withKafkaServer() {
+    CreateTopicCommand.createTopic(zkClient, topic, 1, 1)
+    waitUntilLeaderIsElectedOrChanged(zkClient, topic, 0, 500)
+
+    val config: Config = ConfigFactory.parseString(
+      s"""
+        |   kafka.consumer.auto.offset.reset=smallest
+        |   kafka.producer.request.required.acks=1
+        |   kafka.events.topic="$topic"
+        |   kafka.zk.cluster="$zkConnect"
+        |   kafka.consumer.timeout=35000
+        |   kafka.producer.metadata.broker.list="$kafkaBrokersList"
+      """.stripMargin).withFallback(ConfigFactory.load())
+    val actor = TestActorRef(EventProducer.fromConfig(config))
+    val future = ask(actor, PersistOnQueue(List(makeEvent()))).mapTo[EventPersisted]
+    Await.result(future, timeout.duration)
+    logger.debug(s"Got result ${future.value}, ready for consume")
+    val consumer = EventConsumer.createConsumer(topic, "test", EventConsumer.unwrapConfig(config))
+    try {
+      val next = consumer.consumer.get.iterator().next()
+      logger.debug(s"Got message: ${next.message.toString}")
+    } finally {
+      logger.debug("Shutting down consumer")
+      consumer.shutdown
+    }
+  }
+
+  def makeEvent(): Event = {
+    Event.newBuilder()
+      .setIntValue(1)
+      .setMetric(GByteString.copyFromUtf8("my.metric"))
+      .setTimestamp(Platform.currentTime)
+      .addTags(Tag.newBuilder().setName("host").setValue("localhost").build())
+      .build()
+  }
+}
