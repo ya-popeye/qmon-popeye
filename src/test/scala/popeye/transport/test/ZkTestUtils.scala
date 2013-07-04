@@ -1,4 +1,4 @@
-package qmon.transport.test
+package popeye.transport.test
 
 import org.I0Itec.zkclient.ZkClient
 import kafka.utils.ZKStringSerializer

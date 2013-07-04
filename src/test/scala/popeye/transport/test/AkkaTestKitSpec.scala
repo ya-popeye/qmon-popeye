@@ -1,4 +1,4 @@
-package qmon.transport.test
+package popeye.transport.test
 
 import akka.actor.ActorSystem
 import org.scalatest.{FlatSpec, BeforeAndAfterAll}

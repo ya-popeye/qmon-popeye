@@ -1,4 +1,4 @@
-package qmon.transport
+package popeye.transport
 
 import com.typesafe.config.{ConfigValue, Config}
 import java.util.Properties

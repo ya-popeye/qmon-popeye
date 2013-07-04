@@ -1,11 +1,11 @@
-package qmon.transport.kafka
+package popeye.transport.kafka
 
-import qmon.transport.test.{AkkaTestKitSpec, KafkaServerTestSpec}
+import popeye.transport.test.{AkkaTestKitSpec, KafkaServerTestSpec}
 import scala.concurrent.duration._
 import kafka.utils.Logging
 import akka.testkit.TestActorRef
 import com.typesafe.config.{ConfigFactory, Config}
-import qmon.transport.proto.Message.{Tag, Event}
+import popeye.transport.proto.Message.{Tag, Event}
 import com.google.protobuf.{ByteString => GByteString}
 import akka.pattern.ask
 import scala.compat.Platform

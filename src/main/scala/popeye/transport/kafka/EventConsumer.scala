@@ -1,8 +1,8 @@
-package qmon.transport.kafka
+package popeye.transport.kafka
 
 import kafka.utils.{Logging, VerifiableProperties}
 import kafka.serializer.{DefaultDecoder, Decoder}
-import qmon.transport.proto.Message.Event
+import popeye.transport.proto.Message.Event
 import com.google.protobuf.InvalidProtocolBufferException
 import akka.actor._
 import com.typesafe.config.Config
@@ -13,8 +13,8 @@ import akka.actor.SupervisorStrategy.Restart
 import scala.Option
 import scala.Some
 import akka.actor.OneForOneStrategy
-import qmon.transport.kafka.EventConsumer.ConsumerPair
-import qmon.transport.ConfigUtil._
+import popeye.transport.kafka.EventConsumer.ConsumerPair
+import popeye.transport.ConfigUtil._
 
 /**
  * @author Andrey Stepachev

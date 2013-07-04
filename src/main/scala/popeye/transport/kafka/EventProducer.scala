@@ -1,14 +1,14 @@
-package qmon.transport.kafka
+package popeye.transport.kafka
 
 import akka.actor.{Props, ActorLogging, Actor}
 import kafka.producer.{Partitioner, KeyedMessage, ProducerConfig, Producer}
 import java.util.Properties
-import qmon.transport.proto.Message.Event
+import popeye.transport.proto.Message.Event
 import kafka.utils.VerifiableProperties
 import kafka.serializer.Encoder
 import akka.actor.Status.Failure
 import com.typesafe.config.Config
-import qmon.transport.ConfigUtil._
+import popeye.transport.ConfigUtil._
 
 object EventProducer {
   def props() = {

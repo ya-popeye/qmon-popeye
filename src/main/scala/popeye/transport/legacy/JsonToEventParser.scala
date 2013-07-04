@@ -1,6 +1,6 @@
-package qmon.transport.legacy
+package popeye.transport.legacy
 
-import qmon.transport.proto.Message.{Batch, Event}
+import popeye.transport.proto.Message.{Batch, Event}
 import org.codehaus.jackson.{JsonToken, JsonParser}
 import com.google.protobuf.{ByteString => GoogleByteString}
 import akka.actor.{ActorLogging, Actor}

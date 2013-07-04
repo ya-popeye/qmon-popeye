@@ -1,4 +1,4 @@
-package qmon.transport.legacy
+package popeye.transport.legacy
 
 import org.scalatest.FlatSpec
 

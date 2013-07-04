@@ -1,4 +1,4 @@
-package qmon.transport.legacy
+package popeye.transport.legacy
 
 import scala.concurrent.duration._
 import akka.pattern.ask
@@ -12,10 +12,10 @@ import spray.http._
 import HttpMethods._
 import MediaTypes._
 import org.codehaus.jackson.{JsonParseException, JsonFactory}
-import qmon.transport.proto.Message.{Event, Batch}
+import popeye.transport.proto.Message.{Event, Batch}
 import akka.actor.SupervisorStrategy.{Stop, Escalate}
 import scala.util.{Failure, Success}
-import qmon.transport.kafka.PersistOnQueue
+import popeye.transport.kafka.PersistOnQueue
 import java.util.concurrent.TimeoutException
 
 

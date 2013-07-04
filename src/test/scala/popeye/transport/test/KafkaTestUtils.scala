@@ -1,4 +1,4 @@
-package qmon.transport.test
+package popeye.transport.test
 
 import kafka.server.{KafkaRequestHandler, KafkaServer, KafkaConfig}
 import kafka.common.KafkaException

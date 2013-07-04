@@ -1,4 +1,4 @@
-name:="qmon-parent"
+name:="popeye-server"
 
 organization := "ru.yandex.qmon"
 

@@ -1,4 +1,4 @@
-package qmon.transport.proto;
+package popeye.transport.proto;
 
 message Tag {
 	required string name     = 1;
