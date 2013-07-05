@@ -8,6 +8,7 @@ import popeye.transport.kafka.EventProducer
 import akka.event.LogSource
 import akka.routing.FromConfig
 import popeye.transport.ConfigUtil._
+import popeye.uuid.IdGenerator
 
 /**
  * @author Andrey Stepachev
@@ -21,10 +22,11 @@ object Boot extends App {
   }
   val log = akka.event.Logging(system, this)
 
+  implicit val idGenerator = new IdGenerator(1)
   // the handler actor replies to incoming HttpRequests
   val kafka = {
-    val props: Props = EventProducer.fromConfig(system.settings.config)
-    system.actorOf(props.withRouter(FromConfig()), "kafka-producer")
+    system.actorOf(EventProducer.props(system.settings.config)
+      .withRouter(FromConfig()), "kafka-producer")
   }
   val handler = system.actorOf(Props(new LegacyHttpHandler(kafka)), name = "legacy-http")
   IO(Http) ! Http.Bind(handler, interface = "0.0.0.0", port = 8080)

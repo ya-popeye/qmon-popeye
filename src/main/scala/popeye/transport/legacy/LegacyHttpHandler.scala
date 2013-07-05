@@ -15,8 +15,9 @@ import org.codehaus.jackson.{JsonParseException, JsonFactory}
 import popeye.transport.proto.Message.{Event, Batch}
 import akka.actor.SupervisorStrategy.{Stop, Escalate}
 import scala.util.{Failure, Success}
-import popeye.transport.kafka.PersistOnQueue
+import popeye.transport.kafka.PersistBatch
 import java.util.concurrent.TimeoutException
+import scala.collection.JavaConversions.asJavaIterable
 
 
 /**
@@ -53,7 +54,9 @@ class LegacyHttpHandler(kafkaProducer: ActorRef) extends Actor with SprayActorLo
 
       val future = for {
         parsed <- ask(parser, ParseRequest(entity.buffer)).mapTo[ParseResult]
-        stored <- ask(kafkaProducer, PersistOnQueue(parsed.batch))(kafkaTimeout)
+        stored <- ask(kafkaProducer, PersistBatch(
+          Batch.newBuilder().addAllEvent(parsed.batch).build
+        ))(kafkaTimeout)
       } yield {
         stored
       }

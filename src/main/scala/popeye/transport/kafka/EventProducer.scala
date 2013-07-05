@@ -1,58 +1,75 @@
 package popeye.transport.kafka
 
 import akka.actor.{Props, ActorLogging, Actor}
-import kafka.producer.{Partitioner, KeyedMessage, ProducerConfig, Producer}
+import kafka.producer._
 import java.util.Properties
-import popeye.transport.proto.Message.Event
+import popeye.transport.proto.Message.Batch
 import kafka.utils.VerifiableProperties
-import kafka.serializer.Encoder
-import akka.actor.Status.Failure
+import kafka.serializer.{DefaultEncoder, Encoder}
 import com.typesafe.config.Config
 import popeye.transport.ConfigUtil._
+import popeye.uuid.IdGenerator
+import scala.collection.JavaConversions.{asScalaBuffer, asJavaIterable}
+import popeye.transport.proto.Storage.Ensemble
+import kafka.producer.KeyedMessage
+import akka.actor.Status.Failure
 
 object EventProducer {
-  def props() = {
-    Props[EventProducer]()
-  }
-
-  def fromConfig(config: Config): Props = {
-    val localConfig = config.getConfig("kafka.producer")
+  private def composeConfig(config: Config) = {
+    config.getConfig("kafka.producer")
       .withFallback(config.getConfig("kafka"))
-    Props(new EventProducer(localConfig))
   }
-}
 
-class EventProducer(kafkaConfig: Config) extends Actor with ActorLogging {
-
-  val topic = kafkaConfig.getString("events.topic")
-  var kafka: Option[Producer[Nothing, Event]] = Some(new Producer[Nothing, Event](producerConfig()))
-
-  def producerConfig() = {
+  private def producerConfig(config: Config) = {
+    val local: Config = config
     val props: Properties = new Properties()
-    props.putAll(kafkaConfig)
-    props.setProperty("zookeeper.connect", kafkaConfig.getString("zk.cluster"))
-    props.setProperty("partitioner.class", classOf[EventHashPartitioner].getCanonicalName)
-    props.setProperty("serializer.class", classOf[EventEncoder].getCanonicalName)
+    props.putAll(local)
+    props.setProperty("zookeeper.connect", local.getString("zk.cluster"))
+    props.setProperty("serializer.class", classOf[EnsembleEncoder].getCanonicalName)
+    props.setProperty("key.serializer.class", classOf[DefaultEncoder].getCanonicalName)
+    props.setProperty("compression", "gzip")
     new ProducerConfig(props)
   }
 
-  override def postStop() = {
-    log.debug("Stopping EventProducer")
-    kafka foreach {
-      p => p.close()
-    }
+  def props(config:Config)(implicit idGenerator: IdGenerator) = {
+    val flatConfig: Config = composeConfig(config)
+    Props(new EventProducer(flatConfig.getString("events.topic"), producerConfig(flatConfig), idGenerator))
+  }
+}
+
+class EventProducer(topic: String,
+                    config: ProducerConfig,
+                    idGenerator: IdGenerator)
+  extends Actor with ActorLogging {
+
+  val producer = new Producer[Array[Byte], Ensemble](config)
+
+  override def postStop() {
+    producer.close()
     super.postStop()
   }
 
   def receive = {
-    case PersistOnQueue(events) => {
+
+    case PersistBatch(events) => {
       try {
-        kafka.get.send(
-          events.map({
-            e: Event => new KeyedMessage(topic, e)
-          }): _*
-        )
-        sender ! EventPersisted(0)
+
+        for {
+          (part, list) <- events.getEventList
+            .groupBy(ev => (ev.getMetric.hashCode() % 16) -> ev)
+
+          id: Long = idGenerator.nextId()
+
+          ensemble = Ensemble.newBuilder()
+            .setBatchId(id)
+            .addAllEvents(list)
+            .build
+        } yield {
+          producer.send(
+            KeyedMessage(topic, id.toString.getBytes, ensemble)
+          )
+          sender ! BatchPersisted(id)
+        }
       } catch {
         case e: Exception => sender ! Failure(e)
           throw e
@@ -61,17 +78,11 @@ class EventProducer(kafkaConfig: Config) extends Actor with ActorLogging {
   }
 }
 
-case class PersistOnQueue(events: Seq[Event])
+case class PersistBatch(events: Batch)
 
-case class EventPersisted(offset: Long)
+case class BatchPersisted(batchId: Long)
 
-class EventHashPartitioner(props: VerifiableProperties = null) extends Partitioner[Event] {
-  def partition(data: Event, numPartitions: Int): Int = {
-    data.getMetric.hashCode() % numPartitions
-  }
-}
-
-class EventEncoder(props: VerifiableProperties = null) extends Encoder[Event] {
-  override def toBytes(value: Event): Array[Byte] = value.toByteArray
+class EnsembleEncoder(props: VerifiableProperties = null) extends Encoder[Ensemble] {
+  override def toBytes(value: Ensemble): Array[Byte] = value.toByteArray
 }
 
