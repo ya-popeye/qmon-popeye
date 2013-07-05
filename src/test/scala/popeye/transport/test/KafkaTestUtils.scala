@@ -18,7 +18,6 @@ trait KafkaServerTestSpec extends ZkTestSpec {
   def kafkaBrokersList = kafkaBrokers.map({s => s.socketServer.host + ":" + s.socketServer.port}).mkString(",")
 
   def withKafkaServer()(body: => Unit) {
-    Logger.getLogger("kafka").setLevel(Level.DEBUG)
     withZk() {
       if (kafkaBrokerConfigs.size <= 0)
         throw new KafkaException("Must suply at least one server config.")
