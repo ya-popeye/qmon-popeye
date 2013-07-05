@@ -14,15 +14,16 @@ message Event {
 };
 
 message Batch {
-  optional int64 correlation        = 1;
-  repeated Event event     = 2;
+  repeated Event event              = 1;
+  optional int64 correlation        = 2;
 }
 
 message BatchReply {
   enum Status {
-    OK = 1;
+    OK   = 1;
     FAIL = 2;
   }
-  optional int64 correlation        = 1;
-  required Status status   = 2;
+  required int64 correlation        = 1;
+  required int64 batchId            = 2;
+  required Status status            = 3;
 }

@@ -1,0 +1,8 @@
+package popeye.transport.proto;
+
+import "popeye/transport/proto/message.proto";
+
+message Ensemble {
+    required int64 batchId = 1;
+    repeated Event events  = 2;
+}
