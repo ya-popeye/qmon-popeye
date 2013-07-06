@@ -11,7 +11,6 @@ import akka.pattern.ask
 import scala.compat.Platform
 import akka.util.Timeout
 import scala.concurrent.Await
-import org.apache.log4j.Level
 import kafka.admin.CreateTopicCommand
 import kafka.utils.TestUtils._
 import kafka.message.MessageAndMetadata
@@ -61,11 +60,11 @@ class EventProducerSpec extends AkkaTestKitSpec("ProducerTest") with KafkaServer
   def makeBatch(): Batch = {
     Batch.newBuilder().addEvent(
       Event.newBuilder()
-      .setIntValue(1)
-      .setMetric(GByteString.copyFromUtf8("my.metric"))
-      .setTimestamp(Platform.currentTime)
-      .addTags(Tag.newBuilder().setName("host").setValue("localhost").build())
-      .build()
+        .setIntValue(1)
+        .setMetric(GByteString.copyFromUtf8("my.metric"))
+        .setTimestamp(Platform.currentTime)
+        .addTags(Tag.newBuilder().setName("host").setValue("localhost").build())
+        .build()
     ).build
   }
 }

@@ -1,9 +1,10 @@
 package popeye.transport.kafka
 
+import scala.util.{Failure, Success}
 import kafka.utils.{Logging, VerifiableProperties}
 import kafka.serializer.{DefaultDecoder, Decoder}
-import popeye.transport.proto.Message.Event
 import com.google.protobuf.InvalidProtocolBufferException
+import akka.pattern.ask
 import akka.actor._
 import com.typesafe.config.Config
 import kafka.consumer._
@@ -16,14 +17,15 @@ import akka.actor.OneForOneStrategy
 import popeye.transport.kafka.EventConsumer.ConsumerPair
 import popeye.transport.ConfigUtil._
 import popeye.transport.proto.Storage.Ensemble
-import popeye.uuid.IdGenerator
+import scala.collection.mutable
+import akka.util.Timeout
 
 /**
  * @author Andrey Stepachev
  */
 object EventConsumer extends Logging {
 
-  def consumerConfig(config:Config): ConsumerConfig = {
+  def consumerConfig(config: Config): ConsumerConfig = {
     val flatConfig: Config = composeConfig(config)
     val consumerProps: Properties = flatConfig
     consumerProps.put("zookeeper.connect", flatConfig.getString("zk.cluster"))
@@ -37,12 +39,13 @@ object EventConsumer extends Logging {
       .withFallback(config.getConfig("kafka"))
   }
 
-  def props(config:Config) = {
+  def props(config: Config, target: ActorRef) = {
     val flatConfig = composeConfig(config)
     Props(new EventConsumer(
       flatConfig.getString("events.topic"),
       flatConfig.getString("events.group"),
-      consumerConfig(config)))
+      consumerConfig(config),
+      target))
   }
 
   class ConsumerPair(val connector: ConsumerConnector, val consumer: Option[KafkaStream[Array[Byte], Ensemble]]) {
@@ -76,7 +79,19 @@ object EventConsumer extends Logging {
 
 class ConsumerInitializationException extends Exception
 
-class EventConsumer(topic: String, group: String, config: ConsumerConfig) extends Actor with ActorLogging {
+private case object Go
+
+case class ConsumeId(batchId: Long, offset: Long, partition: Long)
+
+case class ConsumePending(data: Ensemble, id: ConsumeId)
+
+case class ConsumeDone(id: ConsumeId)
+
+case class ConsumeFailed(id: ConsumeId, cause: Throwable)
+
+class EventConsumer(topic: String, group: String, config: ConsumerConfig, target: ActorRef) extends Actor with ActorLogging {
+
+  import context._
 
   val pair: ConsumerPair = EventConsumer.createConsumer(topic, config)
   if (pair.consumer.isEmpty)
@@ -84,7 +99,9 @@ class EventConsumer(topic: String, group: String, config: ConsumerConfig) extend
   log.debug("Starting EventConsumer for group " + group + " and topic " + topic)
   val consumer = pair.consumer
   val connector = pair.connector
-  var finished = false
+  val pending = new mutable.TreeSet[Long]()
+  val complete = new mutable.TreeSet[Long]()
+  implicit val timeout: Timeout = 30 seconds
 
   override val supervisorStrategy =
     OneForOneStrategy(maxNrOfRetries = 10, withinTimeRange = (1 minutes)) {
@@ -98,16 +115,50 @@ class EventConsumer(topic: String, group: String, config: ConsumerConfig) extend
     super.postStop()
   }
 
+  private def commit() = {
+    // TODO: replace with more precise version, we should be able to commit particular (topic/part)
+    connector.commitOffsets
+  }
+
   def receive = {
-    case _ =>
-      try {
-        val iterator = consumer.get.iterator()
-        if (iterator.hasNext()) {
-          val msg = iterator.next()
-          log.debug(msg.toString)
+    case ConsumeDone(id) =>
+      if (pending.firstKey == id.offset) {
+        pending.remove(id.offset)
+        complete.clear()
+        commit()
+      } else {
+        pending.remove(id.offset)
+        complete.add(id.offset)
+      }
+    case ConsumeFailed(id, ex) =>
+      // TODO: place failed batch somewhere, right now we simply drop it
+      log.error(ex, "Batch {} failed", id)
+      pending.remove(id.offset)
+      if (complete.isEmpty)
+        commit()
+    case Go =>
+      if (pending.size >= config.queuedMaxMessages) {
+        log.warning("Queue is full: " + pending.size)
+        context.system.scheduler.scheduleOnce(5 seconds, self, Go)
+      } else {
+        try {
+          val iterator = consumer.get.iterator()
+          if (iterator.hasNext()) {
+            val msg = iterator.next()
+            val batchId = msg.message.getBatchId
+            val pos = ConsumeId(batchId, msg.offset, msg.partition)
+            val me = self
+            target ? ConsumePending(msg.message, pos) onComplete {
+              case Success(x) =>
+                me ! ConsumeDone(pos)
+              case Failure(ex: Throwable) =>
+                me ! ConsumeFailed(pos, ex)
+            }
+          }
+        } catch {
+          case ex: ConsumerTimeoutException => // ok
         }
-      } catch {
-        case ex: ConsumerTimeoutException => // ok
+        self ! Go
       }
   }
 
