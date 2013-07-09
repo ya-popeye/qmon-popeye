@@ -8,6 +8,7 @@ import popeye.transport.proto.Message.Batch
 import scala.collection.mutable.ArrayBuffer
 import popeye.uuid.IdGenerator
 import popeye.transport.proto.Storage.Ensemble
+import popeye.transport.kafka.{ConsumeFailed, ConsumeDone, ConsumePending}
 
 /**
  * @author Andrey Stepachev
@@ -28,29 +29,23 @@ object TsdbWriter {
 }
 
 
-class TsdbWriterActor(tsdb: TSDB, workerId: Long = 0, datacenterId: Long = 0, sequence: Long = 0) extends Actor with ActorLogging {
-
-  case object Message
-
-  case class WriteBatch(batch: Ensemble)
-  case class CompleteBatch(batchId: Long)
-
-  var buf = new ArrayBuffer[EventSendFuture]
+class TsdbWriterActor(tsdb: TSDB) extends Actor with ActorLogging {
 
   def receive = {
-    case CompleteBatch(batchId) =>
-      buf = buf.filter(_.getBatchId != batchId)
-    case WriteBatch(batch) =>
-      val me = self
+    case msg@ConsumePending(data, id) =>
       val client = sender
-      buf += new EventSendFuture(tsdb, batch) {
+      log.debug("Processing {}", msg)
+      new EventPersistFuture(tsdb, data) {
         protected def complete() {
-          me ! CompleteBatch(batch.getBatchId)
-          client ! CompleteBatch(batch.getBatchId)
+          client ! ConsumeDone(id)
+          if (log.isDebugEnabled)
+            log.debug("Processing of {} complete: {}", msg)
         }
 
-        protected def fail() {
-          me ! CompleteBatch(batch.getBatchId)
+        protected def fail(cause: Throwable) {
+          client ! ConsumeFailed(id, cause)
+          if (log.isDebugEnabled)
+            log.debug("Processing of {} failed: {}", msg, cause)
         }
       }
   }

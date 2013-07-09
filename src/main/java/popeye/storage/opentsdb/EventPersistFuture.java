@@ -32,7 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * @author Andrey Stepachev
  */
-public abstract class EventSendFuture implements Callback<Object, Object>, Future<Object> {
+public abstract class EventPersistFuture implements Callback<Object, Object>, Future<Object> {
 
   static Field field;
 
@@ -54,7 +54,7 @@ public abstract class EventSendFuture implements Callback<Object, Object>, Futur
     }
   }
 
-  private Logger logger = LoggerFactory.getLogger(EventSendFuture.class);
+  private Logger logger = LoggerFactory.getLogger(EventPersistFuture.class);
 
   private TSDB tsdb;
   private HBaseClient client;
@@ -64,7 +64,7 @@ public abstract class EventSendFuture implements Callback<Object, Object>, Futur
   private volatile boolean throttle = false;
   private AtomicInteger batchedEvents = new AtomicInteger();
 
-  public EventSendFuture(TSDB tsdb, Storage.Ensemble batch) {
+  public EventPersistFuture(TSDB tsdb, Storage.Ensemble batch) {
     this.tsdb = tsdb;
     this.batchId = batch.getBatchId();
     this.client = stealHBaseClient(tsdb);
@@ -161,7 +161,7 @@ public abstract class EventSendFuture implements Callback<Object, Object>, Futur
                 .addBoth(this);  // Don't lose edits.
       }
     } else if (arg instanceof Throwable) {
-      fail();
+      fail((Throwable) arg);
     } else {
       int awaits = batchedEvents.decrementAndGet();
       if (awaits == 0 && batched.get())
@@ -172,7 +172,7 @@ public abstract class EventSendFuture implements Callback<Object, Object>, Futur
 
   protected abstract void complete();
 
-  protected abstract void fail();
+  protected abstract void fail(Throwable arg);
 
   /**
    * Helper method, implements throttle.
