@@ -1,6 +1,8 @@
 import sbt._
 import sbt.Keys._
 import net.virtualvoid.sbt.graph.{Plugin => Dep}
+import sbtassembly.Plugin._
+import AssemblyKeys._
 
 object Version {
   val Scala = "2.10.1"
@@ -50,7 +52,7 @@ object PopeyeBuild extends Build {
   lazy val popeyeServer = Project(
     id = "popeye-server",
     base = file("server"),
-    settings = defaultSettings)
+    settings = defaultSettings ++ assemblySettings)
     .dependsOn(kafka)
     .dependsOn(kafka % "test->test")
     .settings(
@@ -78,7 +80,9 @@ object PopeyeBuild extends Build {
           "org.codehaus.jackson" % "jackson-core-asl" % Version.Jackson,
           "org.slf4j" % "jcl-over-slf4j" % "1.7.5",
           "org.slf4j" % "slf4j-log4j12" % "1.7.5",
-          "org.hbase" % "asynchbase" % "1.4.1",
+          "org.hbase" % "asynchbase" % "1.4.1"
+            exclude("org.slf4j", "log4j-over-slf4j")
+            exclude("org.slf4j", "jcl-over-slf4j"),
           "org.scalatest" %% "scalatest"                           % Version.ScalaTest % "test",
           "org.mockito"    % "mockito-core"                        % Version.Mockito   % "test",
           "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"
