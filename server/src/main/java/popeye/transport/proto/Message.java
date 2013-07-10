@@ -496,9 +496,9 @@ public final class Message {
   public interface EventOrBuilder
       extends com.google.protobuf.MessageOrBuilder {
     
-    // required bytes metric = 1;
+    // required string metric = 1;
     boolean hasMetric();
-    com.google.protobuf.ByteString getMetric();
+    String getMetric();
     
     // required int64 timestamp = 2;
     boolean hasTimestamp();
@@ -551,14 +551,36 @@ public final class Message {
     }
     
     private int bitField0_;
-    // required bytes metric = 1;
+    // required string metric = 1;
     public static final int METRIC_FIELD_NUMBER = 1;
-    private com.google.protobuf.ByteString metric_;
+    private java.lang.Object metric_;
     public boolean hasMetric() {
       return ((bitField0_ & 0x00000001) == 0x00000001);
     }
-    public com.google.protobuf.ByteString getMetric() {
-      return metric_;
+    public String getMetric() {
+      java.lang.Object ref = metric_;
+      if (ref instanceof String) {
+        return (String) ref;
+      } else {
+        com.google.protobuf.ByteString bs = 
+            (com.google.protobuf.ByteString) ref;
+        String s = bs.toStringUtf8();
+        if (com.google.protobuf.Internal.isValidUtf8(bs)) {
+          metric_ = s;
+        }
+        return s;
+      }
+    }
+    private com.google.protobuf.ByteString getMetricBytes() {
+      java.lang.Object ref = metric_;
+      if (ref instanceof String) {
+        com.google.protobuf.ByteString b = 
+            com.google.protobuf.ByteString.copyFromUtf8((String) ref);
+        metric_ = b;
+        return b;
+      } else {
+        return (com.google.protobuf.ByteString) ref;
+      }
     }
     
     // required int64 timestamp = 2;
@@ -613,7 +635,7 @@ public final class Message {
     }
     
     private void initFields() {
-      metric_ = com.google.protobuf.ByteString.EMPTY;
+      metric_ = "";
       timestamp_ = 0L;
       tags_ = java.util.Collections.emptyList();
       intValue_ = 0L;
@@ -646,7 +668,7 @@ public final class Message {
                         throws java.io.IOException {
       getSerializedSize();
       if (((bitField0_ & 0x00000001) == 0x00000001)) {
-        output.writeBytes(1, metric_);
+        output.writeBytes(1, getMetricBytes());
       }
       if (((bitField0_ & 0x00000002) == 0x00000002)) {
         output.writeInt64(2, timestamp_);
@@ -671,7 +693,7 @@ public final class Message {
       size = 0;
       if (((bitField0_ & 0x00000001) == 0x00000001)) {
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(1, metric_);
+          .computeBytesSize(1, getMetricBytes());
       }
       if (((bitField0_ & 0x00000002) == 0x00000002)) {
         size += com.google.protobuf.CodedOutputStream
@@ -814,7 +836,7 @@ public final class Message {
       
       public Builder clear() {
         super.clear();
-        metric_ = com.google.protobuf.ByteString.EMPTY;
+        metric_ = "";
         bitField0_ = (bitField0_ & ~0x00000001);
         timestamp_ = 0L;
         bitField0_ = (bitField0_ & ~0x00000002);
@@ -1022,15 +1044,22 @@ public final class Message {
       
       private int bitField0_;
       
-      // required bytes metric = 1;
-      private com.google.protobuf.ByteString metric_ = com.google.protobuf.ByteString.EMPTY;
+      // required string metric = 1;
+      private java.lang.Object metric_ = "";
       public boolean hasMetric() {
         return ((bitField0_ & 0x00000001) == 0x00000001);
       }
-      public com.google.protobuf.ByteString getMetric() {
-        return metric_;
+      public String getMetric() {
+        java.lang.Object ref = metric_;
+        if (!(ref instanceof String)) {
+          String s = ((com.google.protobuf.ByteString) ref).toStringUtf8();
+          metric_ = s;
+          return s;
+        } else {
+          return (String) ref;
+        }
       }
-      public Builder setMetric(com.google.protobuf.ByteString value) {
+      public Builder setMetric(String value) {
         if (value == null) {
     throw new NullPointerException();
   }
@@ -1044,6 +1073,11 @@ public final class Message {
         metric_ = getDefaultInstance().getMetric();
         onChanged();
         return this;
+      }
+      void setMetric(com.google.protobuf.ByteString value) {
+        bitField0_ |= 0x00000001;
+        metric_ = value;
+        onChanged();
       }
       
       // required int64 timestamp = 2;
@@ -2515,7 +2549,7 @@ public final class Message {
       "\n$popeye/transport/proto/message.proto\022\026" +
       "popeye.transport.proto\"\"\n\003Tag\022\014\n\004name\030\001 " +
       "\002(\t\022\r\n\005value\030\002 \002(\t\"}\n\005Event\022\016\n\006metric\030\001 " +
-      "\002(\014\022\021\n\ttimestamp\030\002 \002(\003\022)\n\004tags\030\003 \003(\0132\033.p" +
+      "\002(\t\022\021\n\ttimestamp\030\002 \002(\003\022)\n\004tags\030\003 \003(\0132\033.p" +
       "opeye.transport.proto.Tag\022\021\n\tint_value\030\004" +
       " \001(\003\022\023\n\013float_value\030\005 \001(\002\"J\n\005Batch\022,\n\005ev" +
       "ent\030\001 \003(\0132\035.popeye.transport.proto.Event" +

@@ -6,7 +6,7 @@ message Tag {
 };
 
 message Event {
-	required bytes metric        = 1;
+	required string metric       = 1;
 	required int64 timestamp     = 2;
 	repeated Tag tags            = 3;
 	optional int64 int_value     = 4;
