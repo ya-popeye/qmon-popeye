@@ -6,8 +6,7 @@ import akka.testkit.{TestKit, ImplicitSender}
 import org.scalatest.matchers.MustMatchers
 import com.typesafe.config.ConfigFactory
 
-abstract class AkkaTestKitSpec(name: String)
-  extends TestKit(ActorSystem(name, ConfigFactory.parseString("""
+abstract class AkkaTestKitSpec(name: String) extends TestKit(ActorSystem(name, ConfigFactory.parseString("""
   akka.loggers = ["akka.testkit.TestEventListener"]
                                                               """)))
   with FlatSpec

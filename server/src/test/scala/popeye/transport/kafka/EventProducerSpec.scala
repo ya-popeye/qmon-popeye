@@ -61,7 +61,7 @@ class EventProducerSpec extends AkkaTestKitSpec("ProducerTest") with KafkaServer
     Batch.newBuilder().addEvent(
       Event.newBuilder()
         .setIntValue(1)
-        .setMetric(GByteString.copyFromUtf8("my.metric"))
+        .setMetric("my.metric")
         .setTimestamp(Platform.currentTime)
         .addTags(Tag.newBuilder().setName("host").setValue("localhost").build())
         .build()

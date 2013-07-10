@@ -15,6 +15,7 @@ import popeye.transport.proto.Message;
 import popeye.transport.proto.Storage;
 
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -38,7 +39,7 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
 
   static {
     try {
-      field = TSDB.class.getField("client");
+      field = TSDB.class.getDeclaredField("client");
       field.setAccessible(true);
 
     } catch (NoSuchFieldException e) {
@@ -112,9 +113,9 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
       return;
     final WritableDataPoints dataPoints = tsdb.newDataPoints();
     final Message.Event first = data.getEvents(0);
-    dataPoints.setSeries(first.getMetric().toStringUtf8(), toMap(first.getTagsList()));
+    dataPoints.setSeries(first.getMetric(), toMap(first.getTagsList()));
     dataPoints.setBatchImport(false); // we need data to be persisted
-    final List<Message.Event> eventList = data.getEventsList();
+    final List<Message.Event> eventList = new ArrayList<Message.Event>(data.getEventsList());
     // sort data in increased timestamp order
     Collections.sort(eventList, orderByTimestamp());
     long prevTs = 0;
@@ -132,14 +133,16 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
         } else {
           throw new IllegalArgumentException("Metric doesn't have either int no float value");
         }
+        batchedEvents.incrementAndGet();
         d.addBoth(this);
         if (throttle)
           throttle(d);
-        batchedEvents.incrementAndGet();
       } catch (IllegalArgumentException ie) {
         failures.add(ie.getMessage());
       }
     }
+    batched.set(true);
+    tryComplete();
     if (failures.size() > 0) {
       logger.error("Points imported with " + failures.toString() + " IllegalArgumentExceptions");
     }
@@ -163,11 +166,16 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
     } else if (arg instanceof Throwable) {
       fail((Throwable) arg);
     } else {
-      int awaits = batchedEvents.decrementAndGet();
-      if (awaits == 0 && batched.get())
-        complete();
+      batchedEvents.decrementAndGet();
+      tryComplete();
     }
     return null;
+  }
+
+  private void tryComplete() {
+    int awaits = batchedEvents.get();
+    if (awaits == 0 && batched.get())
+      complete();
   }
 
   protected abstract void complete();

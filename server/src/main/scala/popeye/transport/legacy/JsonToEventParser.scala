@@ -52,7 +52,7 @@ class JsonToEventParser(data: Array[Byte]) extends Traversable[Event] {
         }
       }
     }
-    event.setMetric(GoogleByteString.copyFromUtf8(metric))
+    event.setMetric(metric)
     f(event.build())
     require(parser.getCurrentToken == JsonToken.END_OBJECT)
   }
