@@ -42,11 +42,11 @@ class EventProducerSpec extends AkkaTestKitSpec("ProducerTest") with KafkaServer
         |   kafka.consumer.timeout=35000
         |   kafka.producer.metadata.broker.list="$kafkaBrokersList"
       """.stripMargin).withFallback(ConfigFactory.load())
-    val actor = TestActorRef(EventProducer.props(config))
-    val future = ask(actor, PersistBatch(makeBatch())).mapTo[BatchPersisted]
+    val actor = TestActorRef(KafkaEventProducer.props(config))
+    val future = ask(actor, ProducePending(makeBatch(), 123)).mapTo[ProduceDone]
     Await.result(future, timeout.duration)
     logger.debug(s"Got result ${future.value}, ready for consume")
-    val consumer = EventConsumer.createConsumer(topic, EventConsumer.consumerConfig(config))
+    val consumer = KafkaEventConsumer.createConsumer(topic, KafkaEventConsumer.consumerConfig(config))
     try {
       val next = consumer.consumer.get.iterator().next()
       next must not be null

@@ -31,6 +31,8 @@ object TsdbWriter {
 
 class TsdbWriterActor(tsdb: TSDB) extends Actor with ActorLogging {
 
+  log.info("Started TSDB Writer")
+
   def receive = {
     case msg@ConsumePending(data, id) =>
       val client = sender

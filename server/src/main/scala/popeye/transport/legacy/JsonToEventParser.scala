@@ -5,6 +5,7 @@ import org.codehaus.jackson.{JsonToken, JsonParser}
 import com.google.protobuf.{ByteString => GoogleByteString}
 import akka.actor.{ActorLogging, Actor}
 import akka.actor.Status.Failure
+import popeye.Logging
 
 class ParserActor extends Actor with ActorLogging {
   def receive = {
@@ -23,7 +24,7 @@ case class ParseRequest(data: Array[Byte])
 
 case class ParseResult(batch: List[Event])
 
-class JsonToEventParser(data: Array[Byte]) extends Traversable[Event] {
+class JsonToEventParser(data: Array[Byte]) extends Traversable[Event] with Logging {
 
   def parseValue[U](metric: String, f: (Event) => U, parser: JsonParser) = {
     val event = Event.newBuilder()
@@ -58,7 +59,8 @@ class JsonToEventParser(data: Array[Byte]) extends Traversable[Event] {
   }
 
   def parseMetric[U](f: (Event) => U, parser: JsonParser) = {
-    require(parser.getCurrentToken == JsonToken.START_OBJECT)
+    require(parser.getCurrentToken == JsonToken.START_OBJECT,
+      "Start of OBJECT expected, but " + parser.getCurrentToken + " found")
     parser.nextToken
     val metric = parser.getCurrentName
     parser.nextToken match {
@@ -76,6 +78,7 @@ class JsonToEventParser(data: Array[Byte]) extends Traversable[Event] {
     require(parser.getCurrentToken == JsonToken.START_ARRAY)
     while (parser.nextToken() != JsonToken.END_ARRAY) {
       parseMetric(f, parser)
+      parser.nextToken
     }
     parser.nextToken
   }

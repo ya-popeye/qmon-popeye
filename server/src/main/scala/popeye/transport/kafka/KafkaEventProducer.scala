@@ -15,7 +15,7 @@ import kafka.producer.KeyedMessage
 import akka.actor.Status.Failure
 
 
-object EventProducer {
+object KafkaEventProducer {
   private def composeConfig(config: Config) = {
     config.getConfig("kafka.producer")
       .withFallback(config.getConfig("kafka"))
@@ -28,54 +28,57 @@ object EventProducer {
     props.setProperty("zookeeper.connect", local.getString("zk.cluster"))
     props.setProperty("serializer.class", classOf[EnsembleEncoder].getName)
     props.setProperty("key.serializer.class", classOf[DefaultEncoder].getName)
-    props.setProperty("compression", "gzip")
+    props.setProperty("compression.codec", "gzip")
     new ProducerConfig(props)
   }
 
   def props(config: Config)(implicit idGenerator: IdGenerator) = {
     val flatConfig: Config = composeConfig(config)
-    Props(new EventProducer(flatConfig.getString("events.topic"), producerConfig(flatConfig), idGenerator))
+    Props(new KafkaEventProducer(flatConfig.getString("events.topic"), producerConfig(flatConfig), idGenerator))
   }
 }
 
-case class PersistBatch(events: Batch)
-
-case class BatchPersisted(batchId: Long)
-
-class EventProducer(topic: String,
+class KafkaEventProducer(topic: String,
                     config: ProducerConfig,
                     idGenerator: IdGenerator)
   extends Actor with ActorLogging {
 
   val producer = new Producer[Array[Byte], Ensemble](config)
 
+  override def preStart() {
+    log.debug("Starting producer")
+    super.preStart()
+  }
+
   override def postStop() {
+    log.debug("Stopping producer")
     producer.close()
     super.postStop()
   }
 
   def receive = {
 
-    case PersistBatch(events) => {
+    case ProducePending(events, correlation) => {
       try {
         for {
           (part, list) <- events.getEventList
             .groupBy(ev => (ev.getMetric.hashCode() % 16) -> ev)
 
-          id: Long = idGenerator.nextId()
+          batchId: Long = idGenerator.nextId()
 
           ensemble = Ensemble.newBuilder()
-            .setBatchId(id)
+            .setBatchId(batchId)
             .addAllEvents(list)
             .build
         } yield {
           producer.send(
-            KeyedMessage(topic, id.toString.getBytes, ensemble)
+            KeyedMessage(topic, batchId.toString.getBytes, ensemble)
           )
-          sender ! BatchPersisted(id)
+          sender ! ProduceDone(correlation, batchId)
         }
       } catch {
         case e: Exception => sender ! Failure(e)
+          sender ! ProduceFailed(correlation, e)
           throw e
       }
     }

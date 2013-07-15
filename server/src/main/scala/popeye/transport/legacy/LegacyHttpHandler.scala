@@ -1,22 +1,20 @@
 package popeye.transport.legacy
 
 import scala.concurrent.duration._
-import akka.pattern.ask
+import akka.pattern.{AskableActorRef, ask}
 import akka.util.Timeout
 import akka.actor._
 import com.google.protobuf.{ByteString => GoogleByteString}
 import spray.can.Http
-import spray.can.server.Stats
 import spray.util._
 import spray.http._
 import HttpMethods._
 import MediaTypes._
 import org.codehaus.jackson.{JsonParseException, JsonFactory}
 import popeye.transport.proto.Message.{Event, Batch}
-import akka.actor.SupervisorStrategy.{Stop, Escalate}
+import akka.actor.SupervisorStrategy.Stop
 import scala.util.{Failure, Success}
-import popeye.transport.kafka.PersistBatch
-import java.util.concurrent.TimeoutException
+import popeye.transport.kafka.{ProduceDone, ProducePending}
 import scala.collection.JavaConversions.asJavaIterable
 
 
@@ -25,9 +23,10 @@ import scala.collection.JavaConversions.asJavaIterable
  */
 class LegacyHttpHandler(kafkaProducer: ActorRef) extends Actor with SprayActorLogging {
 
-  implicit val timeout: Timeout = 1.second // for the actor 'asks'
+  implicit val timeout: Timeout = 1.second
+  // for the actor 'asks'
   val kafkaTimeout: Timeout = new Timeout(context.system.settings.config
-      .getDuration("kafka.transport.send.timeout").asInstanceOf[FiniteDuration])
+    .getDuration("kafka.transport.send.timeout").asInstanceOf[FiniteDuration])
 
   import context.dispatcher
 
@@ -39,8 +38,7 @@ class LegacyHttpHandler(kafkaProducer: ActorRef) extends Actor with SprayActorLo
 
 
   def receive = {
-    // when a new connection comes in we register ourselves as the connection handler
-    case _: Http.Connected => sender ! Http.Register(self)
+    case x: Http.Connected => sender ! Http.Register(self)
 
     case HttpRequest(GET, Uri.Path("/"), _, _, _) =>
       sender ! index
@@ -52,16 +50,20 @@ class LegacyHttpHandler(kafkaProducer: ActorRef) extends Actor with SprayActorLo
       val client = sender
       val parser: ActorRef = context.actorOf(Props[ParserActor])
 
-      val future = for {
+      val result = for {
         parsed <- ask(parser, ParseRequest(entity.buffer)).mapTo[ParseResult]
-        stored <- ask(kafkaProducer, PersistBatch(
-          Batch.newBuilder().addAllEvent(parsed.batch).build
+        stored <- ask(kafkaProducer, ProducePending(
+          Batch.newBuilder().addAllEvent(parsed.batch).build,
+          0
         ))(kafkaTimeout)
       } yield {
         stored
       }
-      future onComplete {
-        case Success(r) => client ! HttpResponse(200, "Ok")
+      result onComplete {
+        case Success(r: ProduceDone) =>
+          client ! HttpResponse(200, "Ok: " + r.correlationId + ":" + r.assignedBatchId)
+        case Success(x) =>
+          client ! HttpResponse(status = StatusCodes.InternalServerError, entity = "unknown message " + x)
         case Failure(ex: JsonParseException) =>
           client ! HttpResponse(status = StatusCodes.UnprocessableEntity, entity = ex.getMessage)
         case Failure(ex) =>
@@ -69,68 +71,8 @@ class LegacyHttpHandler(kafkaProducer: ActorRef) extends Actor with SprayActorLo
           client ! HttpResponse(status = StatusCodes.InternalServerError, entity = ex.getMessage)
       }
 
-    case HttpRequest(GET, Uri.Path("/server-stats"), _, _, _) =>
-      val client = sender
-      context.actorFor("/user/IO-HTTP/listener-0") ? Http.GetStats onSuccess {
-        case x: Stats => client ! statsPresentation(x)
-      }
-
     case _: HttpRequest => sender ! HttpResponse(status = 404, entity = "Unknown resource!")
-
   }
-
-
-  def statsPresentation(s: Stats) = HttpResponse(
-    entity = HttpEntity(`text/html`,
-      <html>
-        <body>
-          <h1>HttpServer Stats</h1>
-          <table>
-            <tr>
-              <td>uptime:</td> <td>
-              {s.uptime.formatHMS}
-            </td>
-            </tr>
-            <tr>
-              <td>totalRequests:</td> <td>
-              {s.totalRequests}
-            </td>
-            </tr>
-            <tr>
-              <td>openRequests:</td> <td>
-              {s.openRequests}
-            </td>
-            </tr>
-            <tr>
-              <td>maxOpenRequests:</td> <td>
-              {s.maxOpenRequests}
-            </td>
-            </tr>
-            <tr>
-              <td>totalConnections:</td> <td>
-              {s.totalConnections}
-            </td>
-            </tr>
-            <tr>
-              <td>openConnections:</td> <td>
-              {s.openConnections}
-            </td>
-            </tr>
-            <tr>
-              <td>maxOpenConnections:</td> <td>
-              {s.maxOpenConnections}
-            </td>
-            </tr>
-            <tr>
-              <td>requestTimeouts:</td> <td>
-              {s.requestTimeouts}
-            </td>
-            </tr>
-          </table>
-        </body>
-      </html>.toString()
-    )
-  )
 
   def eventsPresentation(events: Traversable[Event]) = {
     val eventList = events.map({
@@ -164,9 +106,6 @@ class LegacyHttpHandler(kafkaProducer: ActorRef) extends Actor with SprayActorLo
             </li>
             <li>
               <a href="/q">Query</a>
-            </li>
-            <li>
-              <a href="/server-stats">/server-stats</a>
             </li>
           </ul>
         </body>
