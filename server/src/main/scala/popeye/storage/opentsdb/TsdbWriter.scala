@@ -36,18 +36,18 @@ class TsdbWriterActor(tsdb: TSDB) extends Actor with ActorLogging {
   def receive = {
     case msg@ConsumePending(data, id) =>
       val client = sender
-      log.debug("Processing {}", msg)
+      log.debug("Processing {}", msg.toString.take(256))
       new EventPersistFuture(tsdb, data) {
         protected def complete() {
           client ! ConsumeDone(id)
           if (log.isDebugEnabled)
-            log.debug("Processing of {} complete: {}", msg)
+            log.debug("Processing of {} complete: {}", msg.toString.take(256))
         }
 
         protected def fail(cause: Throwable) {
           client ! ConsumeFailed(id, cause)
           if (log.isDebugEnabled)
-            log.debug("Processing of {} failed: {}", msg, cause)
+            log.debug("Processing of {} failed: {}", msg.toString.take(256), cause)
         }
       }
   }

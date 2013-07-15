@@ -5,6 +5,7 @@ import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
 import net.opentsdb.core.TSDB;
 import net.opentsdb.core.WritableDataPoints;
+import net.opentsdb.uid.UniqueId;
 import org.hbase.async.HBaseClient;
 import org.hbase.async.HBaseRpc;
 import org.hbase.async.PleaseThrottleException;
@@ -35,23 +36,34 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public abstract class EventPersistFuture implements Callback<Object, Object>, Future<Object> {
 
-  static Field field;
+  static Field clientField;
+  static Field metricsField;
 
   static {
     try {
-      field = TSDB.class.getDeclaredField("client");
-      field.setAccessible(true);
-
+      clientField = TSDB.class.getDeclaredField("client");
+      clientField.setAccessible(true);
+      metricsField = TSDB.class.getDeclaredField("metrics");
+      metricsField.setAccessible(true);
     } catch (NoSuchFieldException e) {
       throw new IllegalStateException("Can't find client field in TSDB", e);
     }
   }
 
+
   static HBaseClient stealHBaseClient(TSDB tsdb) {
     try {
-      return (HBaseClient) field.get(tsdb);
+      return (HBaseClient) clientField.get(tsdb);
     } catch (IllegalAccessException e) {
-      throw new RuntimeException("Very bad, can't read HBaseClient field", e);
+      throw new RuntimeException("Very bad, can't read HBaseClient field 'client'", e);
+    }
+  }
+
+  static UniqueId stealMetrics(TSDB tsdb) {
+    try {
+      return (UniqueId) metricsField.get(tsdb);
+    } catch (IllegalAccessException e) {
+      throw new RuntimeException("Very bad, can't read UniqueId field 'metric'", e);
     }
   }
 
@@ -59,6 +71,7 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
 
   private TSDB tsdb;
   private HBaseClient client;
+  private final UniqueId metric;
   private long batchId;
   private AtomicBoolean canceled = new AtomicBoolean(false);
   private AtomicBoolean batched = new AtomicBoolean(false);
@@ -69,6 +82,7 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
     this.tsdb = tsdb;
     this.batchId = batch.getBatchId();
     this.client = stealHBaseClient(tsdb);
+    this.metric = stealMetrics(tsdb);
     try {
       writeDataPoints(batch);
     } catch (Exception e) {
@@ -109,22 +123,22 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
   }
 
   private void writeDataPoints(Storage.Ensemble data) throws Exception {
-    if (data.getEventsCount() < 1)
+    if (data.getEventsCount() < 1) {
+      batched.set(true);
+      tryComplete();
       return;
+    }
     final WritableDataPoints dataPoints = tsdb.newDataPoints();
     final Message.Event first = data.getEvents(0);
+    metric.getOrCreateId(first.getMetric()); // prefetch metric
     dataPoints.setSeries(first.getMetric(), toMap(first.getTagsList()));
     dataPoints.setBatchImport(false); // we need data to be persisted
     final List<Message.Event> eventList = new ArrayList<Message.Event>(data.getEventsList());
     // sort data in increased timestamp order
     Collections.sort(eventList, orderByTimestamp());
-    long prevTs = 0;
     Set<String> failures = new HashSet<String>();
     for (Message.Event eventData : eventList) {
       try {
-        if (eventData.getTimestamp() == prevTs)
-          continue;
-        prevTs = eventData.getTimestamp();
         final Deferred<Object> d;
         if (eventData.hasIntValue()) {
           d = dataPoints.addPoint(eventData.getTimestamp(), eventData.getIntValue());
@@ -174,8 +188,10 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
 
   private void tryComplete() {
     int awaits = batchedEvents.get();
-    if (awaits == 0 && batched.get())
+    if (awaits == 0 && batched.get()) {
       complete();
+      logger.debug("Batch complete {}", batchId);
+    }
   }
 
   protected abstract void complete();
