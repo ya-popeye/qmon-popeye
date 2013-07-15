@@ -52,4 +52,10 @@ object Boot extends App {
 
   system.registerOnTermination(tsdb.shutdown().joinUninterruptibly())
   system.registerOnTermination(hbc.shutdown().joinUninterruptibly())
+
+  Runtime.getRuntime.addShutdownHook(new Thread(new Runnable() {
+    def run() {
+      system.shutdown()
+    }
+  }))
 }

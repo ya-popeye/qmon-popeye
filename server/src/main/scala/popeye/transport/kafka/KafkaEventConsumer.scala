@@ -95,11 +95,16 @@ class KafkaEventConsumer(topic: String, group: String, config: ConsumerConfig, t
   val complete = new mutable.TreeSet[Long]()
   implicit val timeout: Timeout = 30 seconds
 
-//  override val supervisorStrategy =
-//    OneForOneStrategy(maxNrOfRetries = 10, withinTimeRange = (1 minutes)) {
-//      case _ ⇒ Restart
-//    }
+  override val supervisorStrategy =
+    OneForOneStrategy(maxNrOfRetries = 5, withinTimeRange = (1 minutes)) {
+      case _ ⇒ Restart
+    }
 
+
+  override def preStart() {
+    super.preStart()
+    self ! Next
+  }
 
   override def postStop() {
     log.debug("Stopping KafkaEventConsumer for group " + group + " and topic " + topic)
@@ -122,12 +127,14 @@ class KafkaEventConsumer(topic: String, group: String, config: ConsumerConfig, t
         pending.remove(id.offset)
         complete.add(id.offset)
       }
+      self ! Next
     case ConsumeFailed(id, ex) =>
       // TODO: place failed batch somewhere, right now we simply drop it
       log.error(ex, "Batch {} failed", id)
       pending.remove(id.offset)
       if (complete.isEmpty)
         commit()
+      self ! Next
     case Next =>
       if (pending.size >= config.queuedMaxMessages) {
         log.warning("Queue is full: " + pending.size)
@@ -136,11 +143,11 @@ class KafkaEventConsumer(topic: String, group: String, config: ConsumerConfig, t
         try {
           val iterator = consumer.get.iterator()
           if (iterator.hasNext()) {
-            log.debug("Consumer got events")
             val msg = iterator.next()
             val batchId = msg.message.getBatchId
             val pos = ConsumeId(batchId, msg.offset, msg.partition)
             val me = self
+            pending.add(pos.offset)
             target ? ConsumePending(msg.message, pos) onComplete {
               case Success(x) =>
                 me ! ConsumeDone(pos)
@@ -152,6 +159,7 @@ class KafkaEventConsumer(topic: String, group: String, config: ConsumerConfig, t
           case ex: ConsumerTimeoutException => // ok
           case ex: Throwable =>
             log.error("Failed to consume", ex)
+            throw ex
         }
         self ! Next
       }

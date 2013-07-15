@@ -1,6 +1,6 @@
 package popeye.transport.legacy
 
-import popeye.transport.proto.Message.{Batch, Event}
+import popeye.transport.proto.Message.{Tag, Batch, Event}
 import org.codehaus.jackson.{JsonToken, JsonParser}
 import com.google.protobuf.{ByteString => GoogleByteString}
 import akka.actor.{ActorLogging, Actor}
@@ -20,14 +20,28 @@ class ParserActor extends Actor with ActorLogging {
   }
 }
 
+sealed class MetricBuilder(string: String) {
+  val builder: Event.Builder = {
+    val sepIdx: Int = string.indexOf('/')
+    require(sepIdx > 1 && sepIdx < string.length, "metric should be in form of 'HOST/metric")
+    Event.newBuilder()
+      .setMetric("l." + string.substring(sepIdx+1))
+      .addTags(Tag.newBuilder()
+      .setName("host")
+      .setValue(string.substring(0, sepIdx))
+      .build()
+    )
+  }
+}
+
 case class ParseRequest(data: Array[Byte])
 
 case class ParseResult(batch: List[Event])
 
 class JsonToEventParser(data: Array[Byte]) extends Traversable[Event] with Logging {
 
-  def parseValue[U](metric: String, f: (Event) => U, parser: JsonParser) = {
-    val event = Event.newBuilder()
+  def parseValue[U](builder: MetricBuilder, f: (Event) => U, parser: JsonParser) = {
+    val event: Event.Builder = builder.builder.clone()
     require(parser.getCurrentToken == JsonToken.START_OBJECT)
     while (parser.nextToken != JsonToken.END_OBJECT) {
       require(parser.getCurrentToken == JsonToken.FIELD_NAME)
@@ -53,7 +67,6 @@ class JsonToEventParser(data: Array[Byte]) extends Traversable[Event] with Loggi
         }
       }
     }
-    event.setMetric(metric)
     f(event.build())
     require(parser.getCurrentToken == JsonToken.END_OBJECT)
   }
@@ -62,7 +75,7 @@ class JsonToEventParser(data: Array[Byte]) extends Traversable[Event] with Loggi
     require(parser.getCurrentToken == JsonToken.START_OBJECT,
       "Start of OBJECT expected, but " + parser.getCurrentToken + " found")
     parser.nextToken
-    val metric = parser.getCurrentName
+    val metric = new MetricBuilder(parser.getCurrentName)
     parser.nextToken match {
       case JsonToken.START_ARRAY => {
         while (parser.nextToken() != JsonToken.END_ARRAY) {
