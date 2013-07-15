@@ -7,8 +7,10 @@ import popeye.transport.legacy.LegacyHttpHandler
 import popeye.transport.kafka.EventProducer
 import akka.event.LogSource
 import akka.routing.FromConfig
-import popeye.transport.ConfigUtil._
 import popeye.uuid.IdGenerator
+import popeye.storage.opentsdb.TsdbWriterActor
+import net.opentsdb.core.TSDB
+import org.hbase.async.HBaseClient
 
 /**
  * @author Andrey Stepachev
@@ -21,14 +23,19 @@ object Boot extends App {
     override def getClazz(o: AnyRef): Class[_] = o.getClass
   }
   val log = akka.event.Logging(system, this)
-
   implicit val idGenerator = new IdGenerator(1)
-  // the handler actor replies to incoming HttpRequests
-  val kafka = {
-    system.actorOf(EventProducer.props(system.settings.config)
-      .withRouter(FromConfig()), "kafka-producer")
-  }
-  val handler = system.actorOf(Props(new LegacyHttpHandler(kafka)), name = "legacy-http")
-  IO(Http) ! Http.Bind(handler, interface = "0.0.0.0", port = 8080)
+  val conf = system.settings.config
+  val hbc = new HBaseClient(conf.getString("tsdb.zk.cluster"))
+  val tsdb: TSDB = new TSDB(hbc,
+    conf.getString("tsdb.table.series"),
+    conf.getString("tsdb.table.uids"))
 
+  // the handler actor replies to incoming HttpRequests
+  val kafka = system.actorOf(EventProducer.props(conf)
+    .withRouter(FromConfig()), "kafka-producer")
+  val handler = system.actorOf(Props(new LegacyHttpHandler(kafka)), name = "http")
+  IO(Http) ! Http.Bind(handler, interface = "0.0.0.0", port = 8080)
+  system.actorOf(Props(new TsdbWriterActor(tsdb)))
+  system.registerOnTermination(tsdb.shutdown().joinUninterruptibly())
+  system.registerOnTermination(hbc.shutdown().joinUninterruptibly())
 }
