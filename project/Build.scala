@@ -1,5 +1,6 @@
 import sbt._
 import sbt.Keys._
+import QMonDistPlugin._
 import net.virtualvoid.sbt.graph.{Plugin => Dep}
 
 object Version {
@@ -47,11 +48,9 @@ object PopeyeBuild extends Build {
   lazy val popeyeServer = Project(
     id = "popeye-server",
     base = file("server"),
-    settings = defaultSettings)
+    settings = defaultSettings ++ QMonDistPlugin.distSettings)
     .settings(
-    managedDirectory := file("target/libs/"),
-    retrieveManaged := true,
-    retrievePattern := "[conf]/[artifact](-[revision])(-[classifier]).[ext]",
+    distMainClass := "popeye.transport.Boot",
     libraryDependencies ++= Seq(
       "com.google.protobuf" % "protobuf-java" % "2.4.1",
       "org.apache.kafka" %% "kafka" % Version.Kafka % "compile->compile;test->test"
