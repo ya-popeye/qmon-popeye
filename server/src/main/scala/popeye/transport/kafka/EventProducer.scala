@@ -4,8 +4,8 @@ import akka.actor.{Props, ActorLogging, Actor}
 import kafka.producer._
 import java.util.Properties
 import popeye.transport.proto.Message.Batch
-import kafka.utils.VerifiableProperties
-import kafka.serializer.{DefaultEncoder, Encoder}
+import kafka.utils.Utils
+import kafka.serializer.DefaultEncoder
 import com.typesafe.config.Config
 import popeye.transport.ConfigUtil._
 import popeye.uuid.IdGenerator
@@ -13,6 +13,7 @@ import scala.collection.JavaConversions.{asScalaBuffer, asJavaIterable}
 import popeye.transport.proto.Storage.Ensemble
 import kafka.producer.KeyedMessage
 import akka.actor.Status.Failure
+
 
 object EventProducer {
   private def composeConfig(config: Config) = {
@@ -25,17 +26,21 @@ object EventProducer {
     val props: Properties = new Properties()
     props.putAll(local)
     props.setProperty("zookeeper.connect", local.getString("zk.cluster"))
-    props.setProperty("serializer.class", classOf[EnsembleEncoder].getCanonicalName)
-    props.setProperty("key.serializer.class", classOf[DefaultEncoder].getCanonicalName)
+    props.setProperty("serializer.class", classOf[EnsembleEncoder].getName)
+    props.setProperty("key.serializer.class", classOf[DefaultEncoder].getName)
     props.setProperty("compression", "gzip")
     new ProducerConfig(props)
   }
 
-  def props(config:Config)(implicit idGenerator: IdGenerator) = {
+  def props(config: Config)(implicit idGenerator: IdGenerator) = {
     val flatConfig: Config = composeConfig(config)
     Props(new EventProducer(flatConfig.getString("events.topic"), producerConfig(flatConfig), idGenerator))
   }
 }
+
+case class PersistBatch(events: Batch)
+
+case class BatchPersisted(batchId: Long)
 
 class EventProducer(topic: String,
                     config: ProducerConfig,
@@ -53,7 +58,6 @@ class EventProducer(topic: String,
 
     case PersistBatch(events) => {
       try {
-
         for {
           (part, list) <- events.getEventList
             .groupBy(ev => (ev.getMetric.hashCode() % 16) -> ev)
@@ -76,13 +80,5 @@ class EventProducer(topic: String,
       }
     }
   }
-}
-
-case class PersistBatch(events: Batch)
-
-case class BatchPersisted(batchId: Long)
-
-class EnsembleEncoder(props: VerifiableProperties = null) extends Encoder[Ensemble] {
-  override def toBytes(value: Ensemble): Array[Byte] = value.toByteArray
 }
 

@@ -164,17 +164,6 @@ class EventConsumer(topic: String, group: String, config: ConsumerConfig, target
 
 }
 
-class EnsembleDecoder(props: VerifiableProperties = null) extends Decoder[Ensemble] with Logging {
 
-  def fromBytes(bytes: Array[Byte]): Ensemble = {
-    try {
-      Ensemble.parseFrom(bytes)
-    } catch {
-      case ex: InvalidProtocolBufferException =>
-        logger.error("Can't parse message", ex)
-        return null
-    }
-  }
-}
 
 
