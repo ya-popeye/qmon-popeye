@@ -137,7 +137,6 @@ class KafkaEventConsumer(topic: String, group: String, config: ConsumerConfig, t
       self ! Next
     case Next =>
       if (pending.size >= config.queuedMaxMessages) {
-        log.warning("Queue is full: " + pending.size)
         context.system.scheduler.scheduleOnce(5 seconds, self, Next)
       } else {
         try {

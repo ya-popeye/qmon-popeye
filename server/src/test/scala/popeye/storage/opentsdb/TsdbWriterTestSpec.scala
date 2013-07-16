@@ -39,7 +39,7 @@ class TsdbWriterTestSpec extends AkkaTestKitSpec("tsdb-writer") with KafkaServer
     when(hbc.get(any())).thenReturn(Deferred.fromResult(mkIdKeyValue(1)))
     when(hbc.put(any())).thenReturn(Deferred.fromResult(new Object))
     val tsdb = new TSDB(hbc, "tsdb", "tsdb-uid")
-    val writer = TestActorRef(new TsdbWriterActor(tsdb))
+    val writer = TestActorRef(new TsdbWriter(tsdb))
     val ensemble: Ensemble = mkEnesemble()
     val id: ConsumeId = ConsumeId(ensemble.getBatchId, 1000, 1)
     val future = writer ? ConsumePending(ensemble, id)

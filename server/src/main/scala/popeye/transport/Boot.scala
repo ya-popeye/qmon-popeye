@@ -9,7 +9,7 @@ import popeye.transport.kafka.{KafkaEventConsumer, KafkaEventProducer}
 import akka.event.LogSource
 import akka.routing.FromConfig
 import popeye.uuid.IdGenerator
-import popeye.storage.opentsdb.TsdbWriterActor
+import popeye.storage.opentsdb.TsdbWriter
 import net.opentsdb.core.TSDB
 import org.hbase.async.HBaseClient
 import scala.concurrent.{ExecutionContext, Await}
@@ -46,7 +46,7 @@ object Boot extends App {
   val tsdb: TSDB = new TSDB(hbc,
     conf.getString("tsdb.table.series"),
     conf.getString("tsdb.table.uids"))
-  val tsdbActor = system.actorOf(Props(new TsdbWriterActor(tsdb)).withRouter(FromConfig()), "tsdb-writer")
+  val tsdbActor = system.actorOf(Props(new TsdbWriter(tsdb)).withRouter(FromConfig()), "tsdb-writer")
 
   val consumer = system.actorOf(KafkaEventConsumer.props(conf, tsdbActor))
 

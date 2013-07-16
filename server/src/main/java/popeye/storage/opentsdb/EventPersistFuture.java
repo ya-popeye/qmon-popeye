@@ -13,11 +13,9 @@ import org.hbase.async.PutRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import popeye.transport.proto.Message;
-import popeye.transport.proto.Storage;
 
 import java.lang.reflect.Field;
-import java.util.ArrayList;
-import java.util.Collections;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -36,6 +34,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public abstract class EventPersistFuture implements Callback<Object, Object>, Future<Object> {
 
+  public static final Comparator<Message.Event> EVENT_COMPARATOR = orderByTimestamp();
   static Field clientField;
   static Field metricsField;
 
@@ -72,15 +71,15 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
   private TSDB tsdb;
   private HBaseClient client;
   private final UniqueId metric;
-  private long batchId;
+  private long startMillis;
+  private long finishMillis;
   private AtomicBoolean canceled = new AtomicBoolean(false);
   private AtomicBoolean batched = new AtomicBoolean(false);
   private volatile boolean throttle = false;
   private AtomicInteger batchedEvents = new AtomicInteger();
 
-  public EventPersistFuture(TSDB tsdb, Storage.Ensemble batch) {
+  public EventPersistFuture(TSDB tsdb, Message.Event[] batch) {
     this.tsdb = tsdb;
-    this.batchId = batch.getBatchId();
     this.client = stealHBaseClient(tsdb);
     this.metric = stealMetrics(tsdb);
     try {
@@ -88,10 +87,6 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
     } catch (Exception e) {
       throw Throwables.propagate(e);
     }
-  }
-
-  public long getBatchId() {
-    return batchId;
   }
 
   @Override
@@ -112,6 +107,14 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
     return true;
   }
 
+  public long getStartMillis() {
+    return startMillis;
+  }
+
+  public long getFinishMillis() {
+    return finishMillis;
+  }
+
   @Override
   public Object get() throws InterruptedException, ExecutionException {
     return null;
@@ -122,22 +125,22 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
     return null;
   }
 
-  private void writeDataPoints(Storage.Ensemble data) throws Exception {
-    if (data.getEventsCount() < 1) {
+  private void writeDataPoints(Message.Event[] data) throws Exception {
+    startMillis = System.currentTimeMillis();
+    if (data.length == 0) {
       batched.set(true);
       tryComplete();
       return;
     }
     final WritableDataPoints dataPoints = tsdb.newDataPoints();
-    final Message.Event first = data.getEvents(0);
+    final Message.Event first = data[0];
     metric.getOrCreateId(first.getMetric()); // prefetch metric
     dataPoints.setSeries(first.getMetric(), toMap(first.getTagsList()));
     dataPoints.setBatchImport(false); // we need data to be persisted
-    final List<Message.Event> eventList = new ArrayList<Message.Event>(data.getEventsList());
-    // sort data in increased timestamp order
-    Collections.sort(eventList, orderByTimestamp());
+    Arrays.sort(data, EVENT_COMPARATOR);
     Set<String> failures = new HashSet<String>();
-    for (Message.Event eventData : eventList) {
+    int cnt = 0;
+    for (Message.Event eventData : data) {
       try {
         final Deferred<Object> d;
         if (eventData.hasIntValue()) {
@@ -149,6 +152,7 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
         }
         batchedEvents.incrementAndGet();
         d.addBoth(this);
+        cnt++;
         if (throttle)
           throttle(d);
       } catch (IllegalArgumentException ie) {
@@ -158,7 +162,8 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
     batched.set(true);
     tryComplete();
     if (failures.size() > 0) {
-      logger.error("Points imported with " + failures.toString() + " IllegalArgumentExceptions");
+      logger.error("Points " + cnt + " of " + data.length
+              + " imported with " + failures.toString() + " IllegalArgumentExceptions");
     }
   }
 
@@ -189,8 +194,8 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
   private void tryComplete() {
     int awaits = batchedEvents.get();
     if (awaits == 0 && batched.get()) {
+      finishMillis = System.currentTimeMillis();
       complete();
-      logger.debug("Batch complete {}", batchId);
     }
   }
 
@@ -235,7 +240,7 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
     return tagsMap;
   }
 
-  static Comparator<Message.Event> orderByTimestamp() {
+  public static Comparator<Message.Event> orderByTimestamp() {
     return new Comparator<Message.Event>() {
       public int compare(Message.Event o1, Message.Event o2) {
         return (o1.getTimestamp() < o2.getTimestamp()) ? -1 : (o1.getTimestamp() == o2.getTimestamp() ? 0 : 1);
