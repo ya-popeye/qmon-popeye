@@ -4,7 +4,7 @@ import akka.actor.{Props, ActorSystem}
 import akka.pattern.{ask, pipe}
 import akka.io.IO
 import spray.can.Http
-import popeye.transport.legacy.LegacyHttpHandler
+import popeye.transport.legacy.{TsdbTelnetServer, LegacyHttpHandler}
 import popeye.transport.kafka.{KafkaEventConsumer, KafkaEventProducer}
 import akka.event.LogSource
 import akka.routing.FromConfig
@@ -15,6 +15,7 @@ import org.hbase.async.HBaseClient
 import scala.concurrent.{ExecutionContext, Await}
 import scala.concurrent.duration._
 import akka.util.Timeout
+import java.net.InetSocketAddress
 
 /**
  * @author Andrey Stepachev
@@ -49,9 +50,10 @@ object Boot extends App {
   val tsdbActor = system.actorOf(Props(new TsdbWriter(tsdb)).withRouter(FromConfig()), "tsdb-writer")
 
   val consumer = system.actorOf(KafkaEventConsumer.props(conf, tsdbActor))
-
   system.registerOnTermination(tsdb.shutdown().joinUninterruptibly())
   system.registerOnTermination(hbc.shutdown().joinUninterruptibly())
+
+  val telnet = system.actorOf(Props(new TsdbTelnetServer(new InetSocketAddress("0.0.0.0", 4444), kafka)))
 
   Runtime.getRuntime.addShutdownHook(new Thread(new Runnable() {
     def run() {
