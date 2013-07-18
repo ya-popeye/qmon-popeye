@@ -1,18 +1,16 @@
 package popeye.storage.opentsdb
 
-import akka.actor.{FSM, ActorRef, Actor, ActorLogging}
+import akka.actor.{ActorRef, Actor, ActorLogging}
 import org.hbase.async.HBaseClient
 import net.opentsdb.core.TSDB
 import com.typesafe.config.Config
 import scala.concurrent.duration._
 import popeye.storage.opentsdb.TsdbWriter._
 import popeye.transport.proto.Message.{Event => PEvent}
-import scala.collection.immutable
-import scala.collection.JavaConversions.iterableAsScalaIterable
-import popeye.transport.kafka.ConsumeDone
-import popeye.transport.kafka.ConsumeFailed
-import popeye.transport.kafka.ConsumePending
-import popeye.transport.kafka.ConsumeId
+import scala.collection.JavaConversions.asScalaBuffer
+import popeye.transport.kafka.{ConsumeDone, ConsumeFailed, ConsumePending, ConsumeId}
+import popeye.BufferedFSM
+import popeye.BufferedFSM.Todo
 
 /**
  * @author Andrey Stepachev
@@ -33,48 +31,18 @@ object TsdbWriter {
 
   class EventsPack(val data: java.util.List[PEvent], val sender: ActorRef, val id: ConsumeId)
 
-  sealed trait State
-
-  case object Idle extends State
-
-  case object Active extends State
-
-  sealed case class Todo(eventsCnt: Long = 0, queue: immutable.Seq[EventsPack] = Vector.empty)
-
-  sealed case class Flush()
-
 }
 
+class TsdbWriter(tsdb: TSDB) extends Actor with BufferedFSM[EventsPack] with ActorLogging {
 
-class TsdbWriter(tsdb: TSDB) extends Actor with FSM[State, Todo] with ActorLogging {
+  override val timeout: FiniteDuration = 50 milliseconds
+  override val flushEntitiesCount: Int = 25000
 
-  startWith(Idle, Todo())
-
-  when(Idle) {
-    case Event(Flush,_) =>
-      stay // nothing to do
-  }
-
-  when(Active, stateTimeout = 50 milliseconds) {
-    case Event(Flush | StateTimeout, t: Todo) ⇒
-      goto(Idle) using Todo()
-  }
-
-  onTransition {
-    case Active -> Idle ⇒
-      stateData match {
-        case t @ Todo(eventsCnt, queue) ⇒
-          if (!queue.isEmpty) {
-            flush(t)
-          }
-      }
-  }
-
-  private def flush(t: Todo) {
-    if (log.isDebugEnabled)
-      log.debug("Flushing queue {} ({} events)", t.queue.size, t.eventsCnt)
-    val sent = t.queue.map(pack => (pack.id, pack.sender))
-    val data: Array[PEvent] = t.queue.flatMap(_.data).toArray
+  override def consumeCollected(todo: Todo[EventsPack]) = {
+    val sent = todo.queue.map(pack => (pack.id, pack.sender))
+    val data: Array[PEvent] = todo.queue.flatMap {
+      pack => pack.data
+    }.toArray
     new EventPersistFuture(tsdb, data) {
       protected def complete() {
         sent foreach {
@@ -90,29 +58,20 @@ class TsdbWriter(tsdb: TSDB) extends Actor with FSM[State, Todo] with ActorLoggi
           pair =>
             pair._2 ! ConsumeFailed(pair._1, cause)
         }
-        log.error(cause, "Processing of batches {} failed", sent map {_._1})
+        log.error(cause, "Processing of batches {} failed", sent map {
+          _._1
+        })
       }
     }
-
   }
 
-  whenUnhandled {
-    case Event(ConsumePending(data, id), t: Todo) =>
+  val handleMessage: TodoFunction = {
+    case Event(ConsumePending(data, id), todo) =>
       val list = data.getEventsList
       val pack = new EventsPack(list, sender, id)
       if (log.isDebugEnabled)
-        log.debug("Queued {} (packs {}, events {} queued)", id, t.queue.size, t.eventsCnt)
-      if (t.eventsCnt > 25000)
-        self ! Flush()
-      goto(Active) using t.copy(eventsCnt = t.eventsCnt + list.size(), queue = t.queue :+ pack)
-    case Event(e, s) ⇒
-      log.warning("received unhandled request {} in state {}/{}", e, stateName, s)
-      stay
-  }
-
-  onTermination {
-    case StopEvent(cause, state, todo) =>
-       flush(todo)
+        log.debug("Queued {} (packs {}, events {} queued)", id, todo.queue.size, todo.entityCnt)
+      todo.copy(entityCnt = todo.entityCnt + list.size(), queue = todo.queue :+ pack)
   }
 
   initialize()
