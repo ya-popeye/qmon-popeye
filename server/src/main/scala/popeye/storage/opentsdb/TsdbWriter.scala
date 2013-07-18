@@ -63,32 +63,37 @@ class TsdbWriter(tsdb: TSDB) extends Actor with FSM[State, Todo] with ActorLoggi
   onTransition {
     case Active -> Idle ⇒
       stateData match {
-        case Todo(eventsCnt, queue) ⇒
+        case t @ Todo(eventsCnt, queue) ⇒
           if (!queue.isEmpty) {
-            if (log.isDebugEnabled)
-              log.debug("Flushing queue {} ({} events)", queue.size, eventsCnt)
-            val sent = queue.map(pack => (pack.id, pack.sender))
-            val data: Array[PEvent] = queue.flatMap(_.data).toArray
-            new EventPersistFuture(tsdb, data) {
-              protected def complete() {
-                sent foreach {
-                  pair =>
-                    if (log.isDebugEnabled)
-                      log.debug("Processing of batch {} complete", pair._1)
-                    pair._2 ! ConsumeDone(pair._1)
-                }
-              }
-
-              protected def fail(cause: Throwable) {
-                sent foreach {
-                  pair =>
-                    pair._2 ! ConsumeFailed(pair._1, cause)
-                }
-                log.error(cause, "Processing of batches {} failed", sent map {_._1})
-              }
-            }
+            flush(t)
           }
       }
+  }
+
+  private def flush(t: Todo) {
+    if (log.isDebugEnabled)
+      log.debug("Flushing queue {} ({} events)", t.queue.size, t.eventsCnt)
+    val sent = t.queue.map(pack => (pack.id, pack.sender))
+    val data: Array[PEvent] = t.queue.flatMap(_.data).toArray
+    new EventPersistFuture(tsdb, data) {
+      protected def complete() {
+        sent foreach {
+          pair =>
+            if (log.isDebugEnabled)
+              log.debug("Processing of batch {} complete", pair._1)
+            pair._2 ! ConsumeDone(pair._1)
+        }
+      }
+
+      protected def fail(cause: Throwable) {
+        sent foreach {
+          pair =>
+            pair._2 ! ConsumeFailed(pair._1, cause)
+        }
+        log.error(cause, "Processing of batches {} failed", sent map {_._1})
+      }
+    }
+
   }
 
   whenUnhandled {
@@ -98,11 +103,16 @@ class TsdbWriter(tsdb: TSDB) extends Actor with FSM[State, Todo] with ActorLoggi
       if (log.isDebugEnabled)
         log.debug("Queued {} (packs {}, events {} queued)", id, t.queue.size, t.eventsCnt)
       if (t.eventsCnt > 25000)
-        self ! Flush
+        self ! Flush()
       goto(Active) using t.copy(eventsCnt = t.eventsCnt + list.size(), queue = t.queue :+ pack)
     case Event(e, s) ⇒
       log.warning("received unhandled request {} in state {}/{}", e, stateName, s)
       stay
+  }
+
+  onTermination {
+    case StopEvent(cause, state, todo) =>
+       flush(todo)
   }
 
   initialize()
