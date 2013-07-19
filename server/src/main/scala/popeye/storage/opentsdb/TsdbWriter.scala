@@ -11,6 +11,7 @@ import scala.collection.JavaConversions.asScalaBuffer
 import popeye.transport.kafka.{ConsumeDone, ConsumeFailed, ConsumePending, ConsumeId}
 import popeye.BufferedFSM
 import popeye.BufferedFSM.Todo
+import com.codahale.metrics.MetricRegistry
 
 /**
  * @author Andrey Stepachev
@@ -33,34 +34,43 @@ object TsdbWriter {
 
 }
 
-class TsdbWriter(tsdb: TSDB) extends Actor with BufferedFSM[EventsPack] with ActorLogging {
+class TsdbWriter(tsdb: TSDB)(implicit override val metricRegistry: MetricRegistry)
+  extends Actor with BufferedFSM[EventsPack] with ActorLogging {
 
   override val timeout: FiniteDuration = 50 milliseconds
   override val flushEntitiesCount: Int = 25000
 
+  val writeTimer = metrics.timer("tsdb.write-times")
+  val writeBatchSizeHist = metrics.histogram("tsdb.batch-size.write")
+  val incomingBatchSizeHist = metrics.histogram("tsdb.batch-size.incoming")
+
   override def consumeCollected(todo: Todo[EventsPack]) = {
+    val ctx = writeTimer.timerContext()
     val sent = todo.queue.map(pack => (pack.id, pack.sender))
     val data: Array[PEvent] = todo.queue.flatMap {
       pack => pack.data
     }.toArray
+    writeBatchSizeHist.update(data.size)
     new EventPersistFuture(tsdb, data) {
       protected def complete() {
+        val nanos = ctx.stop()
         sent foreach {
           pair =>
-            if (log.isDebugEnabled)
-              log.debug("Processing of batch {} complete", pair._1)
             pair._2 ! ConsumeDone(pair._1)
+            if (log.isDebugEnabled)
+              log.debug("Processing of batch {} complete in {}ns", pair._1, nanos)
         }
       }
 
       protected def fail(cause: Throwable) {
+        val nanos = ctx.stop()
         sent foreach {
           pair =>
             pair._2 ! ConsumeFailed(pair._1, cause)
         }
-        log.error(cause, "Processing of batches {} failed", sent map {
+        log.error(cause, "Processing of batches {} failed in {}ns", sent map {
           _._1
-        })
+        }, nanos)
       }
     }
   }
@@ -71,6 +81,7 @@ class TsdbWriter(tsdb: TSDB) extends Actor with BufferedFSM[EventsPack] with Act
       val pack = new EventsPack(list, sender, id)
       if (log.isDebugEnabled)
         log.debug("Queued {} (packs {}, events {} queued)", id, todo.queue.size, todo.entityCnt)
+      incomingBatchSizeHist.update(data.getEventsCount)
       todo.copy(entityCnt = todo.entityCnt + list.size(), queue = todo.queue :+ pack)
   }
 

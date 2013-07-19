@@ -19,6 +19,7 @@ import java.util
 import scala.concurrent.Await
 import scala.concurrent.duration._
 import akka.util.Timeout
+import com.codahale.metrics.MetricRegistry
 
 /**
  * @author Andrey Stepachev
@@ -30,6 +31,7 @@ class TsdbWriterTestSpec extends AkkaTestKitSpec("tsdb-writer") with KafkaServer
   val idGenerator = new IdGenerator(1)
   val ts = new AtomicInteger(1234123412)
   implicit val timeout: Timeout = 5 seconds
+  implicit val metricRegistry = new MetricRegistry()
 
   behavior of "TsdbWriter"
 

@@ -10,6 +10,7 @@ import scala.concurrent.Await
 import popeye.transport.test.AkkaTestKitSpec
 import akka.util.Timeout
 import org.scalatest._
+import com.codahale.metrics.MetricRegistry
 
 
 /**
@@ -18,6 +19,8 @@ import org.scalatest._
 class BufferedFSMSpec extends AkkaTestKitSpec("ProducerTest") with Logging {
 
   implicit val timeout: Timeout = 2 seconds
+  implicit val metricRegistry = new MetricRegistry()
+
 
   "BufferFST" should "work" in {
     val fsm = TestActorRef(Props(new TestFSM))
@@ -42,7 +45,7 @@ class BufferedFSMSpec extends AkkaTestKitSpec("ProducerTest") with Logging {
   }
 }
 
-class TestFSM extends BufferedFSM[String] {
+class TestFSM(implicit override val metricRegistry: MetricRegistry) extends BufferedFSM[String] {
   val timeout: FiniteDuration = 999 second
   val flushEntitiesCount: Int = 2
 

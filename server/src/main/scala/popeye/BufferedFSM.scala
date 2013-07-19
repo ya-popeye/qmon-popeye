@@ -19,12 +19,16 @@ object BufferedFSM {
 
 import BufferedFSM._
 
-trait BufferedFSM[Entity] extends FSM[State, Todo[Entity]] {
+trait BufferedFSM[Entity] extends FSM[State, Todo[Entity]] with Instrumented {
 
   type TodoFunction = PartialFunction[Event, Todo[Entity]]
 
   val timeout: FiniteDuration
   val flushEntitiesCount: Int
+
+  val queueSize = metrics.gauge[Long]("buffered.queue-size") {
+    stateData.queue.size
+  }
 
   def consumeCollected(data: Todo[Entity]): Unit
 

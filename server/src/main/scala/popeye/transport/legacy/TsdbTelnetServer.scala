@@ -22,8 +22,9 @@ import popeye.uuid.IdGenerator
 import scala.concurrent.ExecutionContext.Implicits.global
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
 import scala.collection.mutable.ListBuffer
+import com.codahale.metrics.MetricRegistry
 
-class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], kafkaProducer: ActorRef)
+class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], kafkaProducer: ActorRef)(implicit override val metricRegistry: MetricRegistry)
   extends BufferedFSM[PEvent] with ActorLogging {
 
   val kafkaTimeout: akka.util.Timeout = new akka.util.Timeout(
@@ -169,7 +170,7 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], kafkaPro
   }
 }
 
-class TsdbTelnetServer(local: InetSocketAddress, kafka: ActorRef) extends Actor with ActorLogging {
+class TsdbTelnetServer(local: InetSocketAddress, kafka: ActorRef)(implicit val metricRegistry: MetricRegistry) extends Actor with ActorLogging {
 
   import Tcp._
 

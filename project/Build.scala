@@ -3,18 +3,6 @@ import sbt.Keys._
 import QMonDistPlugin._
 import net.virtualvoid.sbt.graph.{Plugin => Dep}
 
-object Version {
-  val Scala = "2.10.1"
-  val Akka = "2.2.0"
-  val Spray = "1.2-M8"
-  val Hadoop = "1.2.0"
-  val HBase = "0.94.6"
-  val ScalaTest = "1.9.1"
-  val Mockito = "1.9.0"
-  val Jackson = "1.8.8"
-  val Kafka = "0.8.0-beta1"
-}
-
 
 object Compiler {
   val defaultSettings = Seq(
@@ -30,6 +18,20 @@ object Tests {
     parallelExecution in Test := false
   )
 }
+
+object Version {
+  val Scala = "2.10.1"
+  val Akka = "2.2.0"
+  val Spray = "1.2-M8"
+  val Hadoop = "1.2.0"
+  val HBase = "0.94.6"
+  val ScalaTest = "1.9.1"
+  val Mockito = "1.9.0"
+  val Jackson = "1.8.8"
+  val Kafka = "0.8.0-beta1"
+  val Metrics = "3.0.0"
+}
+
 
 object PopeyeBuild extends Build {
 
@@ -50,13 +52,14 @@ object PopeyeBuild extends Build {
     base = file("server"),
     settings = defaultSettings ++ QMonDistPlugin.distSettings)
     .settings(
-    distMainClass := "popeye.transport.Boot",
+    distMainClass := "popeye.transport.Main",
     libraryDependencies ++= Seq(
       "com.google.protobuf" % "protobuf-java" % "2.4.1",
       "org.apache.kafka" %% "kafka" % Version.Kafka % "compile->compile;test->test"
         exclude("org.slf4j", "slf4j-simple"),
       "com.typesafe.akka" %% "akka-actor" % Version.Akka,
       "com.typesafe.akka" %% "akka-slf4j" % Version.Akka,
+      "nl.grons" %% "metrics-scala" % Version.Metrics,
       "io.spray" % "spray-can" % Version.Spray,
       "io.spray" % "spray-io" % Version.Spray,
       "org.codehaus.jackson" % "jackson-core-asl" % Version.Jackson,
