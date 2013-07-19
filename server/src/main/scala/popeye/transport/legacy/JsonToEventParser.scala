@@ -1,6 +1,6 @@
 package popeye.transport.legacy
 
-import popeye.transport.proto.Message.{Tag, Batch, Event}
+import popeye.transport.proto.Message.{Tag, Event}
 import org.codehaus.jackson.{JsonToken, JsonParser}
 import com.google.protobuf.{ByteString => GoogleByteString}
 import akka.actor.{ActorLogging, Actor}
@@ -14,7 +14,7 @@ class ParserActor extends Actor with ActorLogging {
         sender ! ParseResult(new JsonToEventParser(data).toList)
       } catch {
         case ex: Throwable => sender ! Failure(ex)
-        throw ex
+          throw ex
       }
     }
   }
@@ -25,7 +25,7 @@ sealed class MetricBuilder(string: String) {
     val sepIdx: Int = string.indexOf('/')
     require(sepIdx > 1 && sepIdx < string.length, "metric should be in form of 'HOST/metric")
     Event.newBuilder()
-      .setMetric("l." + string.substring(sepIdx+1))
+      .setMetric("l." + string.substring(sepIdx + 1))
       .addTags(Tag.newBuilder()
       .setName("host")
       .setValue(string.substring(0, sepIdx))

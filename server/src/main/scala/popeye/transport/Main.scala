@@ -1,22 +1,14 @@
 package popeye.transport
 
-import akka.actor.{Props, ActorSystem}
-import akka.pattern.ask
-import akka.io.IO
-import spray.can.Http
+import akka.actor.ActorSystem
 import popeye.transport.legacy.{TsdbTelnetServer, LegacyHttpHandler}
 import popeye.transport.kafka.{KafkaEventConsumer, KafkaEventProducer}
 import akka.event.LogSource
-import akka.routing.FromConfig
 import popeye.uuid.IdGenerator
 import popeye.storage.opentsdb.TsdbWriter
-import net.opentsdb.core.TSDB
-import org.hbase.async.HBaseClient
-import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 import akka.util.Timeout
-import java.net.InetSocketAddress
-import com.codahale.metrics.{JmxReporter, ConsoleReporter, MetricRegistry}
+import com.codahale.metrics.{JmxReporter, ConsoleReporter}
 import com.codahale.metrics.MetricRegistry
 import com.codahale.metrics.{Gauge => CHGauge}
 import java.util.concurrent.TimeUnit
@@ -36,31 +28,19 @@ object Main extends App {
     override def getClazz(o: AnyRef): Class[_] = o.getClass
   }
   val log = akka.event.Logging(system, this)
-  implicit val idGenerator = new IdGenerator(1)
-  val conf = system.settings.config
+  implicit val idGenerator = new IdGenerator(
+    config.getLong("generator.worker.id"),
+    config.getLong("generator.datacenter.id")
+  )
+  val config = system.settings.config
 
-  // the handler actor replies to incoming HttpRequests
-  val kafka = system.actorOf(KafkaEventProducer.props(conf)
-    .withRouter(FromConfig()), "kafka-producer")
-  val handler = system.actorOf(Props(new LegacyHttpHandler(kafka)), name = "http")
+  val kafkaProducer = KafkaEventProducer.start(config, idGenerator)
 
-  import ExecutionContext.Implicits.global
+  LegacyHttpHandler.bind(config, kafkaProducer)
+  TsdbTelnetServer.start(config, kafkaProducer)
 
-  IO(Http) ? Http.Bind(handler, interface = "0.0.0.0", port = 8080) onSuccess {
-    case x =>
-  }
-
-  val hbc = new HBaseClient(conf.getString("tsdb.zk.cluster"))
-  val tsdb: TSDB = new TSDB(hbc,
-    conf.getString("tsdb.table.series"),
-    conf.getString("tsdb.table.uids"))
-  val tsdbActor = system.actorOf(Props(new TsdbWriter(tsdb)).withRouter(FromConfig()), "tsdb-writer")
-
-  val consumer = system.actorOf(KafkaEventConsumer.props(conf, tsdbActor))
-  system.registerOnTermination(tsdb.shutdown().joinUninterruptibly())
-  system.registerOnTermination(hbc.shutdown().joinUninterruptibly())
-
-  val telnet = system.actorOf(Props(new TsdbTelnetServer(new InetSocketAddress("0.0.0.0", 4444), kafka)))
+  val tsdbSink = TsdbWriter.start(config)
+  val consumer = system.actorOf(KafkaEventConsumer.props(config, tsdbSink))
 
   val reporter = ConsoleReporter.forRegistry(metricRegistry)
     .convertRatesTo(TimeUnit.SECONDS)

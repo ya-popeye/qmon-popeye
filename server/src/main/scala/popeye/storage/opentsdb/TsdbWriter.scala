@@ -1,6 +1,6 @@
 package popeye.storage.opentsdb
 
-import akka.actor.{ActorRef, Actor, ActorLogging}
+import akka.actor._
 import org.hbase.async.HBaseClient
 import net.opentsdb.core.TSDB
 import com.typesafe.config.Config
@@ -12,11 +12,27 @@ import popeye.transport.kafka.{ConsumeDone, ConsumeFailed, ConsumePending, Consu
 import popeye.BufferedFSM
 import popeye.BufferedFSM.Todo
 import com.codahale.metrics.MetricRegistry
+import akka.routing.FromConfig
+import popeye.BufferedFSM.Todo
+import popeye.transport.kafka.ConsumeDone
+import popeye.transport.kafka.ConsumeFailed
+import popeye.transport.kafka.ConsumePending
+import popeye.transport.kafka.ConsumeId
 
 /**
  * @author Andrey Stepachev
  */
 object TsdbWriter {
+
+  def start(config: Config)(implicit system: ActorSystem, metricSystem: MetricRegistry) : ActorRef = {
+    val hbc = new HBaseClient(config.getString("tsdb.zk.cluster"))
+    val tsdb: TSDB = new TSDB(hbc,
+      config.getString("tsdb.table.series"),
+      config.getString("tsdb.table.uids"))
+    system.registerOnTermination(tsdb.shutdown())
+    system.registerOnTermination(hbc.shutdown())
+    system.actorOf(Props(new TsdbWriter(tsdb)).withRouter(FromConfig()), "tsdb-writer")
+  }
 
   def HBaseClient(tsdbConfig: Config) = {
     val zkquorum = tsdbConfig.getString("zk.cluster")
@@ -37,8 +53,9 @@ object TsdbWriter {
 class TsdbWriter(tsdb: TSDB)(implicit override val metricRegistry: MetricRegistry)
   extends Actor with BufferedFSM[EventsPack] with ActorLogging {
 
-  override val timeout: FiniteDuration = 50 milliseconds
-  override val flushEntitiesCount: Int = 25000
+  val config = context.system.settings.config
+  override val timeout: FiniteDuration = new FiniteDuration(config.getMilliseconds("tsdb.flush.tick"), MILLISECONDS)
+  override val flushEntitiesCount: Int = config.getInt("tsdb.flush.events")
 
   val writeTimer = metrics.timer("tsdb.write-times")
   val writeBatchSizeHist = metrics.histogram("tsdb.batch-size.write")

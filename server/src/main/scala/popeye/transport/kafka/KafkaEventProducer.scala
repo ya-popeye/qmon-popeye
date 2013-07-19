@@ -1,46 +1,49 @@
 package popeye.transport.kafka
 
-import akka.actor.{Props, ActorLogging, Actor}
+import akka.actor._
 import kafka.producer._
 import java.util.Properties
-import popeye.transport.proto.Message.Batch
-import kafka.utils.Utils
 import kafka.serializer.DefaultEncoder
 import com.typesafe.config.Config
 import popeye.transport.ConfigUtil._
 import popeye.uuid.IdGenerator
 import scala.collection.JavaConversions.{asScalaBuffer, asJavaIterable}
 import popeye.transport.proto.Storage.Ensemble
+import akka.routing.FromConfig
 import kafka.producer.KeyedMessage
 import akka.actor.Status.Failure
+import com.codahale.metrics.MetricRegistry
 
 
 object KafkaEventProducer {
-  private def composeConfig(config: Config) = {
-    config.getConfig("kafka.producer")
-      .withFallback(config.getConfig("kafka"))
+
+  def start(config: Config, idGenerator: IdGenerator)(implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
+    system.actorOf(KafkaEventProducer.props(config, idGenerator)
+      .withRouter(FromConfig()), "kafka-producer")
   }
 
-  private def producerConfig(config: Config) = {
-    val local: Config = config
-    val props: Properties = new Properties()
-    props.putAll(local)
-    props.setProperty("zookeeper.connect", local.getString("zk.cluster"))
-    props.setProperty("serializer.class", classOf[EnsembleEncoder].getName)
-    props.setProperty("key.serializer.class", classOf[DefaultEncoder].getName)
-    props.setProperty("compression.codec", "gzip")
-    new ProducerConfig(props)
+  def producerConfig(globalConfig: Config): ProducerConfig = {
+    val config: Config = globalConfig.getConfig("kafka.producer")
+    val producerProps: Properties = config
+    producerProps.setProperty("zookeeper.connect", globalConfig.getString("kafka.zk.cluster"))
+    producerProps.setProperty("serializer.class", classOf[EnsembleEncoder].getName)
+    producerProps.setProperty("key.serializer.class", classOf[DefaultEncoder].getName)
+    new ProducerConfig(producerProps)
   }
 
-  def props(config: Config)(implicit idGenerator: IdGenerator) = {
-    val flatConfig: Config = composeConfig(config)
-    Props(new KafkaEventProducer(flatConfig.getString("events.topic"), producerConfig(flatConfig), idGenerator))
+  def props(config: Config, idGenerator: IdGenerator) = {
+    Props(new KafkaEventProducer(
+      config.getString("kafka.events.topic"),
+      producerConfig(config),
+      idGenerator,
+      config.getInt("kafka.events.partition")))
   }
 }
 
 class KafkaEventProducer(topic: String,
-                    config: ProducerConfig,
-                    idGenerator: IdGenerator)
+                         config: ProducerConfig,
+                         idGenerator: IdGenerator,
+                         partitions: Int)
   extends Actor with ActorLogging {
 
   val producer = new Producer[Array[Byte], Ensemble](config)
@@ -62,7 +65,7 @@ class KafkaEventProducer(topic: String,
       try {
         for {
           (part, list) <- events.getEventList
-            .groupBy(ev => (ev.getMetric.hashCode() % 16) -> ev)
+            .groupBy(ev => (ev.getMetric.hashCode() % partitions) -> ev)
 
           batchId: Long = idGenerator.nextId()
 

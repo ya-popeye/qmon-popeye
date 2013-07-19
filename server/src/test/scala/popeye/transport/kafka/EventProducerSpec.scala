@@ -36,13 +36,11 @@ class EventProducerSpec extends AkkaTestKitSpec("ProducerTest") with KafkaServer
       s"""
         |   kafka.consumer.auto.offset.reset=smallest
         |   kafka.consumer.group=$group
-        |   kafka.producer.request.required.acks=1
         |   kafka.events.topic="$topic"
         |   kafka.zk.cluster="$zkConnect"
-        |   kafka.consumer.timeout=35000
         |   kafka.producer.metadata.broker.list="$kafkaBrokersList"
       """.stripMargin).withFallback(ConfigFactory.load())
-    val actor = TestActorRef(KafkaEventProducer.props(config))
+    val actor = TestActorRef(KafkaEventProducer.props(config, generator))
     val future = ask(actor, ProducePending(makeBatch(), 123)).mapTo[ProduceDone]
     Await.result(future, timeout.duration)
     logger.debug(s"Got result ${future.value}, ready for consume")

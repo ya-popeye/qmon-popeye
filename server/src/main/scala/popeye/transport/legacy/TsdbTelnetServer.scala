@@ -23,12 +23,13 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
 import scala.collection.mutable.ListBuffer
 import com.codahale.metrics.MetricRegistry
+import com.typesafe.config.Config
 
 class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], kafkaProducer: ActorRef)(implicit override val metricRegistry: MetricRegistry)
   extends BufferedFSM[PEvent] with ActorLogging {
 
   val kafkaTimeout: akka.util.Timeout = new akka.util.Timeout(
-    Duration(context.system.settings.config.getString("kafka.transport.send.timeout"))
+    Duration(context.system.settings.config.getString("kafka.send.timeout"))
       .asInstanceOf[FiniteDuration])
 
   override val timeout: FiniteDuration = 1 seconds
@@ -212,3 +213,10 @@ class TsdbTelnetServer(local: InetSocketAddress, kafka: ActorRef)(implicit val m
   }
 }
 
+object TsdbTelnetServer {
+  def start(config: Config, kafkaProducer: ActorRef)(implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
+    val hostport = config.getString("tsdb.telnet.listen").split(":")
+    val addr = new InetSocketAddress(hostport(0), hostport(1).toInt)
+    system.actorOf(Props(new TsdbTelnetServer(addr, kafkaProducer)))
+  }
+}

@@ -20,7 +20,7 @@ class JsonToEventParserSpec extends FlatSpec {
     val v = for (req <- testRequests;
                  ev <- new JsonToEventParser(req.getBytes)) yield {
       assert(ev.getTimestamp == 1364451167)
-      assert(ev.getMetric == "TESTHOST/nobus/test")
+      assert(ev.getMetric == "l.nobus/test")
     }
     assert(v.length == testRequests.length + 1)
   }

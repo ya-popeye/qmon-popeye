@@ -25,27 +25,24 @@ import akka.util.Timeout
  */
 object KafkaEventConsumer extends Logging {
 
-  def consumerConfig(config: Config): ConsumerConfig = {
-    val flatConfig: Config = composeConfig(config)
-    val consumerProps: Properties = flatConfig
-    consumerProps.put("zookeeper.connect", flatConfig.getString("zk.cluster"))
-    consumerProps.put("consumer.timeout.ms", flatConfig.getString("timeout"))
-    consumerProps.put("group.id", flatConfig.getString("events.group"))
+  def consumerConfig(globalConfig: Config): ConsumerConfig = {
+    val config: Config = globalConfig.getConfig("kafka.consumer")
+    val consumerProps: Properties = config
+    consumerProps.put("zookeeper.connect", globalConfig.getString("kafka.zk.cluster"))
+    val timeout = globalConfig.getMilliseconds("kafka.consumer.timeout")
+    consumerProps.put("consumer.timeout.ms", timeout.toString)
+    consumerProps.put("group.id", globalConfig.getString("kafka.events.group"))
     new ConsumerConfig(consumerProps)
   }
 
-  private def composeConfig(config: Config): Config = {
-    config.getConfig("kafka.consumer")
-      .withFallback(config.getConfig("kafka"))
-  }
-
   def props(config: Config, target: ActorRef) = {
-    val flatConfig = composeConfig(config)
-    Props(new KafkaEventConsumer(
-      flatConfig.getString("events.topic"),
-      flatConfig.getString("events.group"),
-      consumerConfig(config),
-      target))
+    Props(
+      new KafkaEventConsumer(
+        config.getString("kafka.events.topic"),
+        config.getString("kafka.events.group"),
+        consumerConfig(config),
+        target)
+    )
   }
 
   class ConsumerPair(val connector: ConsumerConnector, val consumer: Option[KafkaStream[Array[Byte], Ensemble]]) {
@@ -93,7 +90,7 @@ class KafkaEventConsumer(topic: String, group: String, config: ConsumerConfig, t
   val connector = pair.connector
   val pending = new mutable.TreeSet[Long]()
   val complete = new mutable.TreeSet[Long]()
-  implicit val timeout: Timeout = 30 seconds
+  implicit val timeout: Timeout = new Timeout(system.settings.config.getMilliseconds("kafka.actor.timeout"), MILLISECONDS)
 
   override val supervisorStrategy =
     OneForOneStrategy(maxNrOfRetries = 5, withinTimeRange = (1 minutes)) {
