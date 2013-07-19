@@ -12,8 +12,8 @@ import popeye.Logging
 class IdGenerator(val workerId: Long, val datacenterId: Long = 0, var sequence: Long = 0L) extends Logging {
   val twepoch = 1288834974657L
 
-  private[this] val workerIdBits = 5L
-  private[this] val datacenterIdBits = 5L
+  private[this] val workerIdBits = 7L
+  private[this] val datacenterIdBits = 3L
   private[this] val maxWorkerId = -1L ^ (-1L << workerIdBits)
   private[this] val maxDatacenterId = -1L ^ (-1L << datacenterIdBits)
   private[this] val sequenceBits = 12L

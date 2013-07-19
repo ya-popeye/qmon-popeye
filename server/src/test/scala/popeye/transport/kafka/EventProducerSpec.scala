@@ -37,7 +37,7 @@ class EventProducerSpec extends AkkaTestKitSpec("ProducerTest") with KafkaServer
         |   kafka.consumer.auto.offset.reset=smallest
         |   kafka.consumer.group=$group
         |   kafka.events.topic="$topic"
-        |   kafka.zk.cluster="$zkConnect"
+        |   kafka.consumer.zookeeper.connect="$zkConnect"
         |   kafka.producer.metadata.broker.list="$kafkaBrokersList"
       """.stripMargin).withFallback(ConfigFactory.load())
     val actor = TestActorRef(KafkaEventProducer.props(config, generator))

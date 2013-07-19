@@ -12,13 +12,19 @@ import com.codahale.metrics.{JmxReporter, ConsoleReporter}
 import com.codahale.metrics.MetricRegistry
 import com.codahale.metrics.{Gauge => CHGauge}
 import java.util.concurrent.TimeUnit
+import com.typesafe.config.ConfigFactory
 
 /**
  * @author Andrey Stepachev
  */
 object Main extends App {
   implicit val timeout: Timeout = 2 seconds
-  implicit val system = ActorSystem("popeye")
+  implicit val system = ActorSystem("popeye",
+    ConfigFactory.parseResources("application.conf")
+      .withFallback(ConfigFactory.parseResources("dynamic.conf"))
+      .withFallback(ConfigFactory.load())
+      .resolve()
+  )
   implicit val metricRegistry = new MetricRegistry()
 
 
@@ -28,11 +34,11 @@ object Main extends App {
     override def getClazz(o: AnyRef): Class[_] = o.getClass
   }
   val log = akka.event.Logging(system, this)
-  implicit val idGenerator = new IdGenerator(
-    config.getLong("generator.worker.id"),
-    config.getLong("generator.datacenter.id")
-  )
   val config = system.settings.config
+  implicit val idGenerator = new IdGenerator(
+    config.getLong("generator.worker"),
+    config.getLong("generator.datacenter")
+  )
 
   val kafkaProducer = KafkaEventProducer.start(config, idGenerator)
 

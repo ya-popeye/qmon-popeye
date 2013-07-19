@@ -28,7 +28,6 @@ object KafkaEventConsumer extends Logging {
   def consumerConfig(globalConfig: Config): ConsumerConfig = {
     val config: Config = globalConfig.getConfig("kafka.consumer")
     val consumerProps: Properties = config
-    consumerProps.put("zookeeper.connect", globalConfig.getString("kafka.zk.cluster"))
     val timeout = globalConfig.getMilliseconds("kafka.consumer.timeout")
     consumerProps.put("consumer.timeout.ms", timeout.toString)
     consumerProps.put("group.id", globalConfig.getString("kafka.events.group"))

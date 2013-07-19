@@ -25,7 +25,6 @@ object KafkaEventProducer {
   def producerConfig(globalConfig: Config): ProducerConfig = {
     val config: Config = globalConfig.getConfig("kafka.producer")
     val producerProps: Properties = config
-    producerProps.setProperty("zookeeper.connect", globalConfig.getString("kafka.zk.cluster"))
     producerProps.setProperty("serializer.class", classOf[EnsembleEncoder].getName)
     producerProps.setProperty("key.serializer.class", classOf[DefaultEncoder].getName)
     new ProducerConfig(producerProps)
