@@ -20,6 +20,10 @@ import scala.concurrent.Await
 import scala.concurrent.duration._
 import akka.util.Timeout
 import com.codahale.metrics.MetricRegistry
+import com.typesafe.config.{ConfigFactory, Config}
+import akka.actor.Props
+import akka.routing.FromConfig
+import popeye.BufferedFSM.Flush
 
 /**
  * @author Andrey Stepachev
@@ -41,10 +45,11 @@ class TsdbWriterTestSpec extends AkkaTestKitSpec("tsdb-writer") with KafkaServer
     when(hbc.get(any())).thenReturn(Deferred.fromResult(mkIdKeyValue(1)))
     when(hbc.put(any())).thenReturn(Deferred.fromResult(new Object))
     val tsdb = new TSDB(hbc, "tsdb", "tsdb-uid")
-    val writer = TestActorRef(new TsdbWriter(tsdb))
+    val writer = TestActorRef(Props(new TsdbWriter(tsdb)), "tsdb-writer")
     val ensemble: Ensemble = mkEnesemble()
     val id: ConsumeId = ConsumeId(ensemble.getBatchId, 1000, 1)
     val future = writer ? ConsumePending(ensemble, id)
+    writer ! Flush()
     val result = Await.result(future, timeout.duration).asInstanceOf[ConsumeDone]
     result.id must be (id)
   }

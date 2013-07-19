@@ -24,8 +24,8 @@ import popeye.transport.kafka.ConsumeId
  */
 object TsdbWriter {
 
-  def start(config: Config)(implicit system: ActorSystem, metricSystem: MetricRegistry) : ActorRef = {
-    val hbc = new HBaseClient(config.getString("tsdb.zk.cluster"))
+  def start(config: Config, hbaseClient: Option[HBaseClient] = None)(implicit system: ActorSystem, metricSystem: MetricRegistry) : ActorRef = {
+    val hbc = hbaseClient getOrElse new HBaseClient(config.getString("tsdb.zk.cluster"))
     val tsdb: TSDB = new TSDB(hbc,
       config.getString("tsdb.table.series"),
       config.getString("tsdb.table.uids"))
@@ -54,7 +54,9 @@ class TsdbWriter(tsdb: TSDB)(implicit override val metricRegistry: MetricRegistr
   extends Actor with BufferedFSM[EventsPack] with ActorLogging {
 
   val config = context.system.settings.config
-  override val timeout: FiniteDuration = new FiniteDuration(config.getMilliseconds("tsdb.flush.tick"), MILLISECONDS)
+  override val timeout: FiniteDuration = new FiniteDuration(
+    config.getMilliseconds("tsdb.flush.tick"), MILLISECONDS
+  )
   override val flushEntitiesCount: Int = config.getInt("tsdb.flush.events")
 
   val writeTimer = metrics.timer("tsdb.write-times")
