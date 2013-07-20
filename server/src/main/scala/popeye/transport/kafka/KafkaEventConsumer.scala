@@ -92,7 +92,7 @@ class KafkaEventConsumer(topic: String, group: String, config: ConsumerConfig, t
   implicit val timeout: Timeout = new Timeout(system.settings.config.getMilliseconds("kafka.actor.timeout"), MILLISECONDS)
 
   override val supervisorStrategy =
-    OneForOneStrategy(maxNrOfRetries = 5, withinTimeRange = (1 minutes)) {
+    OneForOneStrategy(withinTimeRange = (1 minutes)) {
       case _ ⇒ Restart
     }
 
@@ -115,6 +115,8 @@ class KafkaEventConsumer(topic: String, group: String, config: ConsumerConfig, t
 
   def receive = {
     case ConsumeDone(id) =>
+      if (log.isDebugEnabled)
+        log.debug("Consumed {}", id)
       if (pending.firstKey == id.offset) {
         pending.remove(id.offset)
         complete.clear()
@@ -125,12 +127,8 @@ class KafkaEventConsumer(topic: String, group: String, config: ConsumerConfig, t
       }
       self ! Next
     case ConsumeFailed(id, ex) =>
-      // TODO: place failed batch somewhere, right now we simply drop it
       log.error(ex, "Batch {} failed", id)
-      pending.remove(id.offset)
-      if (complete.isEmpty)
-        commit()
-      self ! Next
+      throw ex
     case Next =>
       if (pending.size >= config.queuedMaxMessages) {
         context.system.scheduler.scheduleOnce(5 seconds, self, Next)
@@ -143,6 +141,8 @@ class KafkaEventConsumer(topic: String, group: String, config: ConsumerConfig, t
             val pos = ConsumeId(batchId, msg.offset, msg.partition)
             val me = self
             pending.add(pos.offset)
+            if (log.isDebugEnabled)
+              log.debug("Pos: {}", pos)
             target ? ConsumePending(msg.message, pos) onComplete {
               case Success(x) =>
                 me ! ConsumeDone(pos)

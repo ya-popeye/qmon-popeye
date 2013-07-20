@@ -12,7 +12,7 @@ import HttpMethods._
 import MediaTypes._
 import org.codehaus.jackson.{JsonParseException, JsonFactory}
 import popeye.transport.proto.Message.{Event, Batch}
-import akka.actor.SupervisorStrategy.Stop
+import akka.actor.SupervisorStrategy.{Restart, Stop}
 import scala.collection.JavaConversions.asJavaIterable
 import java.net.InetSocketAddress
 import akka.io.IO
@@ -24,23 +24,30 @@ import spray.http.HttpResponse
 import scala.util.Success
 import popeye.transport.kafka.ProducePending
 import com.typesafe.config.Config
+import popeye.Instrumented
+import com.codahale.metrics.MetricRegistry
 
 
 /**
  * @author Andrey Stepachev
  */
-class LegacyHttpHandler(kafkaProducer: ActorRef) extends Actor with SprayActorLogging {
+class LegacyHttpHandler(config: Config, kafkaProducer: ActorRef)(implicit override val metricRegistry: MetricRegistry) extends Actor with Instrumented with SprayActorLogging {
 
   implicit val timeout: Timeout = 5.second
   // for the actor 'asks'
-  val kafkaTimeout: Timeout = new Timeout(context.system.settings.config
-    .getDuration("kafka.send.timeout").asInstanceOf[FiniteDuration])
+  val kafkaTimeout: Timeout = new Timeout(config.getDuration("kafka.send.timeout").asInstanceOf[FiniteDuration])
 
   import context.dispatcher
 
+  val writeTimer = metrics.timer("write")
+  val readTimer = metrics.timer("read")
+  val requestsBatches = metrics.histogram("batches", "size")
+  val totalBatches = metrics.meter("batches", "total")
+  val failedBatches = metrics.meter("batches", "failed")
+
   override val supervisorStrategy = {
     OneForOneStrategy()({
-      case _: Exception => Stop
+      case _: Exception => Restart
     })
   }
 
@@ -52,9 +59,10 @@ class LegacyHttpHandler(kafkaProducer: ActorRef) extends Actor with SprayActorLo
       sender ! index
 
     case HttpRequest(GET, Uri.Path("/read"), _, _, _) =>
-      sender ! index
+      readTimer.time(sender ! index)
 
     case HttpRequest(POST, Uri.Path("/write"), _, entity, _) =>
+      val timer = writeTimer.timerContext()
       val client = sender
       val parser: ActorRef = context.actorOf(Props[ParserActor])
 
@@ -65,11 +73,14 @@ class LegacyHttpHandler(kafkaProducer: ActorRef) extends Actor with SprayActorLo
           0
         ))(kafkaTimeout)
       } yield {
+        requestsBatches.update(parsed.batch.size)
+        timer.stop()
         stored
       }
       result onComplete {
         case Success(r: ProduceDone) =>
           client ! HttpResponse(200, "Ok: " + r.correlationId + ":" + r.assignedBatchId)
+          timer.stop()
         case Success(x) =>
           client ! HttpResponse(status = StatusCodes.InternalServerError, entity = "unknown message " + x)
         case Failure(ex: JsonParseException) =>
@@ -126,8 +137,8 @@ object LegacyHttpHandler {
   val parserFactory: JsonFactory = new JsonFactory()
   implicit val timeout: Timeout = 5 seconds
 
-  def bind(config: Config, kafkaProducer: ActorRef)(implicit system: ActorSystem): ActorRef = {
-    val handler = system.actorOf(Props(new LegacyHttpHandler(kafkaProducer)), name = "legacy-http")
+  def bind(config: Config, kafkaProducer: ActorRef)(implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
+    val handler = system.actorOf(Props(new LegacyHttpHandler(config, kafkaProducer)), name = "legacy-http")
     val hostport = config.getString("http.legacy.listen").split(":")
     val addr = new InetSocketAddress(hostport(0), hostport(1).toInt)
     IO(Http) ? Http.Bind(
