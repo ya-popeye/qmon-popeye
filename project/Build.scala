@@ -45,7 +45,7 @@ object PopeyeBuild extends Build {
     id = "popeye",
     base = file("."),
     settings = defaultSettings)
-    .aggregate(popeyeServer)
+    .aggregate(popeyeServer, popeyeBench)
 
   lazy val popeyeServer = Project(
     id = "popeye-server",
@@ -72,6 +72,28 @@ object PopeyeBuild extends Build {
       "org.mockito" % "mockito-core" % Version.Mockito % "test",
       "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"
     )
+  )
+
+  lazy val popeyeBench = Project(
+    id = "popeye-bench",
+    base = file("bench"),
+    settings = defaultSettings ++ QMonDistPlugin.distSettings)
+    .settings(
+    distMainClass := "popeye.transport.bench.Main",
+    libraryDependencies ++= Seq(
+      "com.typesafe.akka" %% "akka-actor" % Version.Akka,
+      "com.typesafe.akka" %% "akka-slf4j" % Version.Akka,
+      "nl.grons" %% "metrics-scala" % Version.Metrics,
+      "io.spray" % "spray-can" % Version.Spray,
+      "io.spray" % "spray-io" % Version.Spray,
+      "org.codehaus.jackson" % "jackson-core-asl" % Version.Jackson,
+      "org.slf4j" % "jcl-over-slf4j" % "1.7.5",
+      "org.slf4j" % "slf4j-log4j12" % "1.7.5",
+      "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
+      "org.mockito" % "mockito-core" % Version.Mockito % "test",
+      "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"
+    )
+
   )
 }
 
