@@ -8,7 +8,7 @@ import akka.io.IO
 import akka.io.TcpPipelineHandler.{WithinActorContext, Init}
 import java.net.InetSocketAddress
 import net.opentsdb.core.Tags
-import popeye.transport.kafka.{ProduceFailed, ProduceDone, ProducePending}
+import popeye.transport.kafka.{ProduceDone, ProducePending}
 import popeye.transport.proto.Message.{Tag, Event => PEvent, Batch}
 import scala.collection.mutable
 import scala.concurrent.duration._
@@ -18,18 +18,17 @@ import popeye.BufferedFSM
 import scala.concurrent.duration.FiniteDuration
 import popeye.BufferedFSM.{Flush, Todo}
 import scala.util.{Failure, Success}
-import popeye.uuid.IdGenerator
 import scala.concurrent.ExecutionContext.Implicits.global
-import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
+import java.util.concurrent.atomic.AtomicLong
 import scala.collection.mutable.ListBuffer
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.Config
 
-class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], kafkaProducer: ActorRef)(implicit override val metricRegistry: MetricRegistry)
+class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], kafkaProducer: ActorRef, config: Config)(implicit override val metricRegistry: MetricRegistry)
   extends BufferedFSM[PEvent] with ActorLogging {
 
   val kafkaTimeout: akka.util.Timeout = new akka.util.Timeout(
-    Duration(context.system.settings.config.getString("kafka.send.timeout"))
+    Duration(config.getString("kafka.send.timeout"))
       .asInstanceOf[FiniteDuration])
 
   override val timeout: FiniteDuration = 1 seconds
@@ -38,6 +37,7 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], kafkaPro
   private val pendingCorrelations = new ListBuffer[(ActorRef, Long)]
 
   sealed case class ReplyOk()
+
   sealed case class ReplyErr(ex: Throwable)
 
   override def consumeCollected(todo: Todo[PEvent]) = {
@@ -50,11 +50,11 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], kafkaPro
         Batch.newBuilder().addAllEvent(todo.queue).build,
         0
       ))(kafkaTimeout) onComplete {
-        case Success(p @ ProduceDone(_, batchId)) =>
+        case Success(p@ProduceDone(_, batchId)) =>
           log.debug("ProduceDone: {}", p)
           var pv: Long = 0
           do {
-             pv = lastBatchId.get()
+            pv = lastBatchId.get()
           } while (pv < batchId && !lastBatchId.compareAndSet(pv, batchId))
           me ! ReplyOk()
         case Failure(ex: Throwable) =>
@@ -68,7 +68,7 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], kafkaPro
   override val handleMessage: TodoFunction = {
     case Event(init.Event(data), todo) =>
       if (data.length > 0) {
-        val input = if (data.charAt(data.length-1) == '\r') {
+        val input = if (data.charAt(data.length - 1) == '\r') {
           data.dropRight(1)
         } else {
           data
@@ -97,8 +97,9 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], kafkaPro
       }
 
     case Event(ReplyOk(), todo) =>
-      pendingCorrelations foreach { p =>
-        p._1 ! init.Command("OK " + p._2 + "=" + lastBatchId.get() + "\n")
+      pendingCorrelations foreach {
+        p =>
+          p._1 ! init.Command("OK " + p._2 + "=" + lastBatchId.get() + "\n")
       }
       pendingCorrelations.clear()
       todo
@@ -194,7 +195,7 @@ class TsdbTelnetServer(local: InetSocketAddress, kafka: ActorRef)(implicit val m
           new BackpressureBuffer(lowBytes = 1 * 1024 * 1024, highBytes = 4 * 1024 * 1024, maxBytes = 10 * 1024 * 1024))
 
       val connection = sender
-      val handler = context.actorOf(Props(new TsdbTelnetHandler(init, kafka))
+      val handler = context.actorOf(Props(new TsdbTelnetHandler(init, kafka, system.settings.config))
         .withDeploy(Deploy.local))
       val pipeline = context.actorOf(TcpPipelineHandler.props(
         init, connection, handler).withDeploy(Deploy.local))

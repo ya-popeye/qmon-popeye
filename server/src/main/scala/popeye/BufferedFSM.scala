@@ -23,8 +23,8 @@ trait BufferedFSM[Entity] extends FSM[State, Todo[Entity]] with Instrumented {
 
   type TodoFunction = PartialFunction[Event, Todo[Entity]]
 
-  val timeout: FiniteDuration
-  val flushEntitiesCount: Int
+  def timeout: FiniteDuration
+  def flushEntitiesCount: Int
 
   val queueSize = metrics.gauge[Long]("buffered.queue-size") {
     stateData.queue.size
@@ -42,10 +42,7 @@ trait BufferedFSM[Entity] extends FSM[State, Todo[Entity]] with Instrumented {
   }
 
   when(Active, stateTimeout = timeout) {
-    case Event(x: Flush, _) =>
-      goto(Idle) using Todo()
-
-    case Event(StateTimeout, _) =>
+    case Event(Flush | StateTimeout, _) =>
       goto(Idle) using Todo()
   }
 

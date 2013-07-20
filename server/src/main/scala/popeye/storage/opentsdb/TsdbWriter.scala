@@ -31,7 +31,7 @@ object TsdbWriter {
       config.getString("tsdb.table.uids"))
     system.registerOnTermination(tsdb.shutdown())
     system.registerOnTermination(hbc.shutdown())
-    system.actorOf(Props(new TsdbWriter(tsdb)).withRouter(FromConfig()), "tsdb-writer")
+    system.actorOf(Props(new TsdbWriter(config, tsdb)).withRouter(FromConfig()), "tsdb-writer")
   }
 
   def HBaseClient(tsdbConfig: Config) = {
@@ -50,14 +50,13 @@ object TsdbWriter {
 
 }
 
-class TsdbWriter(tsdb: TSDB)(implicit override val metricRegistry: MetricRegistry)
+class TsdbWriter(config: Config, tsdb: TSDB)(implicit override val metricRegistry: MetricRegistry)
   extends Actor with BufferedFSM[EventsPack] with ActorLogging {
 
-  val config = context.system.settings.config
-  override val timeout: FiniteDuration = new FiniteDuration(
+  override def timeout: FiniteDuration = new FiniteDuration(
     config.getMilliseconds("tsdb.flush.tick"), MILLISECONDS
   )
-  override val flushEntitiesCount: Int = config.getInt("tsdb.flush.events")
+  override def flushEntitiesCount: Int = config.getInt("tsdb.flush.events")
 
   val writeTimer = metrics.timer("tsdb.write-times")
   val writeBatchSizeHist = metrics.histogram("tsdb.batch-size.write")
@@ -98,10 +97,11 @@ class TsdbWriter(tsdb: TSDB)(implicit override val metricRegistry: MetricRegistr
     case Event(ConsumePending(data, id), todo) =>
       val list = data.getEventsList
       val pack = new EventsPack(list, sender, id)
-      if (log.isDebugEnabled)
-        log.debug("Queued {} (packs {}, events {} queued)", id, todo.queue.size, todo.entityCnt)
       incomingBatchSizeHist.update(data.getEventsCount)
-      todo.copy(entityCnt = todo.entityCnt + list.size(), queue = todo.queue :+ pack)
+      val t = todo.copy(entityCnt = todo.entityCnt + list.size(), queue = todo.queue :+ pack)
+      if (log.isDebugEnabled)
+        log.debug("Queued {} todo={} (list={})", id, t, list.size)
+      t
   }
 
   initialize()
