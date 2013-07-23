@@ -45,10 +45,12 @@ object KafkaEventProducer {
   }
 }
 
+case class ProducePack(sender: ActorRef, req: ProducePending)
+
 class KafkaEventProducer(config: Config,
                          producerConfig: ProducerConfig,
                          idGenerator: IdGenerator)(implicit override val metricRegistry: MetricRegistry)
-  extends BufferedFSM[ProducePending] with ActorLogging {
+  extends BufferedFSM[ProducePack] with ActorLogging {
 
   val topic = config.getString("kafka.events.topic")
   val producer = new Producer[Nothing, Ensemble](producerConfig)
@@ -60,30 +62,32 @@ class KafkaEventProducer(config: Config,
 
   def flushEntitiesCount: Int = config.getInt("kafka.producer.flush.events")
 
-  override def consumeCollected(todo: Todo[ProducePending]) = {
+  override def consumeCollected(todo: Todo[ProducePack]) = {
     val batchId = idGenerator.nextId()
     val ensembles = new collection.mutable.HashMap[Int, Ensemble.Builder]
     for (
       pp <- todo.queue;
-      (part, list) <- pp.data.getEventList
+      (part, list) <- pp.req.data.getEventList
         .groupBy(ev => ev.getMetric.hashCode() % partitions)
     ) {
-      val ensemble = ensembles.getOrElseUpdate(part, Ensemble.newBuilder()
+      val ensemble = ensembles.getOrElseUpdate(part,
+        Ensemble.newBuilder()
         .setBatchId(batchId)
-        .setPartition(part))
+        .setPartition(part)
+      )
       ensemble.addAllEvents(list)
     }
     try {
       producer.send(ensembles.map(e => new KeyedMessage(topic, e._2.build)).toArray:_*)
       todo.queue foreach {
         p =>
-          sender ! ProduceDone(p.correlationId, batchId)
+          p.sender ! ProduceDone(p.req.correlationId, batchId)
       }
     } catch {
       case e: Exception => sender ! Failure(e)
         todo.queue foreach {
           p =>
-            sender ! ProduceFailed(p.correlationId, e)
+            p.sender ! ProduceFailed(p.req.correlationId, e)
         }
         throw e
     }
@@ -91,7 +95,7 @@ class KafkaEventProducer(config: Config,
 
   val handleMessage: TodoFunction = {
     case Event(p@ProducePending(events, correlation), todo) =>
-      val t = todo.copy(entityCnt = todo.entityCnt + events.getEventCount(), queue = todo.queue :+ p)
+      val t = todo.copy(entityCnt = todo.entityCnt + events.getEventCount(), queue = todo.queue :+ ProducePack(sender, p))
       if (log.isDebugEnabled)
         log.debug("Queued {} todo.queue={}", correlation, t.queue.size)
       t

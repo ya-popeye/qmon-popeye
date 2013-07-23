@@ -22,8 +22,6 @@ import akka.util.Timeout
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.{ConfigFactory, Config}
 import akka.actor.Props
-import akka.routing.FromConfig
-import popeye.BufferedFSM.Flush
 
 /**
  * @author Andrey Stepachev
@@ -56,7 +54,7 @@ class TsdbWriterTestSpec extends AkkaTestKitSpec("tsdb-writer") with KafkaServer
     val future = writer ? ConsumePending(ensemble, id)
     //writer ! Flush()
     val result = Await.result(future, timeout.duration).asInstanceOf[ConsumeDone]
-    result.id must be (id)
+    result.id must be(id)
   }
 
   val rnd = new Random(12345)
@@ -64,6 +62,7 @@ class TsdbWriterTestSpec extends AkkaTestKitSpec("tsdb-writer") with KafkaServer
   def mkEnesemble(msgs: Int = 2): Ensemble = {
     val b = Ensemble.newBuilder()
       .setBatchId(idGenerator.nextId())
+      .setPartition(1)
     for (i <- 0 to msgs - 1) {
       b.addEvents(i, mkEvent())
     }

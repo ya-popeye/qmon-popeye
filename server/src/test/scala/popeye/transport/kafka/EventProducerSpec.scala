@@ -13,9 +13,9 @@ import akka.util.Timeout
 import scala.concurrent.Await
 import kafka.admin.CreateTopicCommand
 import kafka.utils.TestUtils._
-import kafka.message.MessageAndMetadata
 import popeye.uuid.IdGenerator
 import com.codahale.metrics.MetricRegistry
+import popeye.BufferedFSM.Flush
 
 /**
  * @author Andrey Stepachev
@@ -44,6 +44,7 @@ class EventProducerSpec extends AkkaTestKitSpec("ProducerTest") with KafkaServer
       """.stripMargin).withFallback(ConfigFactory.load())
     val actor = TestActorRef(KafkaEventProducer.props(config, generator))
     val future = ask(actor, ProducePending(makeBatch(), 123)).mapTo[ProduceDone]
+    actor ! Flush()
     Await.result(future, timeout.duration)
     logger.debug(s"Got result ${future.value}, ready for consume")
     val consumer = KafkaEventConsumer.createConsumer(topic, KafkaEventConsumer.consumerConfig(config))
