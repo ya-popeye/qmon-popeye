@@ -42,7 +42,7 @@ trait BufferedFSM[Entity] extends FSM[State, Todo[Entity]] with Instrumented {
   }
 
   when(Active, stateTimeout = timeout) {
-    case Event(Flush | StateTimeout, _) =>
+    case Event(Flush() | StateTimeout, _) =>
       goto(Idle) using Todo()
   }
 

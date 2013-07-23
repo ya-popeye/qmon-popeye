@@ -26,11 +26,11 @@ class BufferedFSMSpec extends AkkaTestKitSpec("ProducerTest") with Logging {
     val fsm = TestActorRef(Props(new TestFSM))
     fsm ! "hello"
     fsm ! "me"
-    expect(2) {
+    expectResult(2) {
       Await.result(fsm.ask("how-much").mapTo[Long], 1 seconds)
     }
     fsm ! Flush()
-    expect(0) {
+    expectResult(0) {
       Await.result(
       fsm.ask("how-much").mapTo[Long], 1 seconds)
     }
@@ -38,7 +38,7 @@ class BufferedFSMSpec extends AkkaTestKitSpec("ProducerTest") with Logging {
     fsm ! "me"
     fsm ! "hello"
     fsm ! "me"
-    expect(1) {
+    expectResult(1) {
       Await.result(
         fsm.ask("how-much").mapTo[Long], 1 seconds)
     }
