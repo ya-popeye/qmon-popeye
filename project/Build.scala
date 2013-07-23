@@ -1,5 +1,6 @@
 import sbt._
 import sbt.ExclusionRule
+import sbt.ExclusionRule
 import sbt.Keys._
 import QMonDistPlugin._
 import net.virtualvoid.sbt.graph.{Plugin => Dep}
@@ -10,7 +11,10 @@ object Compiler {
     scalacOptions in Compile ++= Seq("-target:jvm-1.6", "-deprecation", "-unchecked", "-feature",
       "-language:postfixOps", "-language:implicitConversions"),
     javacOptions in Compile ++= Seq("-source", "1.6", "-target", "1.6"),
-    resolvers += "spray repo" at "http://repo.spray.io"
+    resolvers ++= Seq(
+      "spray repo" at "http://repo.spray.io",
+      "spray repo (nightly)" at "http://nightlies.spray.io"
+    )
   )
 }
 
@@ -24,7 +28,7 @@ object Tests {
 object Version {
   val Scala = "2.10.1"
   val Akka = "2.2.0"
-  val Spray = "1.2-M8"
+  val Spray = "1.2-20130710"
   val Hadoop = "1.2.0"
   val HBase = "0.94.6"
   val ScalaTest = "1.9.1"
@@ -32,6 +36,7 @@ object Version {
   val Jackson = "1.8.8"
   val Kafka = "0.8.0-beta1"
   val Metrics = "3.0.0"
+  val Slf4j = "1.7.5"
 }
 
 
@@ -71,8 +76,8 @@ object PopeyeBuild extends Build {
       "io.spray" % "spray-can" % Version.Spray,
       "io.spray" % "spray-io" % Version.Spray,
       "org.codehaus.jackson" % "jackson-core-asl" % Version.Jackson,
-      "org.slf4j" % "jcl-over-slf4j" % "1.7.5",
-      "org.slf4j" % "slf4j-log4j12" % "1.7.5",
+      "org.slf4j" % "jcl-over-slf4j" % Version.Slf4j,
+      "org.slf4j" % "slf4j-log4j12" % Version.Slf4j,
       "org.hbase" % "asynchbase" % "1.4.1"
         exclude("org.slf4j", "log4j-over-slf4j")
         exclude("org.slf4j", "jcl-over-slf4j"),
@@ -104,8 +109,8 @@ object PopeyeBuild extends Build {
       "io.spray" % "spray-can" % Version.Spray,
       "io.spray" % "spray-io" % Version.Spray,
       "org.codehaus.jackson" % "jackson-core-asl" % Version.Jackson,
-      "org.slf4j" % "jcl-over-slf4j" % "1.7.5",
-      "org.slf4j" % "slf4j-log4j12" % "1.7.5",
+      "org.slf4j" % "jcl-over-slf4j" % Version.Slf4j,
+      "org.slf4j" % "slf4j-log4j12" % Version.Slf4j,
       "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
       "org.mockito" % "mockito-core" % Version.Mockito % "test",
       "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"
