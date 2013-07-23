@@ -45,7 +45,7 @@ class BufferedFSMSpec extends AkkaTestKitSpec("ProducerTest") with Logging {
   }
 }
 
-class TestFSM(implicit override val metricRegistry: MetricRegistry) extends BufferedFSM[String] {
+class TestFSM extends BufferedFSM[String] {
   val timeout: FiniteDuration = 999 second
   val flushEntitiesCount: Int = 2
 

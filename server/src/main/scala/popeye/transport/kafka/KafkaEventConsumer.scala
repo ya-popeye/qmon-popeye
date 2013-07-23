@@ -1,6 +1,6 @@
 package popeye.transport.kafka
 
-import popeye.Logging
+import popeye.{Instrumented, Logging}
 import scala.util.{Failure, Success}
 import kafka.serializer.{DefaultDecoder, Decoder}
 import com.google.protobuf.InvalidProtocolBufferException
@@ -19,10 +19,95 @@ import popeye.transport.ConfigUtil._
 import popeye.transport.proto.Storage.Ensemble
 import scala.collection.mutable
 import akka.util.Timeout
+import com.codahale.metrics.MetricRegistry
 
 /**
  * @author Andrey Stepachev
  */
+
+class ConsumerInitializationException extends Exception
+class BatchProcessingFailedException extends Exception
+
+private case object Next
+
+case class KafkaEventConsumerMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
+  val writeTimer = metrics.timer("kafka.consume.time")
+  val batchSizeHist = metrics.histogram("kafka.consume.batch.size")
+  val batchCompleteHist = metrics.meter("kafka.consume.batch.complete")
+  val batchFailedHist = metrics.meter("kafka.consume.batch.complete")
+}
+
+class KafkaEventConsumer(topic: String, group: String, config: ConsumerConfig, target: ActorRef, metrics: KafkaEventConsumerMetrics)
+  extends Actor with ActorLogging {
+
+  import context._
+
+  val pair: ConsumerPair = KafkaEventConsumer.createConsumer(topic, config)
+  if (pair.consumer.isEmpty)
+    throw new ConsumerInitializationException
+  log.debug("Starting KafkaEventConsumer for group " + group + " and topic " + topic)
+  val consumer = pair.consumer
+  val connector = pair.connector
+  lazy implicit val timeout: Timeout = new Timeout(system.settings.config.getMilliseconds("kafka.actor.timeout"), MILLISECONDS)
+  lazy val maxPending = 10
+
+  override val supervisorStrategy =
+    OneForOneStrategy(maxNrOfRetries = 10, withinTimeRange = (5 minutes), loggingEnabled = true) {
+      case _ ⇒ Restart
+    }
+
+  override def preStart() {
+    super.preStart()
+    log.debug("Starting KafkaEventConsumer for group " + group + " and topic " + topic)
+    self ! Next
+  }
+
+  override def postStop() {
+    log.debug("Stopping KafkaEventConsumer for group " + group + " and topic " + topic)
+    super.postStop()
+    connector.shutdown()
+  }
+
+  def receive = {
+    case ConsumeDone(id) =>
+      if (log.isDebugEnabled)
+        log.debug("Consumed {}", id)
+      self ! Next
+      connector.commitOffsets
+      metrics.batchCompleteHist.mark()
+
+    case ConsumeFailed(id, ex) =>
+      log.error(ex, "Batch {} failed", id)
+      metrics.batchFailedHist.mark()
+      throw new BatchProcessingFailedException
+
+    case Next =>
+      try {
+        val tctx = metrics.writeTimer.timerContext()
+        val iterator = consumer.get.iterator()
+        if (iterator.hasNext) {
+          val msg = iterator.next()
+          val batchId = msg.message.getBatchId
+          val pos = ConsumeId(batchId, msg.offset, msg.partition)
+          val me = self
+          metrics.batchSizeHist.update(msg.message.getEventsCount)
+          target ? ConsumePending(msg.message, pos) onComplete {
+            case Success(x) =>
+              me ! ConsumeDone(pos)
+              tctx.close()
+            case Failure(ex: Throwable) =>
+              me ! ConsumeFailed(pos, ex)
+          }
+        }
+      } catch {
+        case ex: ConsumerTimeoutException => // ok
+        case ex: Throwable =>
+          log.error("Failed to consume", ex)
+          throw ex
+      }
+  }
+}
+
 object KafkaEventConsumer extends Logging {
 
   def consumerConfig(globalConfig: Config): ConsumerConfig = {
@@ -34,13 +119,15 @@ object KafkaEventConsumer extends Logging {
     new ConsumerConfig(consumerProps)
   }
 
-  def props(config: Config, target: ActorRef) = {
+  def props(config: Config, target: ActorRef)(implicit metricRegistry: MetricRegistry) = {
+    val metrics = KafkaEventConsumerMetrics(metricRegistry)
     Props(
       new KafkaEventConsumer(
         config.getString("kafka.events.topic"),
         config.getString("kafka.events.group"),
         consumerConfig(config),
-        target)
+        target,
+        metrics)
     )
   }
 
@@ -70,79 +157,6 @@ object KafkaEventConsumer extends Logging {
     }
     log.info(s"Consumer created")
     new ConsumerPair(consumerConnector, stream)
-  }
-}
-
-class ConsumerInitializationException extends Exception
-class BatchProcessingFailedException extends Exception
-
-private case object Next
-
-class KafkaEventConsumer(topic: String, group: String, config: ConsumerConfig, target: ActorRef) extends Actor with ActorLogging {
-
-  import context._
-
-  val pair: ConsumerPair = KafkaEventConsumer.createConsumer(topic, config)
-  if (pair.consumer.isEmpty)
-    throw new ConsumerInitializationException
-  log.debug("Starting KafkaEventConsumer for group " + group + " and topic " + topic)
-  val consumer = pair.consumer
-  val connector = pair.connector
-  lazy implicit val timeout: Timeout = new Timeout(system.settings.config.getMilliseconds("kafka.actor.timeout"), MILLISECONDS)
-  lazy val maxPending = 10
-
-  override val supervisorStrategy =
-    OneForOneStrategy(maxNrOfRetries=10, withinTimeRange = (5 minutes)) {
-      case ex: BatchProcessingFailedException ⇒ Restart
-    }
-
-
-  override def preStart() {
-    super.preStart()
-    self ! Next
-  }
-
-  override def postStop() {
-    log.debug("Stopping KafkaEventConsumer for group " + group + " and topic " + topic)
-    connector.shutdown()
-    super.postStop()
-  }
-
-  private def commit() = {
-    // TODO: replace with more precise version, we should be able to commit particular (topic/part)
-    connector.commitOffsets
-  }
-
-  def receive = {
-    case ConsumeDone(id) =>
-      if (log.isDebugEnabled)
-        log.debug("Consumed {}", id)
-      commit()
-      self ! Next
-    case ConsumeFailed(id, ex) =>
-      log.error(ex, "Batch {} failed", id)
-      throw new BatchProcessingFailedException
-    case Next =>
-      try {
-        val iterator = consumer.get.iterator()
-        if (iterator.hasNext()) {
-          val msg = iterator.next()
-          val batchId = msg.message.getBatchId
-          val pos = ConsumeId(batchId, msg.offset, msg.partition)
-          val me = self
-          target ? ConsumePending(msg.message, pos) onComplete {
-            case Success(x) =>
-              me ! ConsumeDone(pos)
-            case Failure(ex: Throwable) =>
-              me ! ConsumeFailed(pos, ex)
-          }
-        }
-      } catch {
-        case ex: ConsumerTimeoutException => // ok
-        case ex: Throwable =>
-          log.error("Failed to consume", ex)
-          throw ex
-      }
   }
 }
 

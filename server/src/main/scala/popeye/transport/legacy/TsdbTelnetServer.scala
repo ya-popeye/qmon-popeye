@@ -24,7 +24,7 @@ import scala.collection.mutable.ListBuffer
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.Config
 
-class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], kafkaProducer: ActorRef, config: Config)(implicit override val metricRegistry: MetricRegistry)
+class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], kafkaProducer: ActorRef, config: Config)
   extends BufferedFSM[PEvent] with ActorLogging {
 
   val kafkaTimeout: akka.util.Timeout = new akka.util.Timeout(

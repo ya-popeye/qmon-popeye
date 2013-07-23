@@ -51,7 +51,6 @@ class LegacyHttpHandler(config: Config, kafkaProducer: ActorRef)(implicit overri
     })
   }
 
-
   def receive = {
     case x: Http.Connected => sender ! Http.Register(self)
 

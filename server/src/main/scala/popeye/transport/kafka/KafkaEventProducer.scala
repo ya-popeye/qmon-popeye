@@ -13,43 +13,26 @@ import akka.routing.FromConfig
 import kafka.producer.KeyedMessage
 import akka.actor.Status.Failure
 import com.codahale.metrics.MetricRegistry
-import popeye.BufferedFSM
+import popeye.{Instrumented, BufferedFSM}
 import popeye.BufferedFSM.Todo
 import kafka.client.ClientUtils
 import scala.collection
 import kafka.utils.VerifiableProperties
 import scala.concurrent.duration.FiniteDuration
 
-
-object KafkaEventProducer {
-
-  def start(config: Config, idGenerator: IdGenerator)(implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
-    system.actorOf(KafkaEventProducer.props(config, idGenerator)
-      .withRouter(FromConfig()), "kafka-producer")
-  }
-
-  def producerConfig(globalConfig: Config): ProducerConfig = {
-    val config: Config = globalConfig.getConfig("kafka.producer")
-    val producerProps: Properties = config
-    producerProps.setProperty("serializer.class", classOf[EnsembleEncoder].getName)
-    producerProps.setProperty("partitioner.class", classOf[EnsemblePartitioner].getName)
-    producerProps.setProperty("producer.type", "sync")
-    new ProducerConfig(producerProps)
-  }
-
-  def props(config: Config, idGenerator: IdGenerator)(implicit metricRegistry: MetricRegistry) = {
-    Props(new KafkaEventProducer(
-      config,
-      producerConfig(config),
-      idGenerator))
-  }
-}
-
 case class ProducePack(sender: ActorRef, req: ProducePending)
+
+case class KafkaEventProducerMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
+  val writeTimer = metrics.timer("kafka.produce.time")
+  val batchSizeHist = metrics.histogram("kafka.produce.batch.size")
+  val batchFailedMeter = metrics.meter("kafka.produce.batch.failed")
+  val batchFailedComplete = metrics.meter("kafka.produce.batch.complete")
+}
 
 class KafkaEventProducer(config: Config,
                          producerConfig: ProducerConfig,
-                         idGenerator: IdGenerator)(implicit override val metricRegistry: MetricRegistry)
+                         idGenerator: IdGenerator,
+                          metrics: KafkaEventProducerMetrics)
   extends BufferedFSM[ProducePack] with ActorLogging {
 
   val topic = config.getString("kafka.events.topic")
@@ -63,6 +46,7 @@ class KafkaEventProducer(config: Config,
   def flushEntitiesCount: Int = config.getInt("kafka.producer.flush.events")
 
   override def consumeCollected(todo: Todo[ProducePack]) = {
+    val ctx = metrics.writeTimer.timerContext()
     val batchId = idGenerator.nextId()
     val ensembles = new collection.mutable.HashMap[Int, Ensemble.Builder]
     for (
@@ -78,18 +62,23 @@ class KafkaEventProducer(config: Config,
       ensemble.addAllEvents(list)
     }
     try {
+      ensembles foreach {e => metrics.batchSizeHist.update(e._2.getEventsCount)}
       producer.send(ensembles.map(e => new KeyedMessage(topic, e._2.build)).toArray:_*)
       todo.queue foreach {
         p =>
           p.sender ! ProduceDone(p.req.correlationId, batchId)
       }
+      metrics.batchFailedComplete.mark(ensembles.size)
     } catch {
       case e: Exception => sender ! Failure(e)
+        metrics.batchFailedComplete.mark(todo.queue.size)
         todo.queue foreach {
           p =>
             p.sender ! ProduceFailed(p.req.correlationId, e)
         }
         throw e
+    } finally {
+      ctx.close()
     }
   }
 
@@ -110,8 +99,8 @@ class KafkaEventProducer(config: Config,
 
   override def postStop() {
     log.debug("Stopping producer")
-    producer.close()
     super.postStop()
+    producer.close()
   }
 
 }
@@ -121,4 +110,31 @@ class EnsemblePartitioner(props: VerifiableProperties = null) extends Partitione
     data.getPartition
   }
 }
+
+object KafkaEventProducer {
+
+  def start(config: Config, idGenerator: IdGenerator)(implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
+    system.actorOf(KafkaEventProducer.props(config, idGenerator)
+      .withRouter(FromConfig()), "kafka-producer")
+  }
+
+  def producerConfig(globalConfig: Config): ProducerConfig = {
+    val config: Config = globalConfig.getConfig("kafka.producer")
+    val producerProps: Properties = config
+    producerProps.setProperty("serializer.class", classOf[EnsembleEncoder].getName)
+    producerProps.setProperty("partitioner.class", classOf[EnsemblePartitioner].getName)
+    producerProps.setProperty("producer.type", "sync")
+    new ProducerConfig(producerProps)
+  }
+
+  def props(config: Config, idGenerator: IdGenerator)(implicit metricRegistry: MetricRegistry) = {
+    val metrics = KafkaEventProducerMetrics(metricRegistry)
+    Props(new KafkaEventProducer(
+      config,
+      producerConfig(config),
+      idGenerator,
+      metrics))
+  }
+}
+
 
