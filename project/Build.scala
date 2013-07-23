@@ -1,4 +1,5 @@
 import sbt._
+import sbt.ExclusionRule
 import sbt.Keys._
 import QMonDistPlugin._
 import net.virtualvoid.sbt.graph.{Plugin => Dep}
@@ -8,7 +9,8 @@ object Compiler {
   val defaultSettings = Seq(
     scalacOptions in Compile ++= Seq("-target:jvm-1.6", "-deprecation", "-unchecked", "-feature",
       "-language:postfixOps", "-language:implicitConversions"),
-    javacOptions in Compile ++= Seq("-source", "1.6", "-target", "1.6")
+    javacOptions in Compile ++= Seq("-source", "1.6", "-target", "1.6"),
+    resolvers += "spray repo" at "http://repo.spray.io"
   )
 }
 
@@ -41,6 +43,10 @@ object PopeyeBuild extends Build {
       Tests.defaultSettings ++
       Dep.graphSettings
 
+  lazy val kafka = ProjectRef(
+    build = uri("git://github.com/octo47/kafka.git#0.8-scala2.10"),
+    project = "core")
+
   lazy val popeye = Project(
     id = "popeye",
     base = file("."),
@@ -51,6 +57,8 @@ object PopeyeBuild extends Build {
     id = "popeye-server",
     base = file("server"),
     settings = defaultSettings ++ QMonDistPlugin.distSettings)
+    .dependsOn(kafka)
+    .dependsOn(kafka % "test->test")
     .settings(
     distMainClass := "popeye.transport.Main",
     libraryDependencies ++= Seq(
@@ -71,7 +79,16 @@ object PopeyeBuild extends Build {
       "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
       "org.mockito" % "mockito-core" % Version.Mockito % "test",
       "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"
-    )
+    ),
+    projectDependencies ~= {
+      deps => deps map {
+        dep =>
+          dep.excludeAll(
+            ExclusionRule(organization = "log4j"),
+            ExclusionRule(organization = "org.slf4j", name = "slf4j-simple")
+          )
+      }
+    }
   )
 
   lazy val popeyeBench = Project(

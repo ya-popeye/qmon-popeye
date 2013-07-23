@@ -154,7 +154,7 @@ object QMonDistPlugin extends Plugin {
   }
 
   private def libFiles(classpath: Classpath, libFilter: File ⇒ Boolean): Seq[File] = {
-    val (libs, directories) = classpath.map(_.data).partition(ClasspathUtilities.isArchive)
+    val (libs, _) = classpath.map(_.data).partition(ClasspathUtilities.isArchive)
     libs.map(_.asFile).filter(libFilter)
   }
 
@@ -169,12 +169,16 @@ object QMonDistPlugin extends Plugin {
     val buildUnit = buildStruct.units(buildStruct.root)
     val uri = buildStruct.root
     val allProjects = buildUnit.defined.map {
-      case (id, proj) ⇒ (ProjectRef(uri, id) -> proj)
+      case (id, proj) ⇒ ProjectRef(uri, id) -> proj
     }
-
     val subProjects: Seq[SubProjectInfo] = allProjects.collect {
       case (projRef, proj) if includeProject(proj, project) ⇒ projectInfo(projRef, proj, buildStruct, state, allProjects)
-    }.toList
+    }.toList ++ allProjects.map(t => for {
+      ResolvedClasspathDependency(projRef, confs) <- t._2.dependencies
+      proj <- Project.getProject(projRef, buildStruct)
+    } yield {
+      projectInfo(projRef, proj, buildStruct, state, allProjects)
+    }).flatten
 
     val allSubProjects = subProjects.map(_.recursiveSubProjects).flatten.toSet
     allSubProjects
