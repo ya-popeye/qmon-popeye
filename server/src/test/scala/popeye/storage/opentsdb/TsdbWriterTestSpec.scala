@@ -48,7 +48,7 @@ class TsdbWriterTestSpec extends AkkaTestKitSpec("tsdb-writer") with KafkaServer
         |
       """.stripMargin).withFallback(ConfigFactory.load())
 
-    val writer = TestActorRef(Props(new TsdbWriter(config, tsdb)), "tsdb-writer")
+    val writer = TestActorRef(Props(new TsdbWriter(config, tsdb, TsdbWriterMetrics(metricRegistry))), "tsdb-writer")
     val ensemble: Ensemble = mkEnesemble()
     val id: ConsumeId = ConsumeId(ensemble.getBatchId, 1000, 1)
     val future = writer ? ConsumePending(ensemble, id)
