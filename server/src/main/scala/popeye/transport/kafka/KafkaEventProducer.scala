@@ -3,16 +3,22 @@ package popeye.transport.kafka
 import akka.actor._
 import kafka.producer._
 import java.util.Properties
-import kafka.serializer.DefaultEncoder
 import com.typesafe.config.Config
 import popeye.transport.ConfigUtil._
 import popeye.uuid.IdGenerator
 import scala.collection.JavaConversions.{asScalaBuffer, asJavaIterable}
+import scala.concurrent.duration._
 import popeye.transport.proto.Storage.Ensemble
 import akka.routing.FromConfig
 import kafka.producer.KeyedMessage
 import akka.actor.Status.Failure
 import com.codahale.metrics.MetricRegistry
+import popeye.BufferedFSM
+import popeye.BufferedFSM.Todo
+import kafka.client.ClientUtils
+import scala.collection
+import kafka.utils.VerifiableProperties
+import scala.concurrent.duration.FiniteDuration
 
 
 object KafkaEventProducer {
@@ -26,26 +32,72 @@ object KafkaEventProducer {
     val config: Config = globalConfig.getConfig("kafka.producer")
     val producerProps: Properties = config
     producerProps.setProperty("serializer.class", classOf[EnsembleEncoder].getName)
-    producerProps.setProperty("key.serializer.class", classOf[DefaultEncoder].getName)
+    producerProps.setProperty("partitioner.class", classOf[EnsemblePartitioner].getName)
+    producerProps.setProperty("producer.type", "sync")
     new ProducerConfig(producerProps)
   }
 
-  def props(config: Config, idGenerator: IdGenerator) = {
+  def props(config: Config, idGenerator: IdGenerator)(implicit metricRegistry: MetricRegistry) = {
     Props(new KafkaEventProducer(
-      config.getString("kafka.events.topic"),
+      config,
       producerConfig(config),
-      idGenerator,
-      config.getInt("kafka.events.partition")))
+      idGenerator))
   }
 }
 
-class KafkaEventProducer(topic: String,
-                         config: ProducerConfig,
-                         idGenerator: IdGenerator,
-                         partitions: Int)
-  extends Actor with ActorLogging {
+class KafkaEventProducer(config: Config,
+                         producerConfig: ProducerConfig,
+                         idGenerator: IdGenerator)(implicit override val metricRegistry: MetricRegistry)
+  extends BufferedFSM[ProducePending] with ActorLogging {
 
-  val producer = new Producer[Array[Byte], Ensemble](config)
+  val topic = config.getString("kafka.events.topic")
+  val producer = new Producer[Nothing, Ensemble](producerConfig)
+  val partitions = ClientUtils.fetchTopicMetadata(Set(topic), ClientUtils.parseBrokerList(producerConfig.brokerList), producerConfig, 1)
+    .topicsMetadata
+    .filter(_.topic == topic).head.partitionsMetadata.size
+
+  def timeout: FiniteDuration = new FiniteDuration(config.getMilliseconds("kafka.producer.flush.tick"), MILLISECONDS)
+
+  def flushEntitiesCount: Int = config.getInt("kafka.producer.flush.events")
+
+  override def consumeCollected(todo: Todo[ProducePending]) = {
+    val batchId = idGenerator.nextId()
+    val ensembles = new collection.mutable.HashMap[Int, Ensemble.Builder]
+    for (
+      pp <- todo.queue;
+      (part, list) <- pp.data.getEventList
+        .groupBy(ev => ev.getMetric.hashCode() % partitions)
+    ) {
+      val ensemble = ensembles.getOrElseUpdate(part, Ensemble.newBuilder()
+        .setBatchId(batchId)
+        .setPartition(part))
+      ensemble.addAllEvents(list)
+    }
+    try {
+      producer.send(ensembles.map(e => new KeyedMessage(topic, e._2.build)).toArray:_*)
+      todo.queue foreach {
+        p =>
+          sender ! ProduceDone(p.correlationId, batchId)
+      }
+    } catch {
+      case e: Exception => sender ! Failure(e)
+        todo.queue foreach {
+          p =>
+            sender ! ProduceFailed(p.correlationId, e)
+        }
+        throw e
+    }
+  }
+
+  val handleMessage: TodoFunction = {
+    case Event(p@ProducePending(events, correlation), todo) =>
+      val t = todo.copy(entityCnt = todo.entityCnt + events.getEventCount(), queue = todo.queue :+ p)
+      if (log.isDebugEnabled)
+        log.debug("Queued {} todo.queue={}", correlation, t.queue.size)
+      t
+  }
+
+  initialize()
 
   override def preStart() {
     log.debug("Starting producer")
@@ -58,32 +110,11 @@ class KafkaEventProducer(topic: String,
     super.postStop()
   }
 
-  def receive = {
+}
 
-    case ProducePending(events, correlation) => {
-      try {
-        for {
-          (part, list) <- events.getEventList
-            .groupBy(ev => (ev.getMetric.hashCode() % partitions) -> ev)
-
-          batchId: Long = idGenerator.nextId()
-
-          ensemble = Ensemble.newBuilder()
-            .setBatchId(batchId)
-            .addAllEvents(list)
-            .build
-        } yield {
-          producer.send(
-            KeyedMessage(topic, batchId.toString.getBytes, ensemble)
-          )
-          sender ! ProduceDone(correlation, batchId)
-        }
-      } catch {
-        case e: Exception => sender ! Failure(e)
-          sender ! ProduceFailed(correlation, e)
-          throw e
-      }
-    }
+class EnsemblePartitioner(props: VerifiableProperties = null) extends Partitioner[Ensemble] {
+  def partition(data: Ensemble, numPartitions: Int): Int = {
+    data.getPartition
   }
 }
 

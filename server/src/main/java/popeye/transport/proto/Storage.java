@@ -15,7 +15,11 @@ public final class Storage {
     boolean hasBatchId();
     long getBatchId();
     
-    // repeated .popeye.transport.proto.Event events = 2;
+    // required int32 partition = 2;
+    boolean hasPartition();
+    int getPartition();
+    
+    // repeated .popeye.transport.proto.Event events = 3;
     java.util.List<popeye.transport.proto.Message.Event> 
         getEventsList();
     popeye.transport.proto.Message.Event getEvents(int index);
@@ -64,8 +68,18 @@ public final class Storage {
       return batchId_;
     }
     
-    // repeated .popeye.transport.proto.Event events = 2;
-    public static final int EVENTS_FIELD_NUMBER = 2;
+    // required int32 partition = 2;
+    public static final int PARTITION_FIELD_NUMBER = 2;
+    private int partition_;
+    public boolean hasPartition() {
+      return ((bitField0_ & 0x00000002) == 0x00000002);
+    }
+    public int getPartition() {
+      return partition_;
+    }
+    
+    // repeated .popeye.transport.proto.Event events = 3;
+    public static final int EVENTS_FIELD_NUMBER = 3;
     private java.util.List<popeye.transport.proto.Message.Event> events_;
     public java.util.List<popeye.transport.proto.Message.Event> getEventsList() {
       return events_;
@@ -87,6 +101,7 @@ public final class Storage {
     
     private void initFields() {
       batchId_ = 0L;
+      partition_ = 0;
       events_ = java.util.Collections.emptyList();
     }
     private byte memoizedIsInitialized = -1;
@@ -95,6 +110,10 @@ public final class Storage {
       if (isInitialized != -1) return isInitialized == 1;
       
       if (!hasBatchId()) {
+        memoizedIsInitialized = 0;
+        return false;
+      }
+      if (!hasPartition()) {
         memoizedIsInitialized = 0;
         return false;
       }
@@ -114,8 +133,11 @@ public final class Storage {
       if (((bitField0_ & 0x00000001) == 0x00000001)) {
         output.writeInt64(1, batchId_);
       }
+      if (((bitField0_ & 0x00000002) == 0x00000002)) {
+        output.writeInt32(2, partition_);
+      }
       for (int i = 0; i < events_.size(); i++) {
-        output.writeMessage(2, events_.get(i));
+        output.writeMessage(3, events_.get(i));
       }
       getUnknownFields().writeTo(output);
     }
@@ -130,9 +152,13 @@ public final class Storage {
         size += com.google.protobuf.CodedOutputStream
           .computeInt64Size(1, batchId_);
       }
+      if (((bitField0_ & 0x00000002) == 0x00000002)) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeInt32Size(2, partition_);
+      }
       for (int i = 0; i < events_.size(); i++) {
         size += com.google.protobuf.CodedOutputStream
-          .computeMessageSize(2, events_.get(i));
+          .computeMessageSize(3, events_.get(i));
       }
       size += getUnknownFields().getSerializedSize();
       memoizedSerializedSize = size;
@@ -261,9 +287,11 @@ public final class Storage {
         super.clear();
         batchId_ = 0L;
         bitField0_ = (bitField0_ & ~0x00000001);
+        partition_ = 0;
+        bitField0_ = (bitField0_ & ~0x00000002);
         if (eventsBuilder_ == null) {
           events_ = java.util.Collections.emptyList();
-          bitField0_ = (bitField0_ & ~0x00000002);
+          bitField0_ = (bitField0_ & ~0x00000004);
         } else {
           eventsBuilder_.clear();
         }
@@ -309,10 +337,14 @@ public final class Storage {
           to_bitField0_ |= 0x00000001;
         }
         result.batchId_ = batchId_;
+        if (((from_bitField0_ & 0x00000002) == 0x00000002)) {
+          to_bitField0_ |= 0x00000002;
+        }
+        result.partition_ = partition_;
         if (eventsBuilder_ == null) {
-          if (((bitField0_ & 0x00000002) == 0x00000002)) {
+          if (((bitField0_ & 0x00000004) == 0x00000004)) {
             events_ = java.util.Collections.unmodifiableList(events_);
-            bitField0_ = (bitField0_ & ~0x00000002);
+            bitField0_ = (bitField0_ & ~0x00000004);
           }
           result.events_ = events_;
         } else {
@@ -337,11 +369,14 @@ public final class Storage {
         if (other.hasBatchId()) {
           setBatchId(other.getBatchId());
         }
+        if (other.hasPartition()) {
+          setPartition(other.getPartition());
+        }
         if (eventsBuilder_ == null) {
           if (!other.events_.isEmpty()) {
             if (events_.isEmpty()) {
               events_ = other.events_;
-              bitField0_ = (bitField0_ & ~0x00000002);
+              bitField0_ = (bitField0_ & ~0x00000004);
             } else {
               ensureEventsIsMutable();
               events_.addAll(other.events_);
@@ -354,7 +389,7 @@ public final class Storage {
               eventsBuilder_.dispose();
               eventsBuilder_ = null;
               events_ = other.events_;
-              bitField0_ = (bitField0_ & ~0x00000002);
+              bitField0_ = (bitField0_ & ~0x00000004);
               eventsBuilder_ = 
                 com.google.protobuf.GeneratedMessage.alwaysUseFieldBuilders ?
                    getEventsFieldBuilder() : null;
@@ -369,6 +404,10 @@ public final class Storage {
       
       public final boolean isInitialized() {
         if (!hasBatchId()) {
+          
+          return false;
+        }
+        if (!hasPartition()) {
           
           return false;
         }
@@ -409,7 +448,12 @@ public final class Storage {
               batchId_ = input.readInt64();
               break;
             }
-            case 18: {
+            case 16: {
+              bitField0_ |= 0x00000002;
+              partition_ = input.readInt32();
+              break;
+            }
+            case 26: {
               popeye.transport.proto.Message.Event.Builder subBuilder = popeye.transport.proto.Message.Event.newBuilder();
               input.readMessage(subBuilder, extensionRegistry);
               addEvents(subBuilder.buildPartial());
@@ -442,13 +486,34 @@ public final class Storage {
         return this;
       }
       
-      // repeated .popeye.transport.proto.Event events = 2;
+      // required int32 partition = 2;
+      private int partition_ ;
+      public boolean hasPartition() {
+        return ((bitField0_ & 0x00000002) == 0x00000002);
+      }
+      public int getPartition() {
+        return partition_;
+      }
+      public Builder setPartition(int value) {
+        bitField0_ |= 0x00000002;
+        partition_ = value;
+        onChanged();
+        return this;
+      }
+      public Builder clearPartition() {
+        bitField0_ = (bitField0_ & ~0x00000002);
+        partition_ = 0;
+        onChanged();
+        return this;
+      }
+      
+      // repeated .popeye.transport.proto.Event events = 3;
       private java.util.List<popeye.transport.proto.Message.Event> events_ =
         java.util.Collections.emptyList();
       private void ensureEventsIsMutable() {
-        if (!((bitField0_ & 0x00000002) == 0x00000002)) {
+        if (!((bitField0_ & 0x00000004) == 0x00000004)) {
           events_ = new java.util.ArrayList<popeye.transport.proto.Message.Event>(events_);
-          bitField0_ |= 0x00000002;
+          bitField0_ |= 0x00000004;
          }
       }
       
@@ -564,7 +629,7 @@ public final class Storage {
       public Builder clearEvents() {
         if (eventsBuilder_ == null) {
           events_ = java.util.Collections.emptyList();
-          bitField0_ = (bitField0_ & ~0x00000002);
+          bitField0_ = (bitField0_ & ~0x00000004);
           onChanged();
         } else {
           eventsBuilder_.clear();
@@ -620,7 +685,7 @@ public final class Storage {
           eventsBuilder_ = new com.google.protobuf.RepeatedFieldBuilder<
               popeye.transport.proto.Message.Event, popeye.transport.proto.Message.Event.Builder, popeye.transport.proto.Message.EventOrBuilder>(
                   events_,
-                  ((bitField0_ & 0x00000002) == 0x00000002),
+                  ((bitField0_ & 0x00000004) == 0x00000004),
                   getParentForChildren(),
                   isClean());
           events_ = null;
@@ -655,9 +720,9 @@ public final class Storage {
     java.lang.String[] descriptorData = {
       "\n$popeye/transport/proto/storage.proto\022\026" +
       "popeye.transport.proto\032$popeye/transport" +
-      "/proto/message.proto\"J\n\010Ensemble\022\017\n\007batc" +
-      "hId\030\001 \002(\003\022-\n\006events\030\002 \003(\0132\035.popeye.trans" +
-      "port.proto.Event"
+      "/proto/message.proto\"]\n\010Ensemble\022\017\n\007batc" +
+      "hId\030\001 \002(\003\022\021\n\tpartition\030\002 \002(\005\022-\n\006events\030\003" +
+      " \003(\0132\035.popeye.transport.proto.Event"
     };
     com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner assigner =
       new com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner() {
@@ -669,7 +734,7 @@ public final class Storage {
           internal_static_popeye_transport_proto_Ensemble_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_popeye_transport_proto_Ensemble_descriptor,
-              new java.lang.String[] { "BatchId", "Events", },
+              new java.lang.String[] { "BatchId", "Partition", "Events", },
               popeye.transport.proto.Storage.Ensemble.class,
               popeye.transport.proto.Storage.Ensemble.Builder.class);
           return null;

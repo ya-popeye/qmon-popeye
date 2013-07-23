@@ -74,6 +74,7 @@ object KafkaEventConsumer extends Logging {
 }
 
 class ConsumerInitializationException extends Exception
+class BatchProcessingFailedException extends Exception
 
 private case object Next
 
@@ -87,13 +88,12 @@ class KafkaEventConsumer(topic: String, group: String, config: ConsumerConfig, t
   log.debug("Starting KafkaEventConsumer for group " + group + " and topic " + topic)
   val consumer = pair.consumer
   val connector = pair.connector
-  val pending = new mutable.TreeSet[Long]()
-  val complete = new mutable.TreeSet[Long]()
-  implicit val timeout: Timeout = new Timeout(system.settings.config.getMilliseconds("kafka.actor.timeout"), MILLISECONDS)
+  lazy implicit val timeout: Timeout = new Timeout(system.settings.config.getMilliseconds("kafka.actor.timeout"), MILLISECONDS)
+  lazy val maxPending = 10
 
   override val supervisorStrategy =
-    OneForOneStrategy(withinTimeRange = (1 minutes)) {
-      case _ ⇒ Restart
+    OneForOneStrategy(maxNrOfRetries=10, withinTimeRange = (5 minutes)) {
+      case ex: BatchProcessingFailedException ⇒ Restart
     }
 
 
@@ -117,49 +117,33 @@ class KafkaEventConsumer(topic: String, group: String, config: ConsumerConfig, t
     case ConsumeDone(id) =>
       if (log.isDebugEnabled)
         log.debug("Consumed {}", id)
-      if (pending.firstKey == id.offset) {
-        pending.remove(id.offset)
-        complete.clear()
-        commit()
-      } else {
-        pending.remove(id.offset)
-        complete.add(id.offset)
-      }
+      commit()
       self ! Next
     case ConsumeFailed(id, ex) =>
       log.error(ex, "Batch {} failed", id)
-      throw ex
+      throw new BatchProcessingFailedException
     case Next =>
-      if (pending.size >= config.queuedMaxMessages) {
-        context.system.scheduler.scheduleOnce(5 seconds, self, Next)
-      } else {
-        try {
-          val iterator = consumer.get.iterator()
-          if (iterator.hasNext()) {
-            val msg = iterator.next()
-            val batchId = msg.message.getBatchId
-            val pos = ConsumeId(batchId, msg.offset, msg.partition)
-            val me = self
-            pending.add(pos.offset)
-            if (log.isDebugEnabled)
-              log.debug("Pos: {}", pos)
-            target ? ConsumePending(msg.message, pos) onComplete {
-              case Success(x) =>
-                me ! ConsumeDone(pos)
-              case Failure(ex: Throwable) =>
-                me ! ConsumeFailed(pos, ex)
-            }
+      try {
+        val iterator = consumer.get.iterator()
+        if (iterator.hasNext()) {
+          val msg = iterator.next()
+          val batchId = msg.message.getBatchId
+          val pos = ConsumeId(batchId, msg.offset, msg.partition)
+          val me = self
+          target ? ConsumePending(msg.message, pos) onComplete {
+            case Success(x) =>
+              me ! ConsumeDone(pos)
+            case Failure(ex: Throwable) =>
+              me ! ConsumeFailed(pos, ex)
           }
-        } catch {
-          case ex: ConsumerTimeoutException => // ok
-          case ex: Throwable =>
-            log.error("Failed to consume", ex)
-            throw ex
         }
-        self ! Next
+      } catch {
+        case ex: ConsumerTimeoutException => // ok
+        case ex: Throwable =>
+          log.error("Failed to consume", ex)
+          throw ex
       }
   }
-
 }
 
 

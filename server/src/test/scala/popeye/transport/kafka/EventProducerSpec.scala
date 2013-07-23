@@ -15,6 +15,7 @@ import kafka.admin.CreateTopicCommand
 import kafka.utils.TestUtils._
 import kafka.message.MessageAndMetadata
 import popeye.uuid.IdGenerator
+import com.codahale.metrics.MetricRegistry
 
 /**
  * @author Andrey Stepachev
@@ -27,10 +28,11 @@ class EventProducerSpec extends AkkaTestKitSpec("ProducerTest") with KafkaServer
   val group = "test"
   implicit val timeout: Timeout = 5 seconds
   implicit val generator: IdGenerator = new IdGenerator(1)
+  implicit val metricRegistry = new MetricRegistry
 
   "Producer" should "should publish events" in withKafkaServer() {
-    CreateTopicCommand.createTopic(zkClient, topic, 1, 1)
-    waitUntilLeaderIsElectedOrChanged(zkClient, topic, 0, 500)
+    CreateTopicCommand.createTopic(zkClient, topic, 1, 1, "")
+    waitUntilLeaderIsElectedOrChanged(zkClient, topic, 0, 500, None)
 
     val config: Config = ConfigFactory.parseString(
       s"""
