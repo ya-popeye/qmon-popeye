@@ -48,12 +48,6 @@ object Main extends App {
   val tsdbSink = TsdbWriter.start(config)
   val consumer = system.actorOf(KafkaEventConsumer.props(config, tsdbSink))
 
-  val reporter = ConsoleReporter.forRegistry(metricRegistry)
-    .convertRatesTo(TimeUnit.SECONDS)
-    .convertDurationsTo(TimeUnit.MILLISECONDS)
-    .build();
-  reporter.start(10, TimeUnit.SECONDS);
-
   val jmxreporter = JmxReporter
     .forRegistry(metricRegistry)
     .convertRatesTo(TimeUnit.SECONDS)
