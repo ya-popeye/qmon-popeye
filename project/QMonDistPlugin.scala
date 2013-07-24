@@ -46,7 +46,7 @@ object QMonDistPlugin extends Plugin {
       unmanagedResourceDirectories <<= (unmanagedResourceDirectories in Runtime),
       outputDirectory <<= target / "dist",
       configSourceDirs <<= defaultConfigSourceDirs,
-      distJvmOptions := "-Xms1024M -Xmx1024M -Xss1M -XX:MaxPermSize=256M -XX:+UseParallelGC",
+      distJvmOptions := "-Xms1024M -Xmx4096M -Xss1M -XX:MaxPermSize=256M -XX:+UseParallelGC",
       libFilter := { f ⇒ true },
       additionalLibs <<= defaultAdditionalLibs,
       distConfig <<= (outputDirectory, configSourceDirs, distJvmOptions, distMainClass, libFilter, additionalLibs) map DistConfig)) ++

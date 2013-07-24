@@ -4,7 +4,7 @@ import popeye.transport.proto.Message.Batch
 
 sealed class ProduceCommand
 
-case class ProducePending(data: Batch, correlationId: Long) extends ProduceCommand
+case class ProducePending(correlationId: Long)(val data: Batch) extends ProduceCommand
 
 case class ProduceDone(correlationId: Long, assignedBatchId: Long) extends ProduceCommand
 

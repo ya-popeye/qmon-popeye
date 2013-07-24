@@ -29,7 +29,7 @@ class BufferedFSMSpec extends AkkaTestKitSpec("ProducerTest") with Logging {
     expectResult(2) {
       Await.result(fsm.ask("how-much").mapTo[Long], 1 seconds)
     }
-    fsm ! Flush()
+    fsm ! Flush
     expectResult(0) {
       Await.result(
       fsm.ask("how-much").mapTo[Long], 1 seconds)

@@ -16,7 +16,7 @@ import scala.concurrent.duration.Duration
 import scala.collection.JavaConversions.asJavaIterable
 import popeye.BufferedFSM
 import scala.concurrent.duration.FiniteDuration
-import popeye.BufferedFSM.{Flush, Todo}
+import popeye.BufferedFSM.{FlushStop, Flush, Todo}
 import scala.util.{Failure, Success}
 import scala.concurrent.ExecutionContext.Implicits.global
 import java.util.concurrent.atomic.AtomicLong
@@ -28,11 +28,11 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], kafkaPro
   extends BufferedFSM[PEvent] with ActorLogging {
 
   val kafkaTimeout: akka.util.Timeout = new akka.util.Timeout(
-    Duration(config.getString("kafka.send.timeout"))
+    Duration(config.getString("kafka.produce.timeout"))
       .asInstanceOf[FiniteDuration])
 
-  override val timeout: FiniteDuration = 1 seconds
-  override val flushEntitiesCount: Int = 5000
+  override val timeout: FiniteDuration = new FiniteDuration(config.getMilliseconds("tsdb.telnet.flush.tick"), MILLISECONDS)
+  override val flushEntitiesCount: Int = config.getInt("tsdb.telnet.flush.events")
   private val lastBatchId: AtomicLong = new AtomicLong(0)
   private val pendingCorrelations = new ListBuffer[(ActorRef, Long)]
 
@@ -46,10 +46,7 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], kafkaPro
       me ! ReplyOk()
     } else {
       log.debug("Flush collected " + todo.entityCnt + " events")
-      kafkaProducer.ask(ProducePending(
-        Batch.newBuilder().addAllEvent(todo.queue).build,
-        0
-      ))(kafkaTimeout) onComplete {
+      kafkaProducer.ask(ProducePending(0)(Batch.newBuilder().addAllEvent(todo.queue).build))(kafkaTimeout) onComplete {
         case Success(p@ProduceDone(_, batchId)) =>
           log.debug("ProduceDone: {}", p)
           var pv: Long = 0
@@ -80,7 +77,10 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], kafkaPro
               todo.copy(entityCnt = todo.entityCnt + 1, queue = todo.queue :+ parsePoint(strings))
             case "commit" =>
               pendingCorrelations += (sender -> strings(1).toLong)
-              self ! Flush()
+              self ! Flush
+              todo
+            case "exit" =>
+              self ! FlushStop
               todo
             case _ =>
               sender ! init.Command("OK" + "\n")
@@ -110,7 +110,7 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], kafkaPro
 
     case Event(x: Tcp.ConnectionClosed, todo) =>
       log.debug("connection closed")
-      context.stop(self)
+      self ! FlushStop
       todo
   }
 

@@ -3,13 +3,9 @@ package popeye.storage.opentsdb
 import org.scalatest.mock.MockitoSugar
 import popeye.transport.test.{AkkaTestKitSpec, KafkaServerTestSpec}
 import akka.testkit.TestActorRef
-import akka.pattern.ask
 import org.hbase.async.{Bytes, KeyValue, HBaseClient}
-import net.opentsdb.core.TSDB
-import popeye.transport.kafka.{ConsumeDone, ConsumeId, ConsumePending}
-import popeye.transport.proto.Storage.Ensemble
 import popeye.uuid.IdGenerator
-import popeye.transport.proto.Message.{Tag, Event}
+import popeye.transport.proto.Message.{Batch, Tag, Event}
 import java.util.Random
 import java.util.concurrent.atomic.AtomicInteger
 import org.mockito.Mockito._
@@ -18,55 +14,71 @@ import com.stumbleupon.async.Deferred
 import java.util
 import scala.concurrent.Await
 import scala.concurrent.duration._
+import scala.collection.JavaConversions.seqAsJavaList
 import akka.util.Timeout
+import akka.pattern.ask
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.{ConfigFactory, Config}
-import akka.actor.Props
+import kafka.admin.CreateTopicCommand
+import kafka.utils.TestUtils._
+import scala.Some
+import popeye.transport.kafka.{ProduceDone, ProducePending, KafkaEventProducer}
+import popeye.BufferedFSM.Flush
 
 /**
  * @author Andrey Stepachev
  */
-class TsdbWriterTestSpec extends AkkaTestKitSpec("tsdb-writer") with KafkaServerTestSpec with MockitoSugar {
+class TsdbEventConsumerTestSpec extends AkkaTestKitSpec("tsdb-writer") with KafkaServerTestSpec with MockitoSugar {
 
   val mockSettings = withSettings()
   //.verboseLogging()
   val idGenerator = new IdGenerator(1)
   val ts = new AtomicInteger(1234123412)
   implicit val timeout: Timeout = 5 seconds
+  implicit val generator: IdGenerator = new IdGenerator(1)
   implicit val metricRegistry = new MetricRegistry()
+  val topic = "test"
+  val group = "test"
 
-  behavior of "TsdbWriter"
 
+  behavior of "TsdbEventConsumer"
 
-  it should "handle events" in {
+  it should "consume" in withKafkaServer() {
+    CreateTopicCommand.createTopic(zkClient, topic, 1, 1, "")
+    waitUntilLeaderIsElectedOrChanged(zkClient, topic, 0, 500, None)
+
     val hbc = mock[HBaseClient](mockSettings)
     when(hbc.get(any())).thenReturn(Deferred.fromResult(mkIdKeyValue(1)))
     when(hbc.put(any())).thenReturn(Deferred.fromResult(new Object))
-    val tsdb = new TSDB(hbc, "tsdb", "tsdb-uid")
     val config: Config = ConfigFactory.parseString(
       s"""
-        |
+        |   tsdb.consumer {
+        |         auto.offset.reset=smallest
+        |         group=$group
+        |         zookeeper.connect="$zkConnect"
+        |   }
+        |   kafka.producer.metadata.broker.list="$kafkaBrokersList"
+        |   kafka.points.topic="$topic"
       """.stripMargin).withFallback(ConfigFactory.load())
+    val actor = TestActorRef(KafkaEventProducer.props(config, generator))
+    val future = ask(actor, ProducePending(123)(makeBatch())).mapTo[ProduceDone]
+    actor ! Flush
+    Await.result(future, timeout.duration)
+    logger.debug(s"Got result ${future.value}, ready for consume")
 
-    val writer = TestActorRef(Props(new TsdbWriter(config, tsdb, TsdbWriterMetrics(metricRegistry))), "tsdb-writer")
-    val ensemble: Ensemble = mkEnesemble()
-    val id: ConsumeId = ConsumeId(ensemble.getBatchId, 1000, 1)
-    val future = writer ? ConsumePending(ensemble, id)
-    //writer ! Flush()
-    val result = Await.result(future, timeout.duration).asInstanceOf[ConsumeDone]
-    result.id must be(id)
+    val consumer: TestActorRef[TsdbEventConsumer] = TestActorRef(TsdbEventConsumer.props(config, Some(hbc)))
+    consumer.underlyingActor.metrics.batchCompleteHist.count must be (1)
+    system.shutdown()
   }
 
   val rnd = new Random(12345)
 
-  def mkEnesemble(msgs: Int = 2): Ensemble = {
-    val b = Ensemble.newBuilder()
-      .setBatchId(idGenerator.nextId())
-      .setPartition(1)
-    for (i <- 0 to msgs - 1) {
-      b.addEvents(i, mkEvent())
+  def mkEvents(msgs: Int = 2): Traversable[Event] = {
+    for {
+      i <- 0 to msgs - 1
+    } yield {
+      mkEvent()
     }
-    b.build()
   }
 
   def mkEvent(): Event = {
@@ -79,6 +91,13 @@ class TsdbWriterTestSpec extends AkkaTestKitSpec("tsdb-writer") with KafkaServer
       .setValue("localhost")
     ).build()
   }
+
+  def makeBatch(): Batch = {
+    Batch.newBuilder().addAllEvent(
+      mkEvents().toSeq
+    ).build
+  }
+
 
   def mkIdKeyValue(id: Long): util.ArrayList[KeyValue] = {
     val a = new util.ArrayList[KeyValue]()

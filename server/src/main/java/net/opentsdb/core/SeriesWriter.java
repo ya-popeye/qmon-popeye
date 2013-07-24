@@ -20,7 +20,12 @@ class SeriesWriter {
 
     @Override
     public int compareTo(TsdbPut o) {
-      return Bytes.memcmp(this.row, o.row);
+      final int c = Bytes.memcmp(this.row, o.row);
+      if (c == 0)
+        return c;
+      long thisVal = event.getTimestamp();
+      long anotherVal = o.event.getTimestamp();
+      return (thisVal<anotherVal ? -1 : (thisVal==anotherVal ? 0 : 1));
     }
   }
 

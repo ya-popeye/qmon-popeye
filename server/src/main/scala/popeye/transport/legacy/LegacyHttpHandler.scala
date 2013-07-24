@@ -35,7 +35,7 @@ class LegacyHttpHandler(config: Config, kafkaProducer: ActorRef)(implicit overri
 
   implicit val timeout: Timeout = 5.second
   // for the actor 'asks'
-  val kafkaTimeout: Timeout = new Timeout(config.getDuration("kafka.send.timeout").asInstanceOf[FiniteDuration])
+  val kafkaTimeout: Timeout = new Timeout(config.getDuration("kafka.produce.timeout").asInstanceOf[FiniteDuration])
 
   import context.dispatcher
 
@@ -67,10 +67,7 @@ class LegacyHttpHandler(config: Config, kafkaProducer: ActorRef)(implicit overri
 
       val result = for {
         parsed <- ask(parser, ParseRequest(entity.buffer)).mapTo[ParseResult]
-        stored <- ask(kafkaProducer, ProducePending(
-          Batch.newBuilder().addAllEvent(parsed.batch).build,
-          0
-        ))(kafkaTimeout)
+        stored <- ask(kafkaProducer, ProducePending(0)(Batch.newBuilder().addAllEvent(parsed.batch).build))(kafkaTimeout)
       } yield {
         requestsBatches.update(parsed.batch.size)
         timer.stop()

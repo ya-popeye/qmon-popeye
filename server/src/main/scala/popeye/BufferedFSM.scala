@@ -13,9 +13,13 @@ object BufferedFSM {
 
   case object Active extends State
 
+  case object Stop extends State
+
   sealed case class Todo[Entity](entityCnt: Long = 0, queue: immutable.Seq[Entity] = Vector.empty)
 
-  sealed case class Flush()
+  case object Flush
+
+  case object FlushStop
 }
 
 import BufferedFSM._
@@ -33,19 +37,31 @@ trait BufferedFSM[Entity] extends FSM[State, Todo[Entity]] {
 
   startWith(Idle, Todo())
 
+  when(Stop) {
+    case _ =>
+      context.stop(self)
+      consumeCollected(stateData)
+      stay
+  }
+
   when(Idle) {
-    case Event(Flush(), _) =>
+    case Event(Flush, _) =>
       stay // nothing to do
+    case Event(FlushStop, _) =>
+      context.stop(self)
+      stay
   }
 
   when(Active, stateTimeout = timeout) {
-    case Event(Flush() | StateTimeout, _) =>
+    case Event(Flush | StateTimeout, _) =>
       goto(Idle) using Todo()
+    case Event(FlushStop, _) =>
+      goto(Stop) using Todo()
   }
 
 
   onTransition {
-    case Active -> Idle ⇒
+    case Active -> Idle | Active -> Stop ⇒
       stateData match {
         case t@Todo(eventsCnt, queue) =>
           if (log.isDebugEnabled)
@@ -57,7 +73,7 @@ trait BufferedFSM[Entity] extends FSM[State, Todo[Entity]] {
   whenUnhandled {
     case e @ Event(message, t: Todo[Entity]) =>
       if (t.entityCnt >= flushEntitiesCount)
-        self ! Flush()
+        self ! Flush
       val rv = (handleMessage orElse unhandledEvent)(e)
       rv match {
         case Nil =>

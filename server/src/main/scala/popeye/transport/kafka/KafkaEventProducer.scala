@@ -35,14 +35,13 @@ class KafkaEventProducer(config: Config,
                           metrics: KafkaEventProducerMetrics)
   extends BufferedFSM[ProducePack] with ActorLogging {
 
-  val topic = config.getString("kafka.events.topic")
+  val topic = config.getString("kafka.points.topic")
   val producer = new Producer[Nothing, Ensemble](producerConfig)
   val partitions = ClientUtils.fetchTopicMetadata(Set(topic), ClientUtils.parseBrokerList(producerConfig.brokerList), producerConfig, 1)
     .topicsMetadata
     .filter(_.topic == topic).head.partitionsMetadata.size
 
   def timeout: FiniteDuration = new FiniteDuration(config.getMilliseconds("kafka.producer.flush.tick"), MILLISECONDS)
-
   def flushEntitiesCount: Int = config.getInt("kafka.producer.flush.events")
 
   override def consumeCollected(todo: Todo[ProducePack]) = {
@@ -83,8 +82,8 @@ class KafkaEventProducer(config: Config,
   }
 
   val handleMessage: TodoFunction = {
-    case Event(p@ProducePending(events, correlation), todo) =>
-      val t = todo.copy(entityCnt = todo.entityCnt + events.getEventCount(), queue = todo.queue :+ ProducePack(sender, p))
+    case Event(p@ProducePending(correlation), todo) =>
+      val t = todo.copy(entityCnt = todo.entityCnt + p.data.getEventCount, queue = todo.queue :+ ProducePack(sender, p))
       if (log.isDebugEnabled)
         log.debug("Queued {} todo.queue={}", correlation, t.queue.size)
       t

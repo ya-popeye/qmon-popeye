@@ -2,10 +2,9 @@ package popeye.transport
 
 import akka.actor.ActorSystem
 import popeye.transport.legacy.{TsdbTelnetServer, LegacyHttpHandler}
-import popeye.transport.kafka.{KafkaEventConsumer, KafkaEventProducer}
+import popeye.transport.kafka.{KafkaEventProducer}
 import akka.event.LogSource
 import popeye.uuid.IdGenerator
-import popeye.storage.opentsdb.TsdbWriter
 import scala.concurrent.duration._
 import akka.util.Timeout
 import com.codahale.metrics.{JmxReporter, ConsoleReporter}
@@ -13,6 +12,8 @@ import com.codahale.metrics.MetricRegistry
 import com.codahale.metrics.{Gauge => CHGauge}
 import java.util.concurrent.TimeUnit
 import com.typesafe.config.ConfigFactory
+import popeye.storage.opentsdb.TsdbEventConsumer
+import akka.routing.FromConfig
 
 /**
  * @author Andrey Stepachev
@@ -45,8 +46,7 @@ object Main extends App {
   LegacyHttpHandler.bind(config, kafkaProducer)
   TsdbTelnetServer.start(config, kafkaProducer)
 
-  val tsdbSink = TsdbWriter.start(config)
-  val consumer = system.actorOf(KafkaEventConsumer.props(config, tsdbSink))
+  val consumer = TsdbEventConsumer.start(config)
 
   val jmxreporter = JmxReporter
     .forRegistry(metricRegistry)
