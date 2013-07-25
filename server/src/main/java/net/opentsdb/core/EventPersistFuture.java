@@ -36,7 +36,6 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public abstract class EventPersistFuture implements Callback<Object, Object>, Future<Object> {
 
-  public static final Comparator<Message.Event> EVENT_COMPARATOR = orderByTimestamp();
   static Field clientField;
   static Field metricsField;
 
@@ -60,19 +59,10 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
     }
   }
 
-  static UniqueId stealMetrics(TSDB tsdb) {
-    try {
-      return (UniqueId) metricsField.get(tsdb);
-    } catch (IllegalAccessException e) {
-      throw new RuntimeException("Very bad, can't read UniqueId field 'metric'", e);
-    }
-  }
-
   private Logger logger = LoggerFactory.getLogger(EventPersistFuture.class);
 
   private TSDB tsdb;
   private HBaseClient client;
-  private final UniqueId metric;
   private long startMillis;
   private long finishMillis;
   private AtomicBoolean canceled = new AtomicBoolean(false);
@@ -83,7 +73,6 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
   public EventPersistFuture(TSDB tsdb, Message.Event[] batch) {
     this.tsdb = tsdb;
     this.client = stealHBaseClient(tsdb);
-    this.metric = stealMetrics(tsdb);
     try {
       writeDataPoints(batch);
     } catch (Exception e) {
@@ -247,23 +236,6 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
     }
     logger.info("Done throttling...");
     throttle = false;
-  }
-
-
-  private Map<String, String> toMap(List<Message.Tag> tagsList) {
-    Map<String, String> tagsMap = new HashMap<String, String>();
-    for (Message.Tag tag : tagsList) {
-      tagsMap.put(tag.getName(), tag.getValue());
-    }
-    return tagsMap;
-  }
-
-  public static Comparator<Message.Event> orderByTimestamp() {
-    return new Comparator<Message.Event>() {
-      public int compare(Message.Event o1, Message.Event o2) {
-        return (o1.getTimestamp() < o2.getTimestamp()) ? -1 : (o1.getTimestamp() == o2.getTimestamp() ? 0 : 1);
-      }
-    };
   }
 
   /**
