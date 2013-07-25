@@ -67,7 +67,7 @@ class LegacyHttpHandler(config: Config, kafkaProducer: ActorRef)(implicit overri
 
       val result = for {
         parsed <- ask(parser, ParseRequest(entity.buffer)).mapTo[ParseResult]
-        stored <- ask(kafkaProducer, ProducePending(0)(Batch.newBuilder().addAllEvent(parsed.batch).build))(kafkaTimeout)
+        stored <- ask(kafkaProducer, ProducePending(0)(parsed.batch))(kafkaTimeout)
       } yield {
         requestsBatches.update(parsed.batch.size)
         timer.stop()

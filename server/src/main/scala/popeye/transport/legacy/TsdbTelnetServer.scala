@@ -2,68 +2,47 @@ package popeye.transport.legacy
 
 import akka.actor._
 import akka.io._
-import akka.pattern.ask
 import akka.util.ByteString
 import akka.io.IO
 import akka.io.TcpPipelineHandler.{WithinActorContext, Init}
 import java.net.InetSocketAddress
 import net.opentsdb.core.Tags
 import popeye.transport.kafka.{ProduceDone, ProducePending}
-import popeye.transport.proto.Message.{Tag, Event => PEvent, Batch}
+import popeye.transport.proto.Message.{Tag, Event}
 import scala.collection.mutable
 import scala.concurrent.duration._
-import scala.concurrent.duration.Duration
-import scala.collection.JavaConversions.asJavaIterable
-import popeye.BufferedFSM
-import scala.concurrent.duration.FiniteDuration
-import popeye.BufferedFSM.{FlushStop, Flush, Todo}
-import scala.util.{Failure, Success}
-import scala.concurrent.ExecutionContext.Implicits.global
 import java.util.concurrent.atomic.AtomicLong
 import scala.collection.mutable.ListBuffer
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.Config
 
-class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], kafkaProducer: ActorRef, config: Config)
-  extends BufferedFSM[PEvent] with ActorLogging {
+object TsdbTelnetHandlerProto {
 
-  val kafkaTimeout: akka.util.Timeout = new akka.util.Timeout(
-    Duration(config.getString("kafka.produce.timeout"))
-      .asInstanceOf[FiniteDuration])
-
-  override val timeout: FiniteDuration = new FiniteDuration(config.getMilliseconds("tsdb.telnet.flush.tick"), MILLISECONDS)
-  override val flushEntitiesCount: Int = config.getInt("tsdb.telnet.flush.events")
-  private val lastBatchId: AtomicLong = new AtomicLong(0)
-  private val pendingCorrelations = new ListBuffer[(ActorRef, Long)]
-
-  sealed case class ReplyOk()
+  case object ReplyOk
 
   sealed case class ReplyErr(ex: Throwable)
 
-  override def consumeCollected(todo: Todo[PEvent]) = {
-    val me = self
-    if (todo.queue.isEmpty) {
-      me ! ReplyOk()
-    } else {
-      log.debug("Flush collected " + todo.entityCnt + " events")
-      kafkaProducer.ask(ProducePending(0)(Batch.newBuilder().addAllEvent(todo.queue).build))(kafkaTimeout) onComplete {
-        case Success(p@ProduceDone(_, batchId)) =>
-          log.debug("ProduceDone: {}", p)
-          var pv: Long = 0
-          do {
-            pv = lastBatchId.get()
-          } while (pv < batchId && !lastBatchId.compareAndSet(pv, batchId))
-          me ! ReplyOk()
-        case Failure(ex: Throwable) =>
-          me ! ReplyErr(ex)
-        case s =>
-          me ! ReplyErr(new IllegalStateException("Unknown event " + s))
-      }
-    }
-  }
+}
 
-  override val handleMessage: TodoFunction = {
-    case Event(init.Event(data), todo) =>
+class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], connection: ActorRef, kafkaProducer: ActorRef, config: Config)
+  extends Actor with ActorLogging {
+
+  import TsdbTelnetHandlerProto._
+
+  val pendingTimeout: akka.util.Timeout = 5 seconds
+  // TODO: move to config
+  val hwPendingPoints: Long = 2000
+  val lwPendingPoints: Long = 1000
+  require(hwPendingPoints > lwPendingPoints, "High watermark should be greater then low watermark")
+
+  private val pendigCommits = new ListBuffer[(ActorRef, Long)]
+  private var lastBatchId: Long = 0
+  private var confirmedPointId: Long = 0
+  private var pointId: Long = 0
+  private var suspended = false
+
+  final def receive = {
+    case init.Event(data) =>
       if (data.length > 0) {
         val input = if (data.charAt(data.length - 1) == '\r') {
           data.dropRight(1)
@@ -74,50 +53,67 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], kafkaPro
           val strings = Tags.splitString(input, ' ')
           strings(0) match {
             case "put" =>
-              todo.copy(entityCnt = todo.entityCnt + 1, queue = todo.queue :+ parsePoint(strings))
+              pointId += 1
+              kafkaProducer ! ProducePending(pointId)(Seq(parsePoint(strings)))
+              checkSuspension()
             case "commit" =>
-              pendingCorrelations += (sender -> strings(1).toLong)
-              self ! Flush
-              todo
+              pendigCommits += (sender -> strings(1).toLong)
+              self ! ReplyOk
+            case "ver" =>
+              self ! init.Command("OK unknown\n")
             case "exit" =>
-              self ! FlushStop
-              todo
+              self ! init.Command("OK sayonara\n")
+              self ! Tcp.ConfirmedClose
             case _ =>
-              sender ! init.Command("OK" + "\n")
-              todo
+              sender ! init.Command("OK Unknown command\n")
           }
         } catch {
           case ex: Exception =>
             sender ! init.Command("ERR " + ex.getMessage + "\n")
             context.stop(self)
-            todo
         }
-      } else {
-        todo
       }
 
-    case Event(ReplyOk(), todo) =>
-      pendingCorrelations foreach {
-        p =>
-          p._1 ! init.Command("OK " + p._2 + "=" + lastBatchId.get() + "\n")
-      }
-      pendingCorrelations.clear()
-      todo
+    case ProduceDone(completePointId, batchId) =>
+      if (lastBatchId < batchId)
+        lastBatchId = batchId
+      val last: Long = completePointId.sorted.last
+      if (confirmedPointId < last)
+        confirmedPointId = last
+      checkSuspension()
+      self ! ReplyOk
 
-    case Event(ReplyErr(ex), todo) =>
+    case ReplyOk =>
+      pendigCommits foreach {p =>
+        p._1 ! init.Command("OK " + p._2 + "=" + lastBatchId + "\n")
+      }
+      pendigCommits.clear()
+
+    case ReplyErr(ex) =>
       sender ! init.Command("ERR " + ex.getMessage + "\n")
-      todo
 
-    case Event(x: Tcp.ConnectionClosed, todo) =>
+    case x: Tcp.ConnectionClosed =>
       log.debug("connection closed")
-      self ! FlushStop
-      todo
+      context.stop(self)
   }
 
-  initialize()
+  def checkSuspension() = {
+    val pending = pointId - confirmedPointId
+    if (pending > hwPendingPoints && !suspended) {
+      self ! Tcp.SuspendReading
+      suspended = true
+      log.debug("Suspending client")
 
-  def parsePoint(words: Array[String]): PEvent = {
-    val ev = PEvent.newBuilder()
+    }
+    if (pending < lwPendingPoints && suspended) {
+      self ! Tcp.ResumeReading
+      suspended = false
+      log.debug("Resuming client")
+    }
+  }
+
+  def parsePoint(words: Array[String]): Event = {
+    val ev = Event.newBuilder()
     words(0) = null; // Ditch the "put".
     if (words.length < 5) {
       // Need at least: metric timestamp value tag
@@ -154,7 +150,7 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], kafkaPro
    * @throws IllegalArgumentException if the tag was already in tags with a
    *                                  different value.
    */
-  def parseTags(builder: PEvent.Builder, startIdx: Int, tags: Array[String]) {
+  def parseTags(builder: Event.Builder, startIdx: Int, tags: Array[String]) {
     val set = mutable.HashSet[String]()
     for (i <- startIdx to tags.length - 1) {
       val tag = tags(i)
@@ -195,7 +191,7 @@ class TsdbTelnetServer(local: InetSocketAddress, kafka: ActorRef)(implicit val m
           new BackpressureBuffer(lowBytes = 1 * 1024 * 1024, highBytes = 4 * 1024 * 1024, maxBytes = 10 * 1024 * 1024))
 
       val connection = sender
-      val handler = context.actorOf(Props(new TsdbTelnetHandler(init, kafka, system.settings.config))
+      val handler = context.actorOf(Props(new TsdbTelnetHandler(init, connection, kafka, system.settings.config))
         .withDeploy(Deploy.local))
       val pipeline = context.actorOf(TcpPipelineHandler.props(
         init, connection, handler).withDeploy(Deploy.local))

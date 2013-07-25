@@ -1,11 +1,11 @@
 package popeye.transport.kafka
 
-import popeye.transport.proto.Message.Batch
+import popeye.transport.proto.Message.Event
 
 sealed class ProduceCommand
 
-case class ProducePending(correlationId: Long)(val data: Batch) extends ProduceCommand
+case class ProducePending(correlationId: Long)(val data: Seq[Event]) extends ProduceCommand
 
-case class ProduceDone(correlationId: Long, assignedBatchId: Long) extends ProduceCommand
+case class ProduceDone(correlationId: Seq[Long], assignedBatchId: Long) extends ProduceCommand
 
-case class ProduceFailed(correlationId: Long, cause: Throwable) extends ProduceCommand
+case class ProduceFailed(correlationId: Seq[Long], cause: Throwable) extends ProduceCommand

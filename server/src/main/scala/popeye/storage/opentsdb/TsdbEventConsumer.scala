@@ -34,8 +34,6 @@ class ConsumerInitializationException extends Exception
 
 class BatchProcessingFailedException extends Exception
 
-private case object Next
-
 case class TsdbEventConsumerMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
   val consumeTimer = metrics.timer("tsdb.consume.time")
   val batchSizeHist = metrics.histogram("tsdb.consume.batch.size")
@@ -47,6 +45,8 @@ case class TsdbEventConsumerMetrics(override val metricRegistry: MetricRegistry)
 }
 
 object TsdbEventConsumerProtocol {
+
+  case object Next
 
   sealed class ConsumeCommand
 
@@ -88,14 +88,14 @@ class TsdbEventConsumer(topic: String, group: String, config: ConsumerConfig, ts
   def receive = {
     case ConsumeDone(batches) =>
       if (log.isDebugEnabled)
-        log.debug("Consumed {}", batches)
+        log.debug("Consumed {} batches", batches.size)
       self ! Next
       connector.commitOffsets
       metrics.batchCompleteHist.mark()
       doNext
 
     case ConsumeFailed(batches, ex) =>
-      log.error(ex, "Batch {} failed", batches)
+      log.error(ex, "Batches {} failed", batches.size)
       metrics.batchFailedHist.mark()
       throw new BatchProcessingFailedException
 

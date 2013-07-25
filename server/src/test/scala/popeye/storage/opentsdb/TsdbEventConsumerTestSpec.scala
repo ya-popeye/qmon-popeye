@@ -92,10 +92,8 @@ class TsdbEventConsumerTestSpec extends AkkaTestKitSpec("tsdb-writer") with Kafk
     ).build()
   }
 
-  def makeBatch(): Batch = {
-    Batch.newBuilder().addAllEvent(
-      mkEvents().toSeq
-    ).build
+  def makeBatch(): Seq[Event] = {
+    mkEvents().toSeq
   }
 
 
