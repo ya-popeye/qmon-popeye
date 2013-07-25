@@ -5,7 +5,7 @@ import popeye.transport.test.{AkkaTestKitSpec, KafkaServerTestSpec}
 import akka.testkit.TestActorRef
 import org.hbase.async.{Bytes, KeyValue, HBaseClient}
 import popeye.uuid.IdGenerator
-import popeye.transport.proto.Message.{Batch, Tag, Event}
+import popeye.transport.proto.Message.{Tag, Event}
 import java.util.Random
 import java.util.concurrent.atomic.AtomicInteger
 import org.mockito.Mockito._
@@ -14,7 +14,6 @@ import com.stumbleupon.async.Deferred
 import java.util
 import scala.concurrent.Await
 import scala.concurrent.duration._
-import scala.collection.JavaConversions.seqAsJavaList
 import akka.util.Timeout
 import akka.pattern.ask
 import com.codahale.metrics.MetricRegistry
@@ -23,7 +22,6 @@ import kafka.admin.CreateTopicCommand
 import kafka.utils.TestUtils._
 import scala.Some
 import popeye.transport.kafka.{ProduceDone, ProducePending, KafkaEventProducer}
-import popeye.BufferedFSM.Flush
 
 /**
  * @author Andrey Stepachev
@@ -62,12 +60,11 @@ class TsdbEventConsumerTestSpec extends AkkaTestKitSpec("tsdb-writer") with Kafk
       """.stripMargin).withFallback(ConfigFactory.load())
     val actor = TestActorRef(KafkaEventProducer.props(config, generator))
     val future = ask(actor, ProducePending(123)(makeBatch())).mapTo[ProduceDone]
-    actor ! Flush
     Await.result(future, timeout.duration)
     logger.debug(s"Got result ${future.value}, ready for consume")
 
     val consumer: TestActorRef[TsdbEventConsumer] = TestActorRef(TsdbEventConsumer.props(config, Some(hbc)))
-    consumer.underlyingActor.metrics.batchCompleteHist.count must be (1)
+    consumer.underlyingActor.metrics.batchCompleteHist.count must be(1)
     system.shutdown()
   }
 

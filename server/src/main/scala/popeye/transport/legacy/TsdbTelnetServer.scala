@@ -12,7 +12,7 @@ import popeye.transport.proto.Message.{Tag, Event}
 import scala.collection.mutable
 import scala.concurrent.duration._
 import java.util.concurrent.atomic.AtomicLong
-import scala.collection.mutable.ListBuffer
+import scala.collection.mutable.ArrayBuffer
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.Config
 
@@ -35,11 +35,14 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], connecti
   val lwPendingPoints: Long = 1000
   require(hwPendingPoints > lwPendingPoints, "High watermark should be greater then low watermark")
 
-  private val pendigCommits = new ListBuffer[(ActorRef, Long)]
+  private var pendingCommits: Seq[(ActorRef, (Long, Long))] = Vector()
+  private var pendingExit = false
   private var lastBatchId: Long = 0
   private var confirmedPointId: Long = 0
   private var pointId: Long = 0
   private var suspended = false
+
+  context watch connection
 
   final def receive = {
     case init.Event(data) =>
@@ -57,13 +60,13 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], connecti
               kafkaProducer ! ProducePending(pointId)(Seq(parsePoint(strings)))
               checkSuspension()
             case "commit" =>
-              pendigCommits += (sender -> strings(1).toLong)
+              pendingCommits = pendingCommits :+ (sender -> (pointId -> strings(1).toLong))
               self ! ReplyOk
             case "ver" =>
-              self ! init.Command("OK unknown\n")
+              sender ! init.Command("OK unknown\n")
             case "exit" =>
-              self ! init.Command("OK sayonara\n")
-              self ! Tcp.ConfirmedClose
+              pendingExit = true
+              self ! ReplyOk
             case _ =>
               sender ! init.Command("OK Unknown command\n")
           }
@@ -84,31 +87,34 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], connecti
       self ! ReplyOk
 
     case ReplyOk =>
-      pendigCommits foreach {p =>
-        p._1 ! init.Command("OK " + p._2 + "=" + lastBatchId + "\n")
+      val filterF: ((ActorRef, (Long, Long))) => Boolean = _._2._1 >= confirmedPointId
+
+      pendingCommits.find(filterF) foreach {p =>
+        p._1 ! init.Command("OK " + p._2._2 + "=" + lastBatchId + "\n")
       }
-      pendigCommits.clear()
+      pendingCommits = pendingCommits.filterNot(filterF)
+      if (pendingExit && pendingCommits.isEmpty) {
+        connection ! Tcp.ConfirmedClose
+      }
 
     case ReplyErr(ex) =>
       sender ! init.Command("ERR " + ex.getMessage + "\n")
 
     case x: Tcp.ConnectionClosed =>
-      log.debug("connection closed")
+      log.debug("connection closed, pointId={}, confirmed={}", pointId, confirmedPointId)
       context.stop(self)
   }
 
   def checkSuspension() = {
     val pending = pointId - confirmedPointId
     if (pending > hwPendingPoints && !suspended) {
-      self ! Tcp.SuspendReading
+      connection ! Tcp.SuspendReading
       suspended = true
-      log.debug("Suspending client")
-
     }
+
     if (pending < lwPendingPoints && suspended) {
-      self ! Tcp.ResumeReading
+      connection ! Tcp.ResumeReading
       suspended = false
-      log.debug("Resuming client")
     }
   }
 

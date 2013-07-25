@@ -14,9 +14,8 @@ import scala.Some
 import akka.actor.OneForOneStrategy
 import popeye.transport.ConfigUtil._
 import popeye.transport.proto.Storage.Ensemble
-import akka.util.Timeout
 import com.codahale.metrics.MetricRegistry
-import scala.collection.mutable.ListBuffer
+import scala.collection.mutable.ArrayBuffer
 import popeye.transport.proto.Message
 import popeye.storage.opentsdb.TsdbEventConsumer.ConsumerPair
 import popeye.transport.proto.Message.Event
@@ -53,6 +52,7 @@ object TsdbEventConsumerProtocol {
   case class ConsumeDone(batches: Traversable[Long]) extends ConsumeCommand
 
   case class ConsumeFailed(batches: Traversable[Long], cause: Throwable) extends ConsumeCommand
+
 }
 
 class TsdbEventConsumer(topic: String, group: String, config: ConsumerConfig, tsdb: TSDB, val metrics: TsdbEventConsumerMetrics)
@@ -104,8 +104,8 @@ class TsdbEventConsumer(topic: String, group: String, config: ConsumerConfig, ts
   }
 
   def doNext() = {
-    val batches = new ListBuffer[Long]
-    val events = new ListBuffer[Message.Event]
+    val batches = new ArrayBuffer[Long]
+    val events = new ArrayBuffer[Message.Event]
     val tctx = metrics.consumeTimer.timerContext()
     val iterator = consumer.get.iterator()
     try {
@@ -135,13 +135,13 @@ class TsdbEventConsumer(topic: String, group: String, config: ConsumerConfig, ts
         val nanos = ctx.stop()
         self ! ConsumeDone(batches)
         if (log.isDebugEnabled)
-          log.debug("Processing batches {} complete in {}ns", batches, nanos)
+          log.debug("Processing batches {} complete in {}ns", batches.size, nanos)
       }
 
       protected def fail(cause: Throwable) {
         val nanos = ctx.stop()
         self ! ConsumeFailed(batches, cause)
-        log.error(cause, "Processing of batches {} failed in {}ns", batches, nanos)
+        log.error(cause, "Processing of batches {} failed in {}ns", batches.size, nanos)
       }
     }
   }
