@@ -92,6 +92,7 @@ class TsdbEventConsumer(topic: String, group: String, config: ConsumerConfig, ts
       self ! Next
       connector.commitOffsets
       metrics.batchCompleteHist.mark()
+      doNext
 
     case ConsumeFailed(batches, ex) =>
       log.error(ex, "Batch {} failed", batches)
@@ -99,26 +100,31 @@ class TsdbEventConsumer(topic: String, group: String, config: ConsumerConfig, ts
       throw new BatchProcessingFailedException
 
     case Next =>
-      val batches = new ListBuffer[Long]
-      val events = new ListBuffer[Message.Event]
-      val tctx = metrics.consumeTimer.timerContext()
-      val iterator = consumer.get.iterator()
-      try {
-        while (iterator.hasNext && events.size < maxBatchSize) {
-          val msg = iterator.next()
-          metrics.batchSizeHist.update(msg.message.getEventsCount)
-          batches += msg.message.getBatchId
-          events ++= msg.message.getEventsList
-        }
-      } catch {
-        case ex: ConsumerTimeoutException => // ok
-        case ex: Throwable =>
-          log.error("Failed to consume", ex)
-          throw ex
+      doNext
+  }
+
+  def doNext() = {
+    val batches = new ListBuffer[Long]
+    val events = new ListBuffer[Message.Event]
+    val tctx = metrics.consumeTimer.timerContext()
+    val iterator = consumer.get.iterator()
+    try {
+      while (iterator.hasNext && events.size < maxBatchSize) {
+        val msg = iterator.next()
+        metrics.batchSizeHist.update(msg.message.getEventsCount)
+        batches += msg.message.getBatchId
+        events ++= msg.message.getEventsList
       }
-      if (batches.size > 0) {
-        sendBatch(batches, events)
-      }
+    } catch {
+      case ex: ConsumerTimeoutException => // ok
+      case ex: Throwable =>
+        log.error("Failed to consume", ex)
+        throw ex
+    }
+    if (batches.size > 0) {
+      tctx.close
+      sendBatch(batches, events)
+    }
   }
 
   def sendBatch(batches: Seq[Long], events: Seq[Event]) = {
