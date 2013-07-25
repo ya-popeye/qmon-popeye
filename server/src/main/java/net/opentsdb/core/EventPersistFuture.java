@@ -153,7 +153,7 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
     int cnt = 0;
     for (int i = 0; i < validEvents; i++) {
       if (Bytes.memcmp(tsdbPuts[prevRow].row, tsdbPuts[i].row) != 0) {
-        seriesWriter.startSeries(tsdbPuts[prevRow].row);
+        seriesWriter.startSeries(tsdbPuts[i].row);
         for(int j = prevRow; j < i; j++) {
           try {
             final Deferred<Object> d;
