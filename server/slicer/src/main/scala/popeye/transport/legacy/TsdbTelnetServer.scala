@@ -206,7 +206,7 @@ class TsdbTelnetServer(local: InetSocketAddress, kafka: ActorRef)(implicit val m
 
 object TsdbTelnetServer {
   def start(config: Config, kafkaProducer: ActorRef)(implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
-    val hostport = config.getString("tsdb.telnet.listen").split(":")
+    val hostport = config.getString("legacy.tsdb.listen").split(":")
     val addr = new InetSocketAddress(hostport(0), hostport(1).toInt)
     system.actorOf(Props(new TsdbTelnetServer(addr, kafkaProducer)))
   }

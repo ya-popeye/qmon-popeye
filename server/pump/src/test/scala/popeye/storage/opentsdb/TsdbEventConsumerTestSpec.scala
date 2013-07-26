@@ -22,6 +22,10 @@ import kafka.admin.CreateTopicCommand
 import kafka.utils.TestUtils._
 import scala.Some
 import popeye.transport.kafka.{ProduceDone, ProducePending, KafkaEventProducer}
+import popeye.transport.kafka.ProduceDone
+import scala.Some
+import popeye.transport.kafka.ProducePending
+import kafka.admin.CreateTopicCommand
 
 /**
  * @author Andrey Stepachev

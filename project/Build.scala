@@ -56,16 +56,14 @@ object PopeyeBuild extends Build {
     id = "popeye",
     base = file("."),
     settings = defaultSettings)
-    .aggregate(popeyeServer, popeyeBench)
+    .aggregate(popeyeCommon, popeyeSlicer, popeyePump, popeyeBench)
 
-  lazy val popeyeServer = Project(
+  lazy val popeyeCommon = Project(
     id = "popeye-server",
     base = file("server"),
-    settings = defaultSettings ++ QMonDistPlugin.distSettings)
-    .dependsOn(kafka)
-    .dependsOn(kafka % "test->test")
+    settings = defaultSettings)
+    .dependsOn(kafka % "compile->runtime;test->test")
     .settings(
-    distMainClass := "popeye.transport.Main",
     libraryDependencies ++= Seq(
       "com.google.protobuf" % "protobuf-java" % "2.4.1",
       "org.apache.kafka" %% "kafka" % Version.Kafka % "compile->compile;test->test"
@@ -94,6 +92,26 @@ object PopeyeBuild extends Build {
           )
       }
     }
+  )
+
+  lazy val popeyeSlicer = Project(
+    id = "popeye-slicer",
+    base = file("server/slicer"),
+    settings = defaultSettings ++ QMonDistPlugin.distSettings)
+    .dependsOn(popeyeCommon % "compile->runtime;test->test")
+    .dependsOn(kafka % "compile->runtime;test->test")
+    .settings(
+      distMainClass := "popeye.transport.SlicerMain"
+    )
+
+  lazy val popeyePump = Project(
+    id = "popeye-pump",
+    base = file("server/pump"),
+    settings = defaultSettings ++ QMonDistPlugin.distSettings)
+    .dependsOn(popeyeCommon % "compile->runtime;test->test")
+    .dependsOn(kafka % "compile->runtime;test->test")
+    .settings(
+    distMainClass := "popeye.transport.PumpMain"
   )
 
   lazy val popeyeBench = Project(

@@ -1,32 +1,29 @@
 package popeye.transport
 
 import akka.actor.ActorSystem
-import popeye.transport.legacy.{TsdbTelnetServer, LegacyHttpHandler}
-import popeye.transport.kafka.{KafkaEventProducer}
 import akka.event.LogSource
-import popeye.uuid.IdGenerator
 import scala.concurrent.duration._
 import akka.util.Timeout
-import com.codahale.metrics.{Gauge => CHGauge, CsvReporter, JmxReporter, ConsoleReporter, MetricRegistry}
+import com.codahale.metrics.{CsvReporter, JmxReporter, MetricRegistry}
 import java.util.concurrent.TimeUnit
 import com.typesafe.config.ConfigFactory
-import popeye.storage.opentsdb.TsdbEventConsumer
-import akka.routing.FromConfig
 import java.io.File
 
 /**
  * @author Andrey Stepachev
  */
-object Main extends App {
+abstract class PopeyeMain(val subsys: String) extends App {
   implicit val timeout: Timeout = 2 seconds
-  implicit val system = ActorSystem("popeye",
-    ConfigFactory.parseResources("application.conf")
+  implicit val system = ActorSystem(subsys,
+    ConfigFactory.parseResources(s"$subsys.conf")
+      .withFallback(ConfigFactory.parseResources("popeye.conf"))
+      .withFallback(ConfigFactory.parseResources(s"$subsys-dynamic.conf"))
       .withFallback(ConfigFactory.parseResources("dynamic.conf"))
+      .withFallback(ConfigFactory.parseResources(s"$subsys-reference.conf"))
       .withFallback(ConfigFactory.load())
       .resolve()
   )
   implicit val metricRegistry = new MetricRegistry()
-
 
   implicit val logSource: LogSource[AnyRef] = new LogSource[AnyRef] {
     def genString(o: AnyRef): String = o.getClass.getName
@@ -35,17 +32,6 @@ object Main extends App {
   }
   val log = akka.event.Logging(system, this)
   val config = system.settings.config
-  implicit val idGenerator = new IdGenerator(
-    config.getLong("generator.worker"),
-    config.getLong("generator.datacenter")
-  )
-
-  val kafkaProducer = KafkaEventProducer.start(config, idGenerator)
-
-  TsdbTelnetServer.start(config, kafkaProducer)
-  LegacyHttpHandler.start(config, kafkaProducer)
-
-  val consumer = TsdbEventConsumer.start(config)
 
   val csvReporter = if (config.getBoolean("metrics.csv.enabled")) {
     val r = CsvReporter
@@ -71,7 +57,9 @@ object Main extends App {
     def run() {
       system.shutdown()
       jmxreporter.stop()
-      csvReporter foreach {_.stop()}
+      csvReporter foreach {
+        _.stop()
+      }
     }
   }))
 }
