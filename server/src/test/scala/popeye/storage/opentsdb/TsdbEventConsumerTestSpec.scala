@@ -56,6 +56,7 @@ class TsdbEventConsumerTestSpec extends AkkaTestKitSpec("tsdb-writer") with Kafk
         |         zookeeper.connect="$zkConnect"
         |   }
         |   kafka.producer.metadata.broker.list="$kafkaBrokersList"
+        |   kafka.produce.points.per.part = 1
         |   kafka.points.topic="$topic"
       """.stripMargin).withFallback(ConfigFactory.load())
     val actor = TestActorRef(KafkaEventProducer.props(config, generator))

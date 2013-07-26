@@ -133,7 +133,7 @@ object LegacyHttpHandler {
   val parserFactory: JsonFactory = new JsonFactory()
   implicit val timeout: Timeout = 5 seconds
 
-  def bind(config: Config, kafkaProducer: ActorRef)(implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
+  def start(config: Config, kafkaProducer: ActorRef)(implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
     val handler = system.actorOf(Props(new LegacyHttpHandler(config, kafkaProducer)), name = "legacy-http")
     val hostport = config.getString("http.legacy.listen").split(":")
     val addr = new InetSocketAddress(hostport(0), hostport(1).toInt)

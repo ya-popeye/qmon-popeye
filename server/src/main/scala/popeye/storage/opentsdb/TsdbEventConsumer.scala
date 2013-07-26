@@ -24,6 +24,7 @@ import org.hbase.async.HBaseClient
 import popeye.transport.kafka.EnsembleDecoder
 import TsdbEventConsumerProtocol._
 import akka.routing.FromConfig
+import scala.util.Random
 
 /**
  * @author Andrey Stepachev
@@ -35,6 +36,7 @@ class BatchProcessingFailedException extends Exception
 
 case class TsdbEventConsumerMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
   val consumeTimer = metrics.timer("tsdb.consume.time")
+  val pointsMeter = metrics.meter("tsdb.consume.points")
   val batchSizeHist = metrics.histogram("tsdb.consume.batch.size")
   val batchCompleteHist = metrics.meter("tsdb.consume.batch.complete")
   val batchFailedHist = metrics.meter("tsdb.consume.batch.complete")
@@ -45,9 +47,9 @@ case class TsdbEventConsumerMetrics(override val metricRegistry: MetricRegistry)
 
 object TsdbEventConsumerProtocol {
 
-  case object Next
-
   sealed class ConsumeCommand
+
+  case object Start
 
   case class ConsumeDone(batches: Traversable[Long]) extends ConsumeCommand
 
@@ -63,20 +65,21 @@ class TsdbEventConsumer(topic: String, group: String, config: ConsumerConfig, ts
   val pair: ConsumerPair = TsdbEventConsumer.createConsumer(topic, config)
   if (pair.consumer.isEmpty)
     throw new ConsumerInitializationException
-  log.debug("Starting TsdbEventConsumer for group " + group + " and topic " + topic)
   val consumer = pair.consumer
   val connector = pair.connector
   lazy val maxBatchSize = system.settings.config.getLong("tsdb.consume.batch-size")
 
   override val supervisorStrategy =
-    OneForOneStrategy(maxNrOfRetries = 10, withinTimeRange = (5 minutes), loggingEnabled = true) {
+    OneForOneStrategy() {
       case _ ⇒ Restart
     }
 
   override def preStart() {
     super.preStart()
+    // jitter to prevent rebalance deadlock
+    //context.system.scheduler.scheduleOnce(Random.nextInt(10) seconds, self, ConsumeDone(Nil))
     log.debug("Starting TsdbEventConsumer for group " + group + " and topic " + topic)
-    self ! Next
+    self ! Start
   }
 
   override def postStop() {
@@ -86,34 +89,31 @@ class TsdbEventConsumer(topic: String, group: String, config: ConsumerConfig, ts
   }
 
   def receive = {
+    case Start =>
+      doNext()
+
     case ConsumeDone(batches) =>
-      if (log.isDebugEnabled)
-        log.debug("Consumed {} batches", batches.size)
-      self ! Next
       connector.commitOffsets
       metrics.batchCompleteHist.mark()
-      doNext
+      doNext()
 
     case ConsumeFailed(batches, ex) =>
       log.error(ex, "Batches {} failed", batches.size)
       metrics.batchFailedHist.mark()
       throw new BatchProcessingFailedException
-
-    case Next =>
-      doNext
   }
 
   def doNext() = {
     val batches = new ArrayBuffer[Long]
-    val events = new ArrayBuffer[Message.Event]
+    val points = new ArrayBuffer[Message.Event]
     val tctx = metrics.consumeTimer.timerContext()
     val iterator = consumer.get.iterator()
     try {
-      while (iterator.hasNext && events.size < maxBatchSize) {
+      while (iterator.hasNext && points.size < maxBatchSize) {
         val msg = iterator.next()
         metrics.batchSizeHist.update(msg.message.getEventsCount)
         batches += msg.message.getBatchId
-        events ++= msg.message.getEventsList
+        points ++= msg.message.getEventsList
       }
     } catch {
       case ex: ConsumerTimeoutException => // ok
@@ -122,8 +122,9 @@ class TsdbEventConsumer(topic: String, group: String, config: ConsumerConfig, ts
         throw ex
     }
     if (batches.size > 0) {
+      metrics.pointsMeter.mark(points.size)
       tctx.close
-      sendBatch(batches, events)
+      sendBatch(batches, points)
     }
   }
 
@@ -135,13 +136,13 @@ class TsdbEventConsumer(topic: String, group: String, config: ConsumerConfig, ts
         val nanos = ctx.stop()
         self ! ConsumeDone(batches)
         if (log.isDebugEnabled)
-          log.debug("Processing batches {} complete in {}ns", batches.size, nanos)
+          log.debug("Processing of batches {} complete in {}ms", batches.size, NANOSECONDS.toMillis(nanos))
       }
 
       protected def fail(cause: Throwable) {
         val nanos = ctx.stop()
         self ! ConsumeFailed(batches, cause)
-        log.error(cause, "Processing of batches {} failed in {}ns", batches.size, nanos)
+        log.error(cause, "Processing of batches {} failed in {}ms", batches.size, NANOSECONDS.toMillis(nanos))
       }
     }
   }
@@ -171,7 +172,8 @@ object TsdbEventConsumer extends Logging {
 
   def start(config: Config, hbaseClient: Option[HBaseClient] = None)(implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
     system.actorOf(props(config, hbaseClient)
-      .withRouter(FromConfig()), "tsdb-writer")
+      .withRouter(FromConfig())
+      .withDispatcher("tsdb.consume.dispatcher"), "tsdb-writer")
   }
 
   def HBaseClient(tsdbConfig: Config) = {

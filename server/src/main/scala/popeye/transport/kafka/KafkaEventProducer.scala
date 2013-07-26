@@ -18,11 +18,14 @@ import kafka.utils.VerifiableProperties
 import scala.collection.mutable.ArrayBuffer
 import popeye.transport.proto.Message.Event
 import scala.collection.mutable
+import scala.concurrent.duration._
+import akka.actor.SupervisorStrategy.Restart
 
 case class ProducePack(sender: ActorRef, req: ProducePending)
 
 case class KafkaEventProducerMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
   val writeTimer = metrics.timer("kafka.produce.time")
+  val pointsMeter = metrics.meter("kafka.produce.points")
   val batchSizeHist = metrics.histogram("kafka.produce.batch.size")
   val batchFailedMeter = metrics.meter("kafka.produce.batch.failed")
   val batchFailedComplete = metrics.meter("kafka.produce.batch.complete")
@@ -44,16 +47,25 @@ class KafkaEventProducer(config: Config,
     .filter(_.topic == topic)
     .head.partitionsMetadata.size
 
-  val batchSize = 2000 * partitions
+  val batchSize = config.getInt("kafka.produce.batch-size")
 
   case class CorrelatedPoint(correlationId: Long, sender: ActorRef)(val events: Seq[Event])
 
   var pending = new ArrayBuffer[CorrelatedPoint]
 
+  override val supervisorStrategy =
+    OneForOneStrategy(maxNrOfRetries = 10, withinTimeRange = (5 minutes), loggingEnabled = true) {
+      case _ ⇒ Restart
+    }
+
   def receive: Actor.Receive = {
     case p@ProducePending(corr) =>
-      pending += CorrelatedPoint(p.correlationId, sender)(p.data)
-      if (pending.length > batchSize) {
+      p.data match {
+        case Nil =>
+        case points =>
+          pending += CorrelatedPoint(p.correlationId, sender)(points)
+      }
+      if (pending.length >= batchSize) {
         sendPoints()
       }
       if (pending.length > 0)
@@ -64,8 +76,11 @@ class KafkaEventProducer(config: Config,
     val ctx = metrics.writeTimer.timerContext()
     val batchId = idGenerator.nextId()
     val ensembles = new collection.mutable.HashMap[Int, Ensemble.Builder]
-    val batch = pending.take(batchSize)
-    pending = pending.drop(batchSize)
+    val parts = pending.splitAt(batchSize)
+    val batch = parts._1
+    pending = parts._2
+    if (log.isDebugEnabled)
+      log.debug("Ready to produce {} points, pending {}", batch.size, pending.size)
     val notifications = mutable.Map[ActorRef, ArrayBuffer[Long]]()
     batch.foreach {
       ev =>
@@ -84,21 +99,27 @@ class KafkaEventProducer(config: Config,
         }
     }
     try {
+      var pointsCount = 0;
+      val ensemblesCount = ensembles.size
       ensembles foreach { e =>
         metrics.batchSizeHist.update(e._2.getEventsCount)
+        pointsCount += e._2.getEventsCount
       }
+      if (log.isDebugEnabled)
+        log.debug("Producing {} points, pending {}", batch.size, pending.size)
+      metrics.pointsMeter.mark(pointsCount)
       producer.send(ensembles.map(e => new KeyedMessage(topic, e._2.build)).toArray: _*)
-      notifications foreach {
-        p =>
-          p._1 ! ProduceDone(p._2, batchId)
+      if (log.isDebugEnabled)
+        log.debug("Produced {} ensembles with {} points, pending {}", ensemblesCount, pointsCount, pending.size)
+      notifications foreach { p =>
+        p._1 ! ProduceDone(p._2, batchId)
       }
       metrics.batchFailedComplete.mark(ensembles.size)
     } catch {
       case e: Exception => sender ! Failure(e)
         metrics.batchFailedComplete.mark(ensembles.size)
-        notifications foreach {
-          p =>
-            p._1 ! ProduceFailed(p._2, e)
+        notifications foreach { p =>
+          p._1 ! ProduceFailed(p._2, e)
         }
         throw e
     } finally {
@@ -113,6 +134,8 @@ class KafkaEventProducer(config: Config,
 
   override def postStop() {
     log.debug("Stopping producer")
+    if (pending.size > 0)
+      sendPoints()
     super.postStop()
     producer.close()
   }
@@ -129,7 +152,8 @@ object KafkaEventProducer {
 
   def start(config: Config, idGenerator: IdGenerator)(implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
     system.actorOf(KafkaEventProducer.props(config, idGenerator)
-      .withRouter(FromConfig()), "kafka-producer")
+      .withRouter(FromConfig())
+      .withDispatcher("kafka.produce.dispatcher"), "kafka-producer")
   }
 
   def producerConfig(globalConfig: Config): ProducerConfig = {

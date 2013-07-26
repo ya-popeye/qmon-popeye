@@ -85,7 +85,7 @@ class SeriesWriter {
     // internal datastructures.
     row = Arrays.copyOf(row, row.length);
     Bytes.setInt(row, (int) base_time, tsdb.metrics.width());
-    tsdb.scheduleForCompaction(row, (int) base_time);
+//    tsdb.scheduleForCompaction(row, (int) base_time);
     return base_time;
   }
 

@@ -11,38 +11,25 @@ import popeye.transport.kafka.{ProduceDone, ProducePending}
 import popeye.transport.proto.Message.{Tag, Event}
 import scala.collection.mutable
 import scala.concurrent.duration._
-import java.util.concurrent.atomic.AtomicLong
-import scala.collection.mutable.ArrayBuffer
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.Config
-
-object TsdbTelnetHandlerProto {
-
-  case object ReplyOk
-
-  sealed case class ReplyErr(ex: Throwable)
-
-}
 
 class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], connection: ActorRef, kafkaProducer: ActorRef, config: Config)
   extends Actor with ActorLogging {
 
-  import TsdbTelnetHandlerProto._
-
-  val pendingTimeout: akka.util.Timeout = 5 seconds
   // TODO: move to config
-  val hwPendingPoints: Long = 2000
-  val lwPendingPoints: Long = 1000
+  val hwPendingPoints: Long = 200
+  val lwPendingPoints: Long = 100
   require(hwPendingPoints > lwPendingPoints, "High watermark should be greater then low watermark")
 
-  private var pendingCommits: Seq[(ActorRef, (Long, Long))] = Vector()
+  type PointId = Long
+  type BatchId = Long
+  private var pendingCommits: Seq[(ActorRef, (PointId, BatchId))] = Vector()
+  private val pendingPoints = mutable.SortedSet[PointId]()
   private var pendingExit = false
-  private var lastBatchId: Long = 0
-  private var confirmedPointId: Long = 0
-  private var pointId: Long = 0
+  private var lastBatchId: BatchId = 0
+  private var pointId: PointId = 0
   private var suspended = false
-
-  context watch connection
 
   final def receive = {
     case init.Event(data) =>
@@ -58,15 +45,16 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], connecti
             case "put" =>
               pointId += 1
               kafkaProducer ! ProducePending(pointId)(Seq(parsePoint(strings)))
+              pendingPoints.add(pointId)
               checkSuspension()
             case "commit" =>
               pendingCommits = pendingCommits :+ (sender -> (pointId -> strings(1).toLong))
-              self ! ReplyOk
+              tryReplyOk()
             case "ver" =>
               sender ! init.Command("OK unknown\n")
             case "exit" =>
               pendingExit = true
-              self ! ReplyOk
+              tryReplyOk()
             case _ =>
               sender ! init.Command("OK Unknown command\n")
           }
@@ -78,41 +66,40 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], connecti
       }
 
     case ProduceDone(completePointId, batchId) =>
-      if (lastBatchId < batchId)
+      if (lastBatchId < batchId) {
         lastBatchId = batchId
-      val last: Long = completePointId.sorted.last
-      if (confirmedPointId < last)
-        confirmedPointId = last
+      }
+      pendingPoints --= completePointId
       checkSuspension()
-      self ! ReplyOk
-
-    case ReplyOk =>
-      val filterF: ((ActorRef, (Long, Long))) => Boolean = _._2._1 >= confirmedPointId
-
-      pendingCommits.find(filterF) foreach {p =>
-        p._1 ! init.Command("OK " + p._2._2 + "=" + lastBatchId + "\n")
-      }
-      pendingCommits = pendingCommits.filterNot(filterF)
-      if (pendingExit && pendingCommits.isEmpty) {
-        connection ! Tcp.ConfirmedClose
-      }
-
-    case ReplyErr(ex) =>
-      sender ! init.Command("ERR " + ex.getMessage + "\n")
+      tryReplyOk()
 
     case x: Tcp.ConnectionClosed =>
-      log.debug("connection closed, pointId={}, confirmed={}", pointId, confirmedPointId)
+      log.debug("connection closed, pointId={}, pending={}", pointId, pendingPoints.size)
       context.stop(self)
   }
 
+  def tryReplyOk() = {
+    val complete = pendingCommits
+      .sortBy(_._2._1)
+      .span(el => pendingPoints.to(el._2._1).isEmpty)
+    pendingCommits = complete._2
+    complete._1 foreach {
+      p =>
+        p._1 ! init.Command("OK " + p._2._2 + "=" + lastBatchId + "\n")
+    }
+    if (pendingExit && pendingCommits.isEmpty) {
+      connection ! Tcp.ConfirmedClose
+    }
+  }
+
   def checkSuspension() = {
-    val pending = pointId - confirmedPointId
-    if (pending > hwPendingPoints && !suspended) {
+    val size: Int = pendingPoints.size
+    if (size > hwPendingPoints && !suspended) {
       connection ! Tcp.SuspendReading
       suspended = true
     }
 
-    if (pending < lwPendingPoints && suspended) {
+    if (size < lwPendingPoints && suspended) {
       connection ! Tcp.ResumeReading
       suspended = false
     }
@@ -184,6 +171,7 @@ class TsdbTelnetServer(local: InetSocketAddress, kafka: ActorRef)(implicit val m
 
   def receive: Receive = {
     case _: Bound ⇒
+      log.info("Bound to {}", sender)
       context.become(bound(sender))
   }
 

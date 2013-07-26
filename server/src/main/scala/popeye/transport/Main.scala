@@ -7,13 +7,12 @@ import akka.event.LogSource
 import popeye.uuid.IdGenerator
 import scala.concurrent.duration._
 import akka.util.Timeout
-import com.codahale.metrics.{JmxReporter, ConsoleReporter}
-import com.codahale.metrics.MetricRegistry
-import com.codahale.metrics.{Gauge => CHGauge}
+import com.codahale.metrics.{Gauge => CHGauge, CsvReporter, JmxReporter, ConsoleReporter, MetricRegistry}
 import java.util.concurrent.TimeUnit
 import com.typesafe.config.ConfigFactory
 import popeye.storage.opentsdb.TsdbEventConsumer
 import akka.routing.FromConfig
+import java.io.File
 
 /**
  * @author Andrey Stepachev
@@ -43,10 +42,22 @@ object Main extends App {
 
   val kafkaProducer = KafkaEventProducer.start(config, idGenerator)
 
-  LegacyHttpHandler.bind(config, kafkaProducer)
   TsdbTelnetServer.start(config, kafkaProducer)
+  LegacyHttpHandler.start(config, kafkaProducer)
 
   val consumer = TsdbEventConsumer.start(config)
+
+  val csvReporter = if (config.getBoolean("metrics.csv.enabled")) {
+    val r = CsvReporter
+      .forRegistry(metricRegistry)
+      .convertRatesTo(TimeUnit.SECONDS)
+      .convertDurationsTo(TimeUnit.MILLISECONDS)
+      .build(new File(config.getString("metrics.csv.directory")))
+    r.start(config.getMilliseconds("metrics.csv.period"), MILLISECONDS)
+    Some(r)
+  } else {
+    None
+  }
 
   val jmxreporter = JmxReporter
     .forRegistry(metricRegistry)
@@ -60,6 +71,7 @@ object Main extends App {
     def run() {
       system.shutdown()
       jmxreporter.stop()
+      csvReporter foreach {_.stop()}
     }
   }))
 }
