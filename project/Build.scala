@@ -59,8 +59,8 @@ object PopeyeBuild extends Build {
     .aggregate(popeyeCommon, popeyeSlicer, popeyePump, popeyeBench)
 
   lazy val popeyeCommon = Project(
-    id = "popeye-server",
-    base = file("server"),
+    id = "popeye-core",
+    base = file("core"),
     settings = defaultSettings)
     .dependsOn(kafka % "compile->runtime;test->test")
     .settings(
@@ -96,7 +96,7 @@ object PopeyeBuild extends Build {
 
   lazy val popeyeSlicer = Project(
     id = "popeye-slicer",
-    base = file("server/slicer"),
+    base = file("slicer"),
     settings = defaultSettings ++ QMonDistPlugin.distSettings)
     .dependsOn(popeyeCommon % "compile->runtime;test->test")
     .dependsOn(kafka % "compile->runtime;test->test")
@@ -106,7 +106,7 @@ object PopeyeBuild extends Build {
 
   lazy val popeyePump = Project(
     id = "popeye-pump",
-    base = file("server/pump"),
+    base = file("pump"),
     settings = defaultSettings ++ QMonDistPlugin.distSettings)
     .dependsOn(popeyeCommon % "compile->runtime;test->test")
     .dependsOn(kafka % "compile->runtime;test->test")
