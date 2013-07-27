@@ -135,7 +135,7 @@ object LegacyHttpHandler {
 
   def start(config: Config, kafkaProducer: ActorRef)(implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
     val handler = system.actorOf(Props(new LegacyHttpHandler(config, kafkaProducer)), name = "legacy-http")
-    val hostport = config.getString("legacy.lhttp.isten").split(":")
+    val hostport = config.getString("legacy.http.listen").split(":")
     val addr = new InetSocketAddress(hostport(0), hostport(1).toInt)
     IO(Http) ? Http.Bind(
       listener = handler,
