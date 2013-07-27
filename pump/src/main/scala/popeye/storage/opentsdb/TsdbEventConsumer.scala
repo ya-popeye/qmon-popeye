@@ -1,6 +1,7 @@
 package popeye.storage.opentsdb
 
 import popeye.{Instrumented, Logging}
+import popeye.ConfigUtil._
 import kafka.serializer.DefaultDecoder
 import akka.actor._
 import com.typesafe.config.Config
@@ -12,7 +13,6 @@ import akka.actor.SupervisorStrategy.Restart
 import scala.Option
 import scala.Some
 import akka.actor.OneForOneStrategy
-import popeye.transport.ConfigUtil._
 import popeye.transport.proto.Storage.Ensemble
 import com.codahale.metrics.MetricRegistry
 import scala.collection.mutable.ArrayBuffer
@@ -24,7 +24,6 @@ import org.hbase.async.HBaseClient
 import popeye.transport.kafka.EnsembleDecoder
 import TsdbEventConsumerProtocol._
 import akka.routing.FromConfig
-import scala.util.Random
 
 /**
  * @author Andrey Stepachev
@@ -57,17 +56,21 @@ object TsdbEventConsumerProtocol {
 
 }
 
-class TsdbEventConsumer(topic: String, group: String, config: ConsumerConfig, tsdb: TSDB, val metrics: TsdbEventConsumerMetrics)
+class TsdbEventConsumer(config: Config, tsdb: TSDB, val metrics: TsdbEventConsumerMetrics)
   extends Actor with ActorLogging {
 
   import context._
+  import TsdbEventConsumer._
 
-  val pair: ConsumerPair = TsdbEventConsumer.createConsumer(topic, config)
+  val topic = config.getString("kafka.points.topic")
+  val group = config.getString("tsdb.consume.group")
+
+  val pair: ConsumerPair = TsdbEventConsumer.createConsumer(topic, consumerConfig(config))
   if (pair.consumer.isEmpty)
     throw new ConsumerInitializationException
   val consumer = pair.consumer
   val connector = pair.connector
-  lazy val maxBatchSize = system.settings.config.getLong("tsdb.consume.batch-size")
+  lazy val maxBatchSize = config.getLong("tsdb.consume.batch-size")
 
   override val supervisorStrategy =
     OneForOneStrategy() {
@@ -162,9 +165,7 @@ object TsdbEventConsumer extends Logging {
     val metrics = TsdbEventConsumerMetrics(metricRegistry)
     Props(
       new TsdbEventConsumer(
-        config.getString("kafka.points.topic"),
-        config.getString("tsdb.consume.group"),
-        consumerConfig(config),
+        config,
         tsdb,
         metrics)
     )

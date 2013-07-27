@@ -4,7 +4,8 @@ import akka.actor._
 import kafka.producer._
 import java.util.Properties
 import com.typesafe.config.Config
-import popeye.transport.ConfigUtil._
+import popeye.{ConfigUtil, Instrumented}
+import ConfigUtil._
 import popeye.uuid.IdGenerator
 import popeye.transport.proto.Storage.Ensemble
 import akka.routing.FromConfig

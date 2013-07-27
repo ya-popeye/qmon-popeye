@@ -1,9 +1,12 @@
 import sbt._
 import sbt.ExclusionRule
 import sbt.ExclusionRule
+import sbt.ExclusionRule
+import sbt.ExclusionRule
 import sbt.Keys._
 import QMonDistPlugin._
 import net.virtualvoid.sbt.graph.{Plugin => Dep}
+import scala._
 
 
 object Compiler {
@@ -37,6 +40,7 @@ object Version {
   val Kafka = "0.8.0-beta1"
   val Metrics = "3.0.0"
   val Slf4j = "1.7.5"
+  val Log4j = "1.2.17"
 }
 
 
@@ -76,42 +80,48 @@ object PopeyeBuild extends Build {
       "org.codehaus.jackson" % "jackson-core-asl" % Version.Jackson,
       "org.slf4j" % "jcl-over-slf4j" % Version.Slf4j,
       "org.slf4j" % "slf4j-log4j12" % Version.Slf4j,
+      "log4j" % "log4j" % Version.Log4j,
       "org.hbase" % "asynchbase" % "1.4.1"
         exclude("org.slf4j", "log4j-over-slf4j")
         exclude("org.slf4j", "jcl-over-slf4j"),
       "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
       "org.mockito" % "mockito-core" % Version.Mockito % "test",
       "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"
-    ),
-    projectDependencies ~= {
-      deps => deps map {
-        dep =>
-          dep.excludeAll(
-            ExclusionRule(organization = "log4j"),
-            ExclusionRule(organization = "org.slf4j", name = "slf4j-simple")
-          )
-      }
-    }
+    )
   )
 
   lazy val popeyeSlicer = Project(
     id = "popeye-slicer",
     base = file("slicer"),
     settings = defaultSettings ++ QMonDistPlugin.distSettings)
-    .dependsOn(popeyeCommon % "compile->runtime;test->test")
-    .dependsOn(kafka % "compile->runtime;test->test")
+    .dependsOn(popeyeCommon % "compile->compile;test->test")
+    .dependsOn(kafka % "test->test")
     .settings(
-      distMainClass := "popeye.transport.SlicerMain"
+      distMainClass := "popeye.transport.SlicerMain",
+      libraryDependencies ++= Seq(
+        "org.apache.kafka" %% "kafka" % Version.Kafka % "compile->compile;test->test"
+          exclude("org.slf4j", "slf4j-simple"),
+        "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
+        "org.mockito" % "mockito-core" % Version.Mockito % "test",
+        "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"
+      )
     )
 
   lazy val popeyePump = Project(
     id = "popeye-pump",
     base = file("pump"),
     settings = defaultSettings ++ QMonDistPlugin.distSettings)
-    .dependsOn(popeyeCommon % "compile->runtime;test->test")
-    .dependsOn(kafka % "compile->runtime;test->test")
+    .dependsOn(popeyeCommon % "compile->compile;test->test")
+    .dependsOn(kafka % "test->test")
     .settings(
-    distMainClass := "popeye.transport.PumpMain"
+      distMainClass := "popeye.transport.PumpMain",
+      libraryDependencies ++= Seq(
+        "org.apache.kafka" %% "kafka" % Version.Kafka % "compile->compile;test->test"
+          exclude("org.slf4j", "slf4j-simple"),
+        "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
+        "org.mockito" % "mockito-core" % Version.Mockito % "test",
+        "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"
+      )
   )
 
   lazy val popeyeBench = Project(

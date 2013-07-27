@@ -7,7 +7,7 @@ import org.slf4j.{LoggerFactory, Logger}
  */
 trait Logging {
   val loggerName = this.getClass.getName
-  lazy val log = LoggerFactory.getLogger(loggerName)
+  lazy val log: Logger = LoggerFactory.getLogger(loggerName)
 
   protected var logIdent = ""
 

@@ -26,6 +26,7 @@ import popeye.transport.kafka.ProduceDone
 import scala.Some
 import popeye.transport.kafka.ProducePending
 import kafka.admin.CreateTopicCommand
+import popeye.ConfigUtil
 
 /**
  * @author Andrey Stepachev
@@ -54,15 +55,15 @@ class TsdbEventConsumerTestSpec extends AkkaTestKitSpec("tsdb-writer") with Kafk
     when(hbc.put(any())).thenReturn(Deferred.fromResult(new Object))
     val config: Config = ConfigFactory.parseString(
       s"""
+        |   zk.cluster = "$zkConnect"
         |   tsdb.consumer {
         |         auto.offset.reset=smallest
         |         group=$group
-        |         zookeeper.connect="$zkConnect"
         |   }
-        |   kafka.producer.metadata.broker.list="$kafkaBrokersList"
-        |   kafka.produce.points.per.part = 1
+        |   kafka.metadata.broker.list="$kafkaBrokersList"
+        |   kafka.produce.batch-size = 1
         |   kafka.points.topic="$topic"
-      """.stripMargin).withFallback(ConfigFactory.load())
+      """.stripMargin).withFallback(ConfigUtil.loadSubsysConfig("pump")).resolve()
     val actor = TestActorRef(KafkaEventProducer.props(config, generator))
     val future = ask(actor, ProducePending(123)(makeBatch())).mapTo[ProduceDone]
     Await.result(future, timeout.duration)
