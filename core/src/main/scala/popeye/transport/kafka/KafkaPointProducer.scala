@@ -11,7 +11,7 @@ import popeye.transport.proto.Storage.Ensemble
 import akka.routing.FromConfig
 import kafka.producer.KeyedMessage
 import akka.actor.Status.Failure
-import com.codahale.metrics.MetricRegistry
+import com.codahale.metrics.{Timer, MetricRegistry}
 import popeye.Instrumented
 import kafka.client.ClientUtils
 import scala.collection
@@ -21,8 +21,7 @@ import popeye.transport.proto.Message.Point
 import scala.collection.mutable
 import scala.concurrent.duration._
 import akka.actor.SupervisorStrategy.Restart
-
-case class ProducePack(sender: ActorRef, req: ProducePending)
+import scala.collection.immutable.Queue
 
 case class KafkaPointProducerMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
   val writeTimer = metrics.timer("kafka.produce.time")
@@ -33,6 +32,58 @@ case class KafkaPointProducerMetrics(override val metricRegistry: MetricRegistry
   val batchFailedComplete = metrics.meter("kafka.produce.batch.complete")
 }
 
+case object PointSenderReady
+case class ProducePack(batchId: Long, pointsCount: Long, notificationsCount: Long, started: Timer.Context)
+                      (val ensembles: mutable.HashMap[Int, Ensemble.Builder],
+                       val notifications: mutable.Map[ActorRef, ArrayBuffer[Long]])
+
+class KafkaPointSender(topic: String, producerConfig: ProducerConfig, metrics: KafkaPointProducerMetrics) extends Actor with ActorLogging {
+
+  val producer = new Producer[Nothing, Ensemble](producerConfig)
+
+
+  override def preStart() {
+    super.preStart()
+    log.debug("Starting sender")
+    context.parent ! PointSenderReady
+  }
+
+  override def postStop() {
+    log.debug("Stopping sender")
+    super.postStop()
+    producer.close()
+  }
+
+  def receive = {
+    case p@ProducePack(batchId, pointCount, ensemblesCount, started) =>
+      try {
+        metrics.pointsMeter.mark(p.pointsCount)
+        metrics.sendTimer.time {
+          producer.send(p.ensembles.map(e => new KeyedMessage(topic, e._2.build)).toArray: _*)
+        }
+        if (log.isDebugEnabled)
+          log.debug("Sent {} ensembles with {} points", ensemblesCount, p.pointsCount)
+        p.notifications foreach {
+          p =>
+            p._1 ! ProduceDone(p._2, batchId)
+        }
+        metrics.batchFailedComplete.mark(p.ensembles.size)
+      } catch {
+        case e: Exception => sender ! Failure(e)
+          metrics.batchFailedComplete.mark(p.ensembles.size)
+          p.notifications foreach {
+            p =>
+              p._1 ! ProduceFailed(p._2, e)
+          }
+          throw e
+      } finally {
+        started.close()
+        context.parent ! PointSenderReady
+      }
+
+  }
+}
+
 class KafkaPointProducer(config: Config,
                          producerConfig: ProducerConfig,
                          idGenerator: IdGenerator,
@@ -40,7 +91,6 @@ class KafkaPointProducer(config: Config,
   extends Actor with ActorLogging {
 
   val topic = config.getString("kafka.points.topic")
-  val producer = new Producer[Nothing, Ensemble](producerConfig)
   val partitions = ClientUtils
     .fetchTopicMetadata(
     Set(topic),
@@ -51,19 +101,46 @@ class KafkaPointProducer(config: Config,
 
   val batchWaitTimeout: FiniteDuration = toFiniteDuration(config.getMilliseconds("kafka.produce.batch-timeout"))
   val batchSize = config.getInt("kafka.produce.batch-size")
+  val senders = config.getInt("kafka.produce.senders")
 
   case class CorrelatedPoint(correlationId: Long, sender: ActorRef)(val events: Seq[Point])
 
   var pending = new ArrayBuffer[CorrelatedPoint]
   var flusher: Option[Cancellable] = None
 
+  var workQueue = Queue[ActorRef]()
+
   override val supervisorStrategy =
     OneForOneStrategy(loggingEnabled = true) {
       case _ ⇒ Restart
     }
 
+  override def preStart() {
+    super.preStart()
+    log.debug("Starting batcher")
+
+    for (i <- 1 to senders) {
+      context.actorOf(Props(new KafkaPointSender(topic, producerConfig, metrics)), "points-sender-" + i)
+    }
+
+    import context.dispatcher
+    flusher = Some(context.system.scheduler.schedule(batchWaitTimeout, batchWaitTimeout, self, FlushPoints))
+  }
+
+  override def postStop() {
+    log.debug("Stopping batcher")
+    flusher foreach {
+      _.cancel()
+    }
+    super.postStop()
+  }
+
   def receive: Actor.Receive = {
     case FlushPoints =>
+      sendPoints()
+
+    case PointSenderReady =>
+      workQueue = workQueue.enqueue(sender)
       sendPoints()
 
     case p@ProducePending(corr) =>
@@ -73,16 +150,16 @@ class KafkaPointProducer(config: Config,
           pending += CorrelatedPoint(p.correlationId, sender)(points)
       }
       sendPoints(batchSize)
-      tryFlush()
   }
 
-  def tryFlush()= {
+  def tryFlush() = {
     if (pending.length >= batchSize) {
       self ! FlushPoints
     }
   }
 
-  def sendPoints(batchSize: Int = 0) = if (pending.length > batchSize) {
+  def sendPoints(batchSize: Int = 0) = if (workQueue.size > 0 && pending.length > batchSize)
+  {
     val ctx = metrics.writeTimer.timerContext()
     val batchId = idGenerator.nextId()
     val ensembles = new collection.mutable.HashMap[Int, Ensemble.Builder]
@@ -108,63 +185,26 @@ class KafkaPointProducer(config: Config,
                 .setBatchId(batchId)
                 .setPartition(part)
             )
-            ensemble.addEvents(event)
+            ensemble.addPoints(event)
             val senderPointId = notifications.getOrElse(ev.sender, new ArrayBuffer)
             senderPointId += ev.correlationId
             notifications.put(ev.sender, senderPointId)
         }
     }
-    try {
-      var pointsCount = 0;
-      val ensemblesCount = ensembles.size
-      ensembles foreach {
-        e =>
-          metrics.batchSizeHist.update(e._2.getEventsCount)
-          pointsCount += e._2.getEventsCount
-      }
-      if (log.isDebugEnabled)
-        log.debug("Producing {} points, pending {}", batch.size, pending.size)
-      metrics.pointsMeter.mark(pointsCount)
-      metrics.sendTimer.time {
-        producer.send(ensembles.map(e => new KeyedMessage(topic, e._2.build)).toArray: _*)
-      }
-      if (log.isDebugEnabled)
-        log.debug("Produced {} ensembles with {} points, pending {}", ensemblesCount, pointsCount, pending.size)
-      notifications foreach {
-        p =>
-          p._1 ! ProduceDone(p._2, batchId)
-      }
-      metrics.batchFailedComplete.mark(ensembles.size)
-    } catch {
-      case e: Exception => sender ! Failure(e)
-        metrics.batchFailedComplete.mark(ensembles.size)
-        notifications foreach {
-          p =>
-            p._1 ! ProduceFailed(p._2, e)
-        }
-        throw e
-    } finally {
-      ctx.close()
+    var pointsCount = 0;
+    val ensemblesCount = ensembles.size
+    ensembles foreach {
+      e =>
+        metrics.batchSizeHist.update(e._2.getPointsCount)
+        pointsCount += e._2.getPointsCount
+    }
+    workQueue.dequeue match {
+      case (actor, wq) =>
+        workQueue = wq
+        actor ! ProducePack(batchId, pointsCount, ensemblesCount, ctx)(ensembles, notifications)
     }
     tryFlush()
   }
-
-  override def preStart() {
-    super.preStart()
-    log.debug("Starting producer")
-    import context.dispatcher
-    flusher = Some(context.system.scheduler.schedule(batchWaitTimeout, batchWaitTimeout, self, FlushPoints))
-  }
-
-  override def postStop() {
-    log.debug("Stopping producer")
-    flusher foreach {
-      _.cancel()
-    }
-    super.postStop()
-    producer.close()
-  }
-
 }
 
 class EnsemblePartitioner(props: VerifiableProperties = null) extends Partitioner[Ensemble] {
