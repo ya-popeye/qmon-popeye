@@ -119,9 +119,9 @@ class TsdbPointConsumer(config: Config, tsdb: TSDB, val metrics: TsdbPointConsum
     try {
       while (iterator.hasNext && points.size < maxBatchSize) {
         val msg = iterator.next()
-        metrics.batchSizeHist.update(msg.message.getEventsCount)
+        metrics.batchSizeHist.update(msg.message.getPointsCount)
         batches += msg.message.getBatchId
-        points ++= msg.message.getEventsList
+        points ++= msg.message.getPointsList
       }
     } catch {
       case ex: ConsumerTimeoutException => // ok

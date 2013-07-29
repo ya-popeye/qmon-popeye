@@ -19,14 +19,14 @@ public final class Storage {
     boolean hasPartition();
     int getPartition();
     
-    // repeated .popeye.transport.proto.Point events = 3;
+    // repeated .popeye.transport.proto.Point points = 3;
     java.util.List<popeye.transport.proto.Message.Point> 
-        getEventsList();
-    popeye.transport.proto.Message.Point getEvents(int index);
-    int getEventsCount();
+        getPointsList();
+    popeye.transport.proto.Message.Point getPoints(int index);
+    int getPointsCount();
     java.util.List<? extends popeye.transport.proto.Message.PointOrBuilder> 
-        getEventsOrBuilderList();
-    popeye.transport.proto.Message.PointOrBuilder getEventsOrBuilder(
+        getPointsOrBuilderList();
+    popeye.transport.proto.Message.PointOrBuilder getPointsOrBuilder(
         int index);
   }
   public static final class Ensemble extends
@@ -78,31 +78,31 @@ public final class Storage {
       return partition_;
     }
     
-    // repeated .popeye.transport.proto.Point events = 3;
-    public static final int EVENTS_FIELD_NUMBER = 3;
-    private java.util.List<popeye.transport.proto.Message.Point> events_;
-    public java.util.List<popeye.transport.proto.Message.Point> getEventsList() {
-      return events_;
+    // repeated .popeye.transport.proto.Point points = 3;
+    public static final int POINTS_FIELD_NUMBER = 3;
+    private java.util.List<popeye.transport.proto.Message.Point> points_;
+    public java.util.List<popeye.transport.proto.Message.Point> getPointsList() {
+      return points_;
     }
     public java.util.List<? extends popeye.transport.proto.Message.PointOrBuilder> 
-        getEventsOrBuilderList() {
-      return events_;
+        getPointsOrBuilderList() {
+      return points_;
     }
-    public int getEventsCount() {
-      return events_.size();
+    public int getPointsCount() {
+      return points_.size();
     }
-    public popeye.transport.proto.Message.Point getEvents(int index) {
-      return events_.get(index);
+    public popeye.transport.proto.Message.Point getPoints(int index) {
+      return points_.get(index);
     }
-    public popeye.transport.proto.Message.PointOrBuilder getEventsOrBuilder(
+    public popeye.transport.proto.Message.PointOrBuilder getPointsOrBuilder(
         int index) {
-      return events_.get(index);
+      return points_.get(index);
     }
     
     private void initFields() {
       batchId_ = 0L;
       partition_ = 0;
-      events_ = java.util.Collections.emptyList();
+      points_ = java.util.Collections.emptyList();
     }
     private byte memoizedIsInitialized = -1;
     public final boolean isInitialized() {
@@ -117,8 +117,8 @@ public final class Storage {
         memoizedIsInitialized = 0;
         return false;
       }
-      for (int i = 0; i < getEventsCount(); i++) {
-        if (!getEvents(i).isInitialized()) {
+      for (int i = 0; i < getPointsCount(); i++) {
+        if (!getPoints(i).isInitialized()) {
           memoizedIsInitialized = 0;
           return false;
         }
@@ -136,8 +136,8 @@ public final class Storage {
       if (((bitField0_ & 0x00000002) == 0x00000002)) {
         output.writeInt32(2, partition_);
       }
-      for (int i = 0; i < events_.size(); i++) {
-        output.writeMessage(3, events_.get(i));
+      for (int i = 0; i < points_.size(); i++) {
+        output.writeMessage(3, points_.get(i));
       }
       getUnknownFields().writeTo(output);
     }
@@ -156,9 +156,9 @@ public final class Storage {
         size += com.google.protobuf.CodedOutputStream
           .computeInt32Size(2, partition_);
       }
-      for (int i = 0; i < events_.size(); i++) {
+      for (int i = 0; i < points_.size(); i++) {
         size += com.google.protobuf.CodedOutputStream
-          .computeMessageSize(3, events_.get(i));
+          .computeMessageSize(3, points_.get(i));
       }
       size += getUnknownFields().getSerializedSize();
       memoizedSerializedSize = size;
@@ -276,7 +276,7 @@ public final class Storage {
       }
       private void maybeForceBuilderInitialization() {
         if (com.google.protobuf.GeneratedMessage.alwaysUseFieldBuilders) {
-          getEventsFieldBuilder();
+          getPointsFieldBuilder();
         }
       }
       private static Builder create() {
@@ -289,11 +289,11 @@ public final class Storage {
         bitField0_ = (bitField0_ & ~0x00000001);
         partition_ = 0;
         bitField0_ = (bitField0_ & ~0x00000002);
-        if (eventsBuilder_ == null) {
-          events_ = java.util.Collections.emptyList();
+        if (pointsBuilder_ == null) {
+          points_ = java.util.Collections.emptyList();
           bitField0_ = (bitField0_ & ~0x00000004);
         } else {
-          eventsBuilder_.clear();
+          pointsBuilder_.clear();
         }
         return this;
       }
@@ -341,14 +341,14 @@ public final class Storage {
           to_bitField0_ |= 0x00000002;
         }
         result.partition_ = partition_;
-        if (eventsBuilder_ == null) {
+        if (pointsBuilder_ == null) {
           if (((bitField0_ & 0x00000004) == 0x00000004)) {
-            events_ = java.util.Collections.unmodifiableList(events_);
+            points_ = java.util.Collections.unmodifiableList(points_);
             bitField0_ = (bitField0_ & ~0x00000004);
           }
-          result.events_ = events_;
+          result.points_ = points_;
         } else {
-          result.events_ = eventsBuilder_.build();
+          result.points_ = pointsBuilder_.build();
         }
         result.bitField0_ = to_bitField0_;
         onBuilt();
@@ -372,29 +372,29 @@ public final class Storage {
         if (other.hasPartition()) {
           setPartition(other.getPartition());
         }
-        if (eventsBuilder_ == null) {
-          if (!other.events_.isEmpty()) {
-            if (events_.isEmpty()) {
-              events_ = other.events_;
+        if (pointsBuilder_ == null) {
+          if (!other.points_.isEmpty()) {
+            if (points_.isEmpty()) {
+              points_ = other.points_;
               bitField0_ = (bitField0_ & ~0x00000004);
             } else {
-              ensureEventsIsMutable();
-              events_.addAll(other.events_);
+              ensurePointsIsMutable();
+              points_.addAll(other.points_);
             }
             onChanged();
           }
         } else {
-          if (!other.events_.isEmpty()) {
-            if (eventsBuilder_.isEmpty()) {
-              eventsBuilder_.dispose();
-              eventsBuilder_ = null;
-              events_ = other.events_;
+          if (!other.points_.isEmpty()) {
+            if (pointsBuilder_.isEmpty()) {
+              pointsBuilder_.dispose();
+              pointsBuilder_ = null;
+              points_ = other.points_;
               bitField0_ = (bitField0_ & ~0x00000004);
-              eventsBuilder_ = 
+              pointsBuilder_ = 
                 com.google.protobuf.GeneratedMessage.alwaysUseFieldBuilders ?
-                   getEventsFieldBuilder() : null;
+                   getPointsFieldBuilder() : null;
             } else {
-              eventsBuilder_.addAllMessages(other.events_);
+              pointsBuilder_.addAllMessages(other.points_);
             }
           }
         }
@@ -411,8 +411,8 @@ public final class Storage {
           
           return false;
         }
-        for (int i = 0; i < getEventsCount(); i++) {
-          if (!getEvents(i).isInitialized()) {
+        for (int i = 0; i < getPointsCount(); i++) {
+          if (!getPoints(i).isInitialized()) {
             
             return false;
           }
@@ -456,7 +456,7 @@ public final class Storage {
             case 26: {
               popeye.transport.proto.Message.Point.Builder subBuilder = popeye.transport.proto.Message.Point.newBuilder();
               input.readMessage(subBuilder, extensionRegistry);
-              addEvents(subBuilder.buildPartial());
+              addPoints(subBuilder.buildPartial());
               break;
             }
           }
@@ -507,190 +507,190 @@ public final class Storage {
         return this;
       }
       
-      // repeated .popeye.transport.proto.Point events = 3;
-      private java.util.List<popeye.transport.proto.Message.Point> events_ =
+      // repeated .popeye.transport.proto.Point points = 3;
+      private java.util.List<popeye.transport.proto.Message.Point> points_ =
         java.util.Collections.emptyList();
-      private void ensureEventsIsMutable() {
+      private void ensurePointsIsMutable() {
         if (!((bitField0_ & 0x00000004) == 0x00000004)) {
-          events_ = new java.util.ArrayList<popeye.transport.proto.Message.Point>(events_);
+          points_ = new java.util.ArrayList<popeye.transport.proto.Message.Point>(points_);
           bitField0_ |= 0x00000004;
          }
       }
       
       private com.google.protobuf.RepeatedFieldBuilder<
-          popeye.transport.proto.Message.Point, popeye.transport.proto.Message.Point.Builder, popeye.transport.proto.Message.PointOrBuilder> eventsBuilder_;
+          popeye.transport.proto.Message.Point, popeye.transport.proto.Message.Point.Builder, popeye.transport.proto.Message.PointOrBuilder> pointsBuilder_;
       
-      public java.util.List<popeye.transport.proto.Message.Point> getEventsList() {
-        if (eventsBuilder_ == null) {
-          return java.util.Collections.unmodifiableList(events_);
+      public java.util.List<popeye.transport.proto.Message.Point> getPointsList() {
+        if (pointsBuilder_ == null) {
+          return java.util.Collections.unmodifiableList(points_);
         } else {
-          return eventsBuilder_.getMessageList();
+          return pointsBuilder_.getMessageList();
         }
       }
-      public int getEventsCount() {
-        if (eventsBuilder_ == null) {
-          return events_.size();
+      public int getPointsCount() {
+        if (pointsBuilder_ == null) {
+          return points_.size();
         } else {
-          return eventsBuilder_.getCount();
+          return pointsBuilder_.getCount();
         }
       }
-      public popeye.transport.proto.Message.Point getEvents(int index) {
-        if (eventsBuilder_ == null) {
-          return events_.get(index);
+      public popeye.transport.proto.Message.Point getPoints(int index) {
+        if (pointsBuilder_ == null) {
+          return points_.get(index);
         } else {
-          return eventsBuilder_.getMessage(index);
+          return pointsBuilder_.getMessage(index);
         }
       }
-      public Builder setEvents(
+      public Builder setPoints(
           int index, popeye.transport.proto.Message.Point value) {
-        if (eventsBuilder_ == null) {
+        if (pointsBuilder_ == null) {
           if (value == null) {
             throw new NullPointerException();
           }
-          ensureEventsIsMutable();
-          events_.set(index, value);
+          ensurePointsIsMutable();
+          points_.set(index, value);
           onChanged();
         } else {
-          eventsBuilder_.setMessage(index, value);
+          pointsBuilder_.setMessage(index, value);
         }
         return this;
       }
-      public Builder setEvents(
+      public Builder setPoints(
           int index, popeye.transport.proto.Message.Point.Builder builderForValue) {
-        if (eventsBuilder_ == null) {
-          ensureEventsIsMutable();
-          events_.set(index, builderForValue.build());
+        if (pointsBuilder_ == null) {
+          ensurePointsIsMutable();
+          points_.set(index, builderForValue.build());
           onChanged();
         } else {
-          eventsBuilder_.setMessage(index, builderForValue.build());
+          pointsBuilder_.setMessage(index, builderForValue.build());
         }
         return this;
       }
-      public Builder addEvents(popeye.transport.proto.Message.Point value) {
-        if (eventsBuilder_ == null) {
+      public Builder addPoints(popeye.transport.proto.Message.Point value) {
+        if (pointsBuilder_ == null) {
           if (value == null) {
             throw new NullPointerException();
           }
-          ensureEventsIsMutable();
-          events_.add(value);
+          ensurePointsIsMutable();
+          points_.add(value);
           onChanged();
         } else {
-          eventsBuilder_.addMessage(value);
+          pointsBuilder_.addMessage(value);
         }
         return this;
       }
-      public Builder addEvents(
+      public Builder addPoints(
           int index, popeye.transport.proto.Message.Point value) {
-        if (eventsBuilder_ == null) {
+        if (pointsBuilder_ == null) {
           if (value == null) {
             throw new NullPointerException();
           }
-          ensureEventsIsMutable();
-          events_.add(index, value);
+          ensurePointsIsMutable();
+          points_.add(index, value);
           onChanged();
         } else {
-          eventsBuilder_.addMessage(index, value);
+          pointsBuilder_.addMessage(index, value);
         }
         return this;
       }
-      public Builder addEvents(
+      public Builder addPoints(
           popeye.transport.proto.Message.Point.Builder builderForValue) {
-        if (eventsBuilder_ == null) {
-          ensureEventsIsMutable();
-          events_.add(builderForValue.build());
+        if (pointsBuilder_ == null) {
+          ensurePointsIsMutable();
+          points_.add(builderForValue.build());
           onChanged();
         } else {
-          eventsBuilder_.addMessage(builderForValue.build());
+          pointsBuilder_.addMessage(builderForValue.build());
         }
         return this;
       }
-      public Builder addEvents(
+      public Builder addPoints(
           int index, popeye.transport.proto.Message.Point.Builder builderForValue) {
-        if (eventsBuilder_ == null) {
-          ensureEventsIsMutable();
-          events_.add(index, builderForValue.build());
+        if (pointsBuilder_ == null) {
+          ensurePointsIsMutable();
+          points_.add(index, builderForValue.build());
           onChanged();
         } else {
-          eventsBuilder_.addMessage(index, builderForValue.build());
+          pointsBuilder_.addMessage(index, builderForValue.build());
         }
         return this;
       }
-      public Builder addAllEvents(
+      public Builder addAllPoints(
           java.lang.Iterable<? extends popeye.transport.proto.Message.Point> values) {
-        if (eventsBuilder_ == null) {
-          ensureEventsIsMutable();
-          super.addAll(values, events_);
+        if (pointsBuilder_ == null) {
+          ensurePointsIsMutable();
+          super.addAll(values, points_);
           onChanged();
         } else {
-          eventsBuilder_.addAllMessages(values);
+          pointsBuilder_.addAllMessages(values);
         }
         return this;
       }
-      public Builder clearEvents() {
-        if (eventsBuilder_ == null) {
-          events_ = java.util.Collections.emptyList();
+      public Builder clearPoints() {
+        if (pointsBuilder_ == null) {
+          points_ = java.util.Collections.emptyList();
           bitField0_ = (bitField0_ & ~0x00000004);
           onChanged();
         } else {
-          eventsBuilder_.clear();
+          pointsBuilder_.clear();
         }
         return this;
       }
-      public Builder removeEvents(int index) {
-        if (eventsBuilder_ == null) {
-          ensureEventsIsMutable();
-          events_.remove(index);
+      public Builder removePoints(int index) {
+        if (pointsBuilder_ == null) {
+          ensurePointsIsMutable();
+          points_.remove(index);
           onChanged();
         } else {
-          eventsBuilder_.remove(index);
+          pointsBuilder_.remove(index);
         }
         return this;
       }
-      public popeye.transport.proto.Message.Point.Builder getEventsBuilder(
+      public popeye.transport.proto.Message.Point.Builder getPointsBuilder(
           int index) {
-        return getEventsFieldBuilder().getBuilder(index);
+        return getPointsFieldBuilder().getBuilder(index);
       }
-      public popeye.transport.proto.Message.PointOrBuilder getEventsOrBuilder(
+      public popeye.transport.proto.Message.PointOrBuilder getPointsOrBuilder(
           int index) {
-        if (eventsBuilder_ == null) {
-          return events_.get(index);  } else {
-          return eventsBuilder_.getMessageOrBuilder(index);
+        if (pointsBuilder_ == null) {
+          return points_.get(index);  } else {
+          return pointsBuilder_.getMessageOrBuilder(index);
         }
       }
       public java.util.List<? extends popeye.transport.proto.Message.PointOrBuilder> 
-           getEventsOrBuilderList() {
-        if (eventsBuilder_ != null) {
-          return eventsBuilder_.getMessageOrBuilderList();
+           getPointsOrBuilderList() {
+        if (pointsBuilder_ != null) {
+          return pointsBuilder_.getMessageOrBuilderList();
         } else {
-          return java.util.Collections.unmodifiableList(events_);
+          return java.util.Collections.unmodifiableList(points_);
         }
       }
-      public popeye.transport.proto.Message.Point.Builder addEventsBuilder() {
-        return getEventsFieldBuilder().addBuilder(
+      public popeye.transport.proto.Message.Point.Builder addPointsBuilder() {
+        return getPointsFieldBuilder().addBuilder(
             popeye.transport.proto.Message.Point.getDefaultInstance());
       }
-      public popeye.transport.proto.Message.Point.Builder addEventsBuilder(
+      public popeye.transport.proto.Message.Point.Builder addPointsBuilder(
           int index) {
-        return getEventsFieldBuilder().addBuilder(
+        return getPointsFieldBuilder().addBuilder(
             index, popeye.transport.proto.Message.Point.getDefaultInstance());
       }
       public java.util.List<popeye.transport.proto.Message.Point.Builder> 
-           getEventsBuilderList() {
-        return getEventsFieldBuilder().getBuilderList();
+           getPointsBuilderList() {
+        return getPointsFieldBuilder().getBuilderList();
       }
       private com.google.protobuf.RepeatedFieldBuilder<
           popeye.transport.proto.Message.Point, popeye.transport.proto.Message.Point.Builder, popeye.transport.proto.Message.PointOrBuilder> 
-          getEventsFieldBuilder() {
-        if (eventsBuilder_ == null) {
-          eventsBuilder_ = new com.google.protobuf.RepeatedFieldBuilder<
+          getPointsFieldBuilder() {
+        if (pointsBuilder_ == null) {
+          pointsBuilder_ = new com.google.protobuf.RepeatedFieldBuilder<
               popeye.transport.proto.Message.Point, popeye.transport.proto.Message.Point.Builder, popeye.transport.proto.Message.PointOrBuilder>(
-                  events_,
+                  points_,
                   ((bitField0_ & 0x00000004) == 0x00000004),
                   getParentForChildren(),
                   isClean());
-          events_ = null;
+          points_ = null;
         }
-        return eventsBuilder_;
+        return pointsBuilder_;
       }
       
       // @@protoc_insertion_point(builder_scope:popeye.transport.proto.Ensemble)
@@ -721,7 +721,7 @@ public final class Storage {
       "\n$popeye/transport/proto/storage.proto\022\026" +
       "popeye.transport.proto\032$popeye/transport" +
       "/proto/message.proto\"]\n\010Ensemble\022\017\n\007batc" +
-      "hId\030\001 \002(\003\022\021\n\tpartition\030\002 \002(\005\022-\n\006events\030\003" +
+      "hId\030\001 \002(\003\022\021\n\tpartition\030\002 \002(\005\022-\n\006points\030\003" +
       " \003(\0132\035.popeye.transport.proto.Point"
     };
     com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner assigner =
@@ -734,7 +734,7 @@ public final class Storage {
           internal_static_popeye_transport_proto_Ensemble_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_popeye_transport_proto_Ensemble_descriptor,
-              new java.lang.String[] { "BatchId", "Partition", "Events", },
+              new java.lang.String[] { "BatchId", "Partition", "Points", },
               popeye.transport.proto.Storage.Ensemble.class,
               popeye.transport.proto.Storage.Ensemble.Builder.class);
           return null;
