@@ -177,19 +177,6 @@ object TsdbEventConsumer extends Logging {
       .withDispatcher("tsdb.consume.dispatcher"), "tsdb-writer")
   }
 
-  def HBaseClient(tsdbConfig: Config) = {
-    val zkquorum = tsdbConfig.getString("zk.cluster")
-    val zkpath = tsdbConfig.getString("zk,path")
-    new HBaseClient(zkquorum, zkpath);
-  }
-
-  def TSDB(hbaseClient: HBaseClient, tsdbConfig: Config) = {
-    val seriesTable = tsdbConfig.getString("table.series")
-    val uidsTable = tsdbConfig.getString("table.uids")
-    new TSDB(hbaseClient, seriesTable, uidsTable);
-  }
-
-
   def consumerConfig(globalConfig: Config): ConsumerConfig = {
     val config: Config = globalConfig.getConfig("tsdb.consumer")
     val consumerProps: Properties = config
