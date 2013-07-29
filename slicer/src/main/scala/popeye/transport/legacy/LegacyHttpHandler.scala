@@ -28,10 +28,18 @@ import popeye.Instrumented
 import com.codahale.metrics.MetricRegistry
 
 
+class LegacyHttpHandlerMetrics (override val metricRegistry: MetricRegistry) extends Instrumented {
+  val writeTimer = metrics.timer("write")
+  val readTimer = metrics.timer("read")
+  val requestsBatches = metrics.histogram("batches", "size")
+  val totalBatches = metrics.meter("batches", "total")
+  val failedBatches = metrics.meter("batches", "failed")
+}
+
 /**
  * @author Andrey Stepachev
  */
-class LegacyHttpHandler(config: Config, kafkaProducer: ActorRef)(implicit override val metricRegistry: MetricRegistry) extends Actor with Instrumented with SprayActorLogging {
+class LegacyHttpHandler(config: Config, kafkaProducer: ActorRef, metrics: LegacyHttpHandlerMetrics) extends Actor with SprayActorLogging {
 
   implicit val timeout: Timeout = 5.second
   // for the actor 'asks'
@@ -39,11 +47,6 @@ class LegacyHttpHandler(config: Config, kafkaProducer: ActorRef)(implicit overri
 
   import context.dispatcher
 
-  val writeTimer = metrics.timer("write")
-  val readTimer = metrics.timer("read")
-  val requestsBatches = metrics.histogram("batches", "size")
-  val totalBatches = metrics.meter("batches", "total")
-  val failedBatches = metrics.meter("batches", "failed")
 
   override val supervisorStrategy = {
     OneForOneStrategy()({
@@ -58,10 +61,10 @@ class LegacyHttpHandler(config: Config, kafkaProducer: ActorRef)(implicit overri
       sender ! index
 
     case HttpRequest(GET, Uri.Path("/read"), _, _, _) =>
-      readTimer.time(sender ! index)
+      metrics.readTimer.time(sender ! index)
 
     case HttpRequest(POST, Uri.Path("/write"), _, entity, _) =>
-      val timer = writeTimer.timerContext()
+      val timer = metrics.writeTimer.timerContext()
       val client = sender
       val parser: ActorRef = context.actorOf(Props[ParserActor])
 
@@ -69,7 +72,7 @@ class LegacyHttpHandler(config: Config, kafkaProducer: ActorRef)(implicit overri
         parsed <- ask(parser, ParseRequest(entity.buffer)).mapTo[ParseResult]
         stored <- ask(kafkaProducer, ProducePending(0)(parsed.batch))(kafkaTimeout)
       } yield {
-        requestsBatches.update(parsed.batch.size)
+        metrics.requestsBatches.update(parsed.batch.size)
         timer.stop()
         stored
       }
@@ -134,7 +137,9 @@ object LegacyHttpHandler {
   implicit val timeout: Timeout = 5 seconds
 
   def start(config: Config, kafkaProducer: ActorRef)(implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
-    val handler = system.actorOf(Props(new LegacyHttpHandler(config, kafkaProducer)), name = "legacy-http")
+    val handler = system.actorOf(
+      Props(new LegacyHttpHandler(config, kafkaProducer, new LegacyHttpHandlerMetrics(metricRegistry))),
+      name = "legacy-http")
     val hostport = config.getString("legacy.http.listen").split(":")
     val addr = new InetSocketAddress(hostport(0), hostport(1).toInt)
     IO(Http) ? Http.Bind(
