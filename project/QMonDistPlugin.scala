@@ -114,14 +114,14 @@ object QMonDistPlugin extends Plugin {
       ("#!/bin/sh\n\n" +
         "QMON_HOME=\"$(cd \"$(cd \"$(dirname \"$0\")\"; pwd -P)\"/..; pwd)\"\n" +
         "QMON_CLASSPATH=\"$QMON_HOME/config:$QMON_HOME/lib/*\"\n" +
-        "JAVA_OPTS=\"%s\"\n\n" +
+        "JAVA_OPTS=\"$QMON_OPTS %s\"\n\n" +
         "java $JAVA_OPTS -cp \"$QMON_CLASSPATH\" -Dqmon.home=\"$QMON_HOME\" %s \"$@\"\n").format(jvmOptions, mainClass)
 
     private def distBatScript =
       ("@echo off\r\n\r\n" +
         "set QMON_HOME=%%~dp0..\r\n" +
         "set QMON_CLASSPATH=%%QMON_HOME%%\\config;%%QMON_HOME%%\\lib\\*\r\n" +
-        "set JAVA_OPTS=%s\r\n\r\n" +
+        "set JAVA_OPTS=%%QMON_OPTS%% %s\r\n\r\n" +
         "java %%JAVA_OPTS%% -cp \"%%QMON_CLASSPATH%%\" -Dqmon.home=\"%%QMON_HOME%%\" %s %%*\r\n").format(jvmOptions, mainClass)
 
     private def setExecutable(target: File, executable: Boolean): Option[String] = {
