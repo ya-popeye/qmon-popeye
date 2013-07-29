@@ -147,7 +147,7 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
             } else if (pointData.hasFloatValue()) {  // floating point value
               d = seriesWriter.addPoint(pointData.getTimestamp(), pointData.getFloatValue());
             } else {
-              throw new IllegalArgumentException("Metric doesn't have either int no float value");
+              throw new IllegalArgumentException("Metric doesn't have neither int nor float value");
             }
             batchedEvents.incrementAndGet();
             d.addBoth(this);
@@ -240,7 +240,7 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
    */
   static void checkEvent(Message.Point point) {
     if (!point.hasIntValue() && !point.hasFloatValue())
-      throw new IllegalArgumentException("Point doesn't have either int no float value: " + point);
+      throw new IllegalArgumentException("Point doesn't have neither int nor float value: " + point);
     if (point.hasFloatValue()) {
       final float value = point.getFloatValue();
       if (Float.isNaN(value) || Float.isInfinite(value)) {
@@ -249,7 +249,7 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
       }
     }
     if (point.getAttributesCount() <= 0) {
-      throw new IllegalArgumentException("Need at least one attributes " + point.toString());
+      throw new IllegalArgumentException("At least one attribute is required for " + point.toString());
     } else if (point.getAttributesCount() > Const.MAX_NUM_TAGS) {
       throw new IllegalArgumentException("Too many attributes " + point.toString() + " need not more then " + Const.MAX_NUM_TAGS);
     }
