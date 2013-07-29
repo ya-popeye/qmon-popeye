@@ -48,7 +48,7 @@ object TsdbEventConsumerProtocol {
 
   sealed class ConsumeCommand
 
-  case object Start
+  case object CheckAvailable
 
   case class ConsumeDone(batches: Traversable[Long]) extends ConsumeCommand
 
@@ -71,6 +71,9 @@ class TsdbEventConsumer(config: Config, tsdb: TSDB, val metrics: TsdbEventConsum
   val consumer = pair.consumer
   val connector = pair.connector
   lazy val maxBatchSize = config.getLong("tsdb.consume.batch-size")
+  lazy val checkTick = toFiniteDuration(config.getMilliseconds("tsdb.consume.check-tick"))
+
+  var checker: Option[Cancellable] = None
 
   override val supervisorStrategy =
     OneForOneStrategy() {
@@ -82,17 +85,19 @@ class TsdbEventConsumer(config: Config, tsdb: TSDB, val metrics: TsdbEventConsum
     // jitter to prevent rebalance deadlock
     //context.system.scheduler.scheduleOnce(Random.nextInt(10) seconds, self, ConsumeDone(Nil))
     log.debug("Starting TsdbEventConsumer for group " + group + " and topic " + topic)
-    self ! Start
+    import context.dispatcher
+    checker = Some(context.system.scheduler.schedule(checkTick, checkTick, self, CheckAvailable))
   }
 
   override def postStop() {
-    log.debug("Stopping TsdbEventConsumer for group " + group + " and topic " + topic)
+    checker foreach {_.cancel()}
     super.postStop()
+    log.debug("Stopping TsdbEventConsumer for group " + group + " and topic " + topic)
     connector.shutdown()
   }
 
   def receive = {
-    case Start =>
+    case CheckAvailable =>
       doNext()
 
     case ConsumeDone(batches) =>
@@ -155,7 +160,12 @@ class TsdbEventConsumer(config: Config, tsdb: TSDB, val metrics: TsdbEventConsum
 object TsdbEventConsumer extends Logging {
 
   def props(config: Config, hbaseClient: Option[HBaseClient] = None)(implicit system: ActorSystem, metricRegistry: MetricRegistry) = {
-    val hbc = hbaseClient getOrElse new HBaseClient(config.getString("tsdb.zk.cluster"), config.getString("tsdb.zk.path"))
+    val hbc = hbaseClient getOrElse {
+      val cluster: String = config.getString("tsdb.zk.cluster")
+      val zkPath: String = config.getString("tsdb.zk.path")
+      log.info(s"Creating HBaseClient: ${cluster}/${zkPath}")
+      new HBaseClient(cluster, zkPath)
+    }
     val tsdb: TSDB = new TSDB(hbc,
       config.getString("tsdb.table.series"),
       config.getString("tsdb.table.uids"))

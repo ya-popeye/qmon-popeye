@@ -11,25 +11,47 @@ import popeye.transport.kafka.{ProduceDone, ProducePending}
 import popeye.transport.proto.Message.{Tag, Event}
 import scala.collection.mutable
 import scala.concurrent.duration._
-import com.codahale.metrics.MetricRegistry
+import com.codahale.metrics.{Timer, MetricRegistry}
 import com.typesafe.config.Config
+import popeye.Instrumented
+import com.yammer.metrics.core.TimerContext
 
-class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], connection: ActorRef, kafkaProducer: ActorRef, config: Config)
+class TsdbTelnetMetrics (override val metricRegistry: MetricRegistry) extends Instrumented {
+  val requestTimer = metrics.timer("request-time")
+  val commitTimer = metrics.timer("commit-time")
+  val pointsRcvMeter = metrics.meter("points-received")
+  val pointsCommitMeter = metrics.meter("points-commited")
+}
+
+class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], connection: ActorRef, kafkaProducer: ActorRef,
+                        config: Config, metrics: TsdbTelnetMetrics)
   extends Actor with ActorLogging {
 
+
   // TODO: move to config
-  val hwPendingPoints: Long = 200
-  val lwPendingPoints: Long = 100
+  val hwPendingPoints: Int = config.getInt("legacy.tsdb.high-watermark")
+  val lwPendingPoints: Int = config.getInt("legacy.tsdb.low-watermark")
   require(hwPendingPoints > lwPendingPoints, "High watermark should be greater then low watermark")
 
   type PointId = Long
   type BatchId = Long
-  private var pendingCommits: Seq[(ActorRef, (PointId, BatchId))] = Vector()
-  private val pendingPoints = mutable.SortedSet[PointId]()
+  type CorrelationId = Long
+
+  sealed case class CommitReq(sender: ActorRef, pointId: PointId, correlation: CorrelationId, timerContext: Timer.Context)
+
+  private var pendingCommits: Seq[CommitReq] = Vector()
+  private val pendingPoints = mutable.TreeSet[PointId]()
   private var pendingExit = false
   private var lastBatchId: BatchId = 0
   private var pointId: PointId = 0
   private var suspended = false
+
+  private var requestTimer = metrics.requestTimer.timerContext()
+
+  override def postStop() {
+    super.postStop()
+    requestTimer.close()
+  }
 
   final def receive = {
     case init.Event(data) =>
@@ -46,17 +68,17 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], connecti
               pointId += 1
               kafkaProducer ! ProducePending(pointId)(Seq(parsePoint(strings)))
               pendingPoints.add(pointId)
-              checkSuspension()
+              metrics.pointsRcvMeter.mark()
             case "commit" =>
-              pendingCommits = pendingCommits :+ (sender -> (pointId -> strings(1).toLong))
-              tryReplyOk()
+              pendingCommits = (pendingCommits :+ CommitReq(sender, pointId, strings(1).toLong,
+                metrics.commitTimer.timerContext())).sortBy(_.pointId)
             case "ver" =>
               sender ! init.Command("OK unknown\n")
             case "exit" =>
               pendingExit = true
-              tryReplyOk()
-            case _ =>
-              sender ! init.Command("OK Unknown command\n")
+            case c @ _ =>
+              sender ! init.Command(s"ERR Unknown command $c\n")
+              context.stop(self)
           }
         } catch {
           case ex: Exception =>
@@ -64,29 +86,36 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], connecti
             context.stop(self)
         }
       }
+      tryReplyOk()
+      checkSuspension()
 
     case ProduceDone(completePointId, batchId) =>
       if (lastBatchId < batchId) {
         lastBatchId = batchId
       }
       pendingPoints --= completePointId
-      checkSuspension()
+      val commitedSize: Long = completePointId.size
+      metrics.pointsCommitMeter.mark(commitedSize)
       tryReplyOk()
+      checkSuspension()
 
     case x: Tcp.ConnectionClosed =>
-      log.debug("connection closed, pointId={}, pending={}", pointId, pendingPoints.size)
       context.stop(self)
   }
 
   def tryReplyOk() = {
-    val complete = pendingCommits
-      .sortBy(_._2._1)
-      .span(el => pendingPoints.to(el._2._1).isEmpty)
-    pendingCommits = complete._2
-    complete._1 foreach {
-      p =>
-        p._1 ! init.Command("OK " + p._2._2 + "=" + lastBatchId + "\n")
+
+    val minPoint: Long = pendingPoints.headOption getOrElse Long.MaxValue
+    pendingCommits.span(_.pointId < minPoint) match {
+      case (complete, incomplete) =>
+        complete foreach {
+          p =>
+            p.sender ! init.Command("OK " + p.correlation + "=" + lastBatchId + "\n")
+            p.timerContext.stop()
+        }
+        pendingCommits = incomplete
     }
+
     if (pendingExit && pendingCommits.isEmpty) {
       connection ! Tcp.ConfirmedClose
     }
@@ -161,7 +190,7 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], connecti
   }
 }
 
-class TsdbTelnetServer(local: InetSocketAddress, kafka: ActorRef)(implicit val metricRegistry: MetricRegistry) extends Actor with ActorLogging {
+class TsdbTelnetServer(local: InetSocketAddress, kafka: ActorRef, metrics: TsdbTelnetMetrics) extends Actor with ActorLogging {
 
   import Tcp._
 
@@ -185,12 +214,12 @@ class TsdbTelnetServer(local: InetSocketAddress, kafka: ActorRef)(implicit val m
           new BackpressureBuffer(lowBytes = 1 * 1024 * 1024, highBytes = 4 * 1024 * 1024, maxBytes = 10 * 1024 * 1024))
 
       val connection = sender
-      val handler = context.actorOf(Props(new TsdbTelnetHandler(init, connection, kafka, system.settings.config))
+      val handler = context.actorOf(Props(new TsdbTelnetHandler(init, connection, kafka, system.settings.config, metrics))
         .withDeploy(Deploy.local))
       val pipeline = context.actorOf(TcpPipelineHandler.props(
         init, connection, handler).withDeploy(Deploy.local))
 
-      connection ! Tcp.Register(pipeline)
+      connection ! Tcp.Register(pipeline, keepOpenOnPeerClosed = true)
   }
 
   override def preStart() {
@@ -208,6 +237,6 @@ object TsdbTelnetServer {
   def start(config: Config, kafkaProducer: ActorRef)(implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
     val hostport = config.getString("legacy.tsdb.listen").split(":")
     val addr = new InetSocketAddress(hostport(0), hostport(1).toInt)
-    system.actorOf(Props(new TsdbTelnetServer(addr, kafkaProducer)))
+    system.actorOf(Props(new TsdbTelnetServer(addr, kafkaProducer, new TsdbTelnetMetrics(metricRegistry))))
   }
 }

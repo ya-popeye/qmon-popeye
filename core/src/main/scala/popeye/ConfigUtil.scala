@@ -4,6 +4,8 @@ import com.typesafe.config.{ConfigFactory, ConfigValue, Config}
 import java.util.Properties
 import java.util.Map.Entry
 import scala.collection.JavaConversions._
+import scala.concurrent.duration.FiniteDuration
+import java.util.concurrent.TimeUnit
 
 /**
  * @author Andrey Stepachev
@@ -17,6 +19,10 @@ object ConfigUtil {
       .withFallback(ConfigFactory.parseResources("dynamic.conf"))
       .withFallback(ConfigFactory.parseResources(s"$subsys-reference.conf"))
       .withFallback(ConfigFactory.load())
+  }
+
+  def toFiniteDuration(milliseconds: Long): FiniteDuration = {
+    new FiniteDuration(milliseconds, TimeUnit.MILLISECONDS)
   }
 
   implicit def toProperties(config: Config): Properties = {
