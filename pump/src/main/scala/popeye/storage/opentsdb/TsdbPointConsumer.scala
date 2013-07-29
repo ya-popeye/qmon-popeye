@@ -17,12 +17,12 @@ import popeye.transport.proto.Storage.Ensemble
 import com.codahale.metrics.MetricRegistry
 import scala.collection.mutable.ArrayBuffer
 import popeye.transport.proto.Message
-import popeye.storage.opentsdb.TsdbEventConsumer.ConsumerPair
+import popeye.storage.opentsdb.TsdbPointConsumer.ConsumerPair
 import popeye.transport.proto.Message.Point
 import net.opentsdb.core.{TSDB, EventPersistFuture}
 import org.hbase.async.HBaseClient
 import popeye.transport.kafka.EnsembleDecoder
-import TsdbEventConsumerProtocol._
+import TsdbPointConsumerProtocol._
 import akka.routing.FromConfig
 
 /**
@@ -33,7 +33,7 @@ class ConsumerInitializationException extends Exception
 
 class BatchProcessingFailedException extends Exception
 
-case class TsdbEventConsumerMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
+case class TsdbPointConsumerMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
   val consumeTimer = metrics.timer("tsdb.consume.time")
   val pointsMeter = metrics.meter("tsdb.consume.points")
   val batchSizeHist = metrics.histogram("tsdb.consume.batch.size")
@@ -44,7 +44,7 @@ case class TsdbEventConsumerMetrics(override val metricRegistry: MetricRegistry)
   val incomingBatchSizeHist = metrics.histogram("tsdb.write.batch-size.incoming")
 }
 
-object TsdbEventConsumerProtocol {
+object TsdbPointConsumerProtocol {
 
   sealed class ConsumeCommand
 
@@ -56,16 +56,16 @@ object TsdbEventConsumerProtocol {
 
 }
 
-class TsdbEventConsumer(config: Config, tsdb: TSDB, val metrics: TsdbEventConsumerMetrics)
+class TsdbPointConsumer(config: Config, tsdb: TSDB, val metrics: TsdbPointConsumerMetrics)
   extends Actor with ActorLogging {
 
   import context._
-  import TsdbEventConsumer._
+  import TsdbPointConsumer._
 
   val topic = config.getString("kafka.points.topic")
   val group = config.getString("tsdb.consume.group")
 
-  val pair: ConsumerPair = TsdbEventConsumer.createConsumer(topic, consumerConfig(config))
+  val pair: ConsumerPair = TsdbPointConsumer.createConsumer(topic, consumerConfig(config))
   if (pair.consumer.isEmpty)
     throw new ConsumerInitializationException
   val consumer = pair.consumer
@@ -84,7 +84,7 @@ class TsdbEventConsumer(config: Config, tsdb: TSDB, val metrics: TsdbEventConsum
     super.preStart()
     // jitter to prevent rebalance deadlock
     //context.system.scheduler.scheduleOnce(Random.nextInt(10) seconds, self, ConsumeDone(Nil))
-    log.debug("Starting TsdbEventConsumer for group " + group + " and topic " + topic)
+    log.debug("Starting TsdbPointConsumer for group " + group + " and topic " + topic)
     import context.dispatcher
     checker = Some(context.system.scheduler.schedule(checkTick, checkTick, self, CheckAvailable))
   }
@@ -92,7 +92,7 @@ class TsdbEventConsumer(config: Config, tsdb: TSDB, val metrics: TsdbEventConsum
   override def postStop() {
     checker foreach {_.cancel()}
     super.postStop()
-    log.debug("Stopping TsdbEventConsumer for group " + group + " and topic " + topic)
+    log.debug("Stopping TsdbPointConsumer for group " + group + " and topic " + topic)
     connector.shutdown()
   }
 
@@ -157,7 +157,7 @@ class TsdbEventConsumer(config: Config, tsdb: TSDB, val metrics: TsdbEventConsum
 
 }
 
-object TsdbEventConsumer extends Logging {
+object TsdbPointConsumer extends Logging {
 
   def props(config: Config, hbaseClient: Option[HBaseClient] = None)(implicit system: ActorSystem, metricRegistry: MetricRegistry) = {
     val hbc = hbaseClient getOrElse {
@@ -172,9 +172,9 @@ object TsdbEventConsumer extends Logging {
     system.registerOnTermination(tsdb.shutdown())
     system.registerOnTermination(hbc.shutdown())
 
-    val metrics = TsdbEventConsumerMetrics(metricRegistry)
+    val metrics = TsdbPointConsumerMetrics(metricRegistry)
     Props(
-      new TsdbEventConsumer(
+      new TsdbPointConsumer(
         config,
         tsdb,
         metrics)

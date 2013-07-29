@@ -18,7 +18,7 @@ class JsonToEventParserSpec extends FlatSpec {
 
   "Parser" should "handle valid json" in {
     val v = for (req <- testRequests;
-                 ev <- new JsonToEventParser(req.getBytes)) yield {
+                 ev <- new JsonToPointParser(req.getBytes)) yield {
       assert(ev.getTimestamp == 1364451167)
       assert(ev.getMetric == "l.nobus/test")
     }

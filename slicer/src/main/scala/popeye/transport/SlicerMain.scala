@@ -1,6 +1,6 @@
 package popeye.transport
 
-import popeye.transport.kafka.KafkaEventProducer
+import popeye.transport.kafka.KafkaPointProducer
 import popeye.transport.legacy.{LegacyHttpHandler, TsdbTelnetServer}
 import popeye.uuid.IdGenerator
 
@@ -14,7 +14,7 @@ object SlicerMain extends PopeyeMain("slicer") {
     config.getLong("generator.datacenter")
   )
 
-  val kafkaProducer = KafkaEventProducer.start(config, idGenerator)
+  val kafkaProducer = KafkaPointProducer.start(config, idGenerator)
 
   TsdbTelnetServer.start(config, kafkaProducer)
   LegacyHttpHandler.start(config, kafkaProducer)

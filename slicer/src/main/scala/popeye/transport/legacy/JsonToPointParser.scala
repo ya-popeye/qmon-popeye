@@ -11,7 +11,7 @@ class ParserActor extends Actor with ActorLogging {
   def receive = {
     case ParseRequest(data) => {
       try {
-        sender ! ParseResult(new JsonToEventParser(data).toList)
+        sender ! ParseResult(new JsonToPointParser(data).toList)
       } catch {
         case ex: Throwable => sender ! Failure(ex)
           throw ex
@@ -38,7 +38,7 @@ case class ParseRequest(data: Array[Byte])
 
 case class ParseResult(batch: List[Point])
 
-class JsonToEventParser(data: Array[Byte]) extends Traversable[Point] with Logging {
+class JsonToPointParser(data: Array[Byte]) extends Traversable[Point] with Logging {
 
   def parseValue[U](builder: MetricBuilder, f: (Point) => U, parser: JsonParser) = {
     val event: Point.Builder = builder.builder.clone()

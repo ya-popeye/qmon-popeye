@@ -24,7 +24,7 @@ import akka.actor.SupervisorStrategy.Restart
 
 case class ProducePack(sender: ActorRef, req: ProducePending)
 
-case class KafkaEventProducerMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
+case class KafkaPointProducerMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
   val writeTimer = metrics.timer("kafka.produce.time")
   val sendTimer = metrics.timer("kafka.send.time")
   val pointsMeter = metrics.meter("kafka.produce.points")
@@ -33,10 +33,10 @@ case class KafkaEventProducerMetrics(override val metricRegistry: MetricRegistry
   val batchFailedComplete = metrics.meter("kafka.produce.batch.complete")
 }
 
-class KafkaEventProducer(config: Config,
+class KafkaPointProducer(config: Config,
                          producerConfig: ProducerConfig,
                          idGenerator: IdGenerator,
-                         metrics: KafkaEventProducerMetrics)
+                         metrics: KafkaPointProducerMetrics)
   extends Actor with ActorLogging {
 
   val topic = config.getString("kafka.points.topic")
@@ -173,10 +173,10 @@ class EnsemblePartitioner(props: VerifiableProperties = null) extends Partitione
   }
 }
 
-object KafkaEventProducer {
+object KafkaPointProducer {
 
   def start(config: Config, idGenerator: IdGenerator)(implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
-    system.actorOf(KafkaEventProducer.props(config, idGenerator)
+    system.actorOf(KafkaPointProducer.props(config, idGenerator)
       .withRouter(FromConfig())
       .withDispatcher("kafka.produce.dispatcher"), "kafka-producer")
   }
@@ -191,8 +191,8 @@ object KafkaEventProducer {
   }
 
   def props(config: Config, idGenerator: IdGenerator)(implicit metricRegistry: MetricRegistry) = {
-    val metrics = KafkaEventProducerMetrics(metricRegistry)
-    Props(new KafkaEventProducer(
+    val metrics = KafkaPointProducerMetrics(metricRegistry)
+    Props(new KafkaPointProducer(
       config,
       producerConfig(config),
       idGenerator,

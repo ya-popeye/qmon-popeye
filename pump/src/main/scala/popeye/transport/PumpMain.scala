@@ -1,11 +1,11 @@
 package popeye.transport
 
-import popeye.storage.opentsdb.TsdbEventConsumer
+import popeye.storage.opentsdb.TsdbPointConsumer
 
 /**
  * @author Andrey Stepachev
  */
 object PumpMain extends PopeyeMain("pump") {
-  val consumer = TsdbEventConsumer.start(config)
+  val consumer = TsdbPointConsumer.start(config)
 
 }
