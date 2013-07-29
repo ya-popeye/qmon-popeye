@@ -1,6 +1,6 @@
 package popeye.transport.legacy
 
-import popeye.transport.proto.Message.{Tag, Event}
+import popeye.transport.proto.Message.{Attribute, Point}
 import org.codehaus.jackson.{JsonToken, JsonParser}
 import com.google.protobuf.{ByteString => GoogleByteString}
 import akka.actor.{ActorLogging, Actor}
@@ -21,12 +21,12 @@ class ParserActor extends Actor with ActorLogging {
 }
 
 sealed class MetricBuilder(string: String) {
-  val builder: Event.Builder = {
+  val builder: Point.Builder = {
     val sepIdx: Int = string.indexOf('/')
     require(sepIdx > 1 && sepIdx < string.length, "metric should be in form of 'HOST/metric")
-    Event.newBuilder()
+    Point.newBuilder()
       .setMetric("l." + string.substring(sepIdx + 1))
-      .addTags(Tag.newBuilder()
+      .addAttributes(Attribute.newBuilder()
       .setName("host")
       .setValue(string.substring(0, sepIdx))
       .build()
@@ -36,12 +36,12 @@ sealed class MetricBuilder(string: String) {
 
 case class ParseRequest(data: Array[Byte])
 
-case class ParseResult(batch: List[Event])
+case class ParseResult(batch: List[Point])
 
-class JsonToEventParser(data: Array[Byte]) extends Traversable[Event] with Logging {
+class JsonToEventParser(data: Array[Byte]) extends Traversable[Point] with Logging {
 
-  def parseValue[U](builder: MetricBuilder, f: (Event) => U, parser: JsonParser) = {
-    val event: Event.Builder = builder.builder.clone()
+  def parseValue[U](builder: MetricBuilder, f: (Point) => U, parser: JsonParser) = {
+    val event: Point.Builder = builder.builder.clone()
     require(parser.getCurrentToken == JsonToken.START_OBJECT)
     while (parser.nextToken != JsonToken.END_OBJECT) {
       require(parser.getCurrentToken == JsonToken.FIELD_NAME)
@@ -71,7 +71,7 @@ class JsonToEventParser(data: Array[Byte]) extends Traversable[Event] with Loggi
     require(parser.getCurrentToken == JsonToken.END_OBJECT)
   }
 
-  def parseMetric[U](f: (Event) => U, parser: JsonParser) = {
+  def parseMetric[U](f: (Point) => U, parser: JsonParser) = {
     require(parser.getCurrentToken == JsonToken.START_OBJECT,
       "Start of OBJECT expected, but " + parser.getCurrentToken + " found")
     parser.nextToken
@@ -87,7 +87,7 @@ class JsonToEventParser(data: Array[Byte]) extends Traversable[Event] with Loggi
     }
   }
 
-  def parseArray[U](f: (Event) => U, parser: JsonParser) = {
+  def parseArray[U](f: (Point) => U, parser: JsonParser) = {
     require(parser.getCurrentToken == JsonToken.START_ARRAY)
     while (parser.nextToken() != JsonToken.END_ARRAY) {
       parseMetric(f, parser)
@@ -96,7 +96,7 @@ class JsonToEventParser(data: Array[Byte]) extends Traversable[Event] with Loggi
     parser.nextToken
   }
 
-  def foreach[U](f: (Event) => U) {
+  def foreach[U](f: (Point) => U) {
     val parser: JsonParser = LegacyHttpHandler.parserFactory.createJsonParser(data)
 
     parser.nextToken match {

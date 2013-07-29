@@ -11,7 +11,7 @@ import spray.http._
 import HttpMethods._
 import MediaTypes._
 import org.codehaus.jackson.{JsonParseException, JsonFactory}
-import popeye.transport.proto.Message.{Event, Batch}
+import popeye.transport.proto.Message.{Point, Batch}
 import akka.actor.SupervisorStrategy.{Restart, Stop}
 import scala.collection.JavaConversions.asJavaIterable
 import java.net.InetSocketAddress
@@ -92,7 +92,7 @@ class LegacyHttpHandler(config: Config, kafkaProducer: ActorRef, metrics: Legacy
     case _: HttpRequest => sender ! HttpResponse(status = 404, entity = "Unknown resource!")
   }
 
-  def eventsPresentation(events: Traversable[Event]) = {
+  def eventsPresentation(events: Traversable[Point]) = {
     val eventList = events.map({
       _.toString
     }).mkString("<br/>")

@@ -1,20 +1,20 @@
 package popeye.transport.proto;
 
-message Tag {
+message Attribute {
 	required string name     = 1;
 	required string value    = 2;
 };
 
-message Event {
+message Point {
 	required string metric       = 1;
 	required int64 timestamp     = 2;
-	repeated Tag tags            = 3;
+	repeated Attribute attributes = 3;
 	optional int64 int_value     = 4;
 	optional float float_value   = 5;
 };
 
 message Batch {
-  repeated Event event              = 1;
+  repeated Point point              = 1;
   optional int64 correlation        = 2;
 }
 

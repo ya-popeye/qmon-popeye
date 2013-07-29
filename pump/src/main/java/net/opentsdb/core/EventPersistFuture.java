@@ -65,7 +65,7 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
   private volatile boolean throttle = false;
   private AtomicInteger batchedEvents = new AtomicInteger();
 
-  public EventPersistFuture(TSDB tsdb, Message.Event[] batch) {
+  public EventPersistFuture(TSDB tsdb, Message.Point[] batch) {
     this.tsdb = tsdb;
     this.client = stealHBaseClient(tsdb);
     try {
@@ -111,7 +111,7 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
     return null;
   }
 
-  private void writeDataPoints(Message.Event[] data) throws Exception {
+  private void writeDataPoints(Message.Point[] data) throws Exception {
     startMillis = System.currentTimeMillis();
     if (data.length == 0) {
       batched.set(true);
@@ -121,11 +121,11 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
     final SeriesWriter.TsdbPut[] tsdbPuts = new SeriesWriter.TsdbPut[data.length];
     final HashSet<String> errors = new HashSet<String>();
     int validEvents = 0;
-    for (Message.Event event : data) {
+    for (Message.Point point : data) {
       try {
-        checkEvent(event);
-        final byte[] row = rowKeyTemplate(event.getMetric(), event.getTagsList());
-        tsdbPuts[validEvents++] = new SeriesWriter.TsdbPut(row, event);
+        checkEvent(point);
+        final byte[] row = rowKeyTemplate(point.getMetric(), point.getAttributesList());
+        tsdbPuts[validEvents++] = new SeriesWriter.TsdbPut(row, point);
       } catch (IllegalArgumentException ie) {
         errors.add(ie.getMessage());
       }
@@ -141,11 +141,11 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
         for(int j = prevRow; j < i; j++) {
           try {
             final Deferred<Object> d;
-            final Message.Event eventData = tsdbPuts[j].event;
-            if (eventData.hasIntValue()) {
-              d = seriesWriter.addPoint(eventData.getTimestamp(), eventData.getIntValue());
-            } else if (eventData.hasFloatValue()) {  // floating point value
-              d = seriesWriter.addPoint(eventData.getTimestamp(), eventData.getFloatValue());
+            final Message.Point pointData = tsdbPuts[j].point;
+            if (pointData.hasIntValue()) {
+              d = seriesWriter.addPoint(pointData.getTimestamp(), pointData.getIntValue());
+            } else if (pointData.hasFloatValue()) {  // floating point value
+              d = seriesWriter.addPoint(pointData.getTimestamp(), pointData.getFloatValue());
             } else {
               throw new IllegalArgumentException("Metric doesn't have either int no float value");
             }
@@ -234,48 +234,48 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
   }
 
   /**
-   * Validates the given metric and tags.
+   * Validates the given metric and attributes.
    *
    * @throws IllegalArgumentException if any of the arguments aren't valid.
    */
-  static void checkEvent(Message.Event event) {
-    if (!event.hasIntValue() && !event.hasFloatValue())
-      throw new IllegalArgumentException("Event doesn't have either int no float value: " + event);
-    if (event.hasFloatValue()) {
-      final float value = event.getFloatValue();
+  static void checkEvent(Message.Point point) {
+    if (!point.hasIntValue() && !point.hasFloatValue())
+      throw new IllegalArgumentException("Point doesn't have either int no float value: " + point);
+    if (point.hasFloatValue()) {
+      final float value = point.getFloatValue();
       if (Float.isNaN(value) || Float.isInfinite(value)) {
         throw new IllegalArgumentException("value is NaN or Infinite: " + value
-                + " for " + event.toString());
+                + " for " + point.toString());
       }
     }
-    if (event.getTagsCount() <= 0) {
-      throw new IllegalArgumentException("Need at least one tags " + event.toString());
-    } else if (event.getTagsCount() > Const.MAX_NUM_TAGS) {
-      throw new IllegalArgumentException("Too many tags " + event.toString() + " need not more then " + Const.MAX_NUM_TAGS);
+    if (point.getAttributesCount() <= 0) {
+      throw new IllegalArgumentException("Need at least one attributes " + point.toString());
+    } else if (point.getAttributesCount() > Const.MAX_NUM_TAGS) {
+      throw new IllegalArgumentException("Too many attributes " + point.toString() + " need not more then " + Const.MAX_NUM_TAGS);
     }
 
-    Tags.validateString("metric name", event.getMetric());
-    for (int i = 0; i < event.getTagsCount(); i++) {
-      Message.Tag tag = event.getTags(i);
-      Tags.validateString("tag name", tag.getName());
-      Tags.validateString("tag value", tag.getValue());
+    Tags.validateString("metric name", point.getMetric());
+    for (int i = 0; i < point.getAttributesCount(); i++) {
+      Message.Attribute attribute = point.getAttributes(i);
+      Tags.validateString("attribute name", attribute.getName());
+      Tags.validateString("attribute value", attribute.getValue());
     }
   }
 
   /**
-   * Returns a partially initialized row key for this metric and these tags.
+   * Returns a partially initialized row key for this metric and these attributes.
    * The only thing left to fill in is the base timestamp.
    */
   byte[] rowKeyTemplate(final String metric,
-                               final List<Message.Tag> tags) {
+                               final List<Message.Attribute> attributes) {
     final short metric_width = tsdb.metrics.width();
-    final short tag_name_width = tsdb.tag_names.width();
-    final short tag_value_width = tsdb.tag_values.width();
-    final short num_tags = (short) tags.size();
+    final short attribute_name_width = tsdb.tag_names.width();
+    final short attribute_value_width = tsdb.tag_values.width();
+    final short num_attributes = (short) attributes.size();
 
     int row_size = (metric_width + Const.TIMESTAMP_BYTES
-            + tag_name_width * num_tags
-            + tag_value_width * num_tags);
+            + attribute_name_width * num_attributes
+            + attribute_value_width * num_attributes);
     final byte[] row = new byte[row_size];
 
     short pos = 0;
@@ -285,26 +285,26 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
 
     pos += Const.TIMESTAMP_BYTES;
 
-    copyTags(row, pos, tags);
+    copyAttributes(row, pos, attributes);
     return row;
   }
 
-  void copyTags(byte[] row, short pos, final List<Message.Tag> tags)
+  void copyAttributes(byte[] row, short pos, final List<Message.Attribute> attributes)
           throws NoSuchUniqueName {
-    final ArrayList<byte[]> tag_ids = new ArrayList<byte[]>(tags.size());
-    for (Message.Tag tag : tags) {
-      final byte[] tag_id = tsdb.tag_names.getOrCreateId(tag.getName());
-      final byte[] value_id = tsdb.tag_values.getOrCreateId(tag.getValue());
-      final byte[] thistag = new byte[tag_id.length + value_id.length];
-      System.arraycopy(tag_id, 0, thistag, 0, tag_id.length);
-      System.arraycopy(value_id, 0, thistag, tag_id.length, value_id.length);
-      tag_ids.add(thistag);
+    final ArrayList<byte[]> attribute_ids = new ArrayList<byte[]>(attributes.size());
+    for (Message.Attribute attribute : attributes) {
+      final byte[] attribute_id = tsdb.tag_names.getOrCreateId(attribute.getName());
+      final byte[] value_id = tsdb.tag_values.getOrCreateId(attribute.getValue());
+      final byte[] thisattribute = new byte[attribute_id.length + value_id.length];
+      System.arraycopy(attribute_id, 0, thisattribute, 0, attribute_id.length);
+      System.arraycopy(value_id, 0, thisattribute, attribute_id.length, value_id.length);
+      attribute_ids.add(thisattribute);
     }
-    // Now sort the tags.
-    Collections.sort(tag_ids, Bytes.MEMCMP);
-    for (final byte[] tag : tag_ids) {
-      copyInRowKey(row, pos, tag);
-      pos += tag.length;
+    // Now sort the attributes.
+    Collections.sort(attribute_ids, Bytes.MEMCMP);
+    for (final byte[] attribute : attribute_ids) {
+      copyInRowKey(row, pos, attribute);
+      pos += attribute.length;
     }
   }
 

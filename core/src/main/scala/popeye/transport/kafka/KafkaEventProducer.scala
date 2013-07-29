@@ -17,7 +17,7 @@ import kafka.client.ClientUtils
 import scala.collection
 import kafka.utils.VerifiableProperties
 import scala.collection.mutable.ArrayBuffer
-import popeye.transport.proto.Message.Event
+import popeye.transport.proto.Message.Point
 import scala.collection.mutable
 import scala.concurrent.duration._
 import akka.actor.SupervisorStrategy.Restart
@@ -52,7 +52,7 @@ class KafkaEventProducer(config: Config,
   val batchWaitTimeout: FiniteDuration = toFiniteDuration(config.getMilliseconds("kafka.produce.batch-timeout"))
   val batchSize = config.getInt("kafka.produce.batch-size")
 
-  case class CorrelatedPoint(correlationId: Long, sender: ActorRef)(val events: Seq[Event])
+  case class CorrelatedPoint(correlationId: Long, sender: ActorRef)(val events: Seq[Point])
 
   var pending = new ArrayBuffer[CorrelatedPoint]
   var flusher: Option[Cancellable] = None

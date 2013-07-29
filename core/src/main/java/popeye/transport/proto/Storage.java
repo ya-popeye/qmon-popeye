@@ -19,14 +19,14 @@ public final class Storage {
     boolean hasPartition();
     int getPartition();
     
-    // repeated .popeye.transport.proto.Event events = 3;
-    java.util.List<popeye.transport.proto.Message.Event> 
+    // repeated .popeye.transport.proto.Point events = 3;
+    java.util.List<popeye.transport.proto.Message.Point> 
         getEventsList();
-    popeye.transport.proto.Message.Event getEvents(int index);
+    popeye.transport.proto.Message.Point getEvents(int index);
     int getEventsCount();
-    java.util.List<? extends popeye.transport.proto.Message.EventOrBuilder> 
+    java.util.List<? extends popeye.transport.proto.Message.PointOrBuilder> 
         getEventsOrBuilderList();
-    popeye.transport.proto.Message.EventOrBuilder getEventsOrBuilder(
+    popeye.transport.proto.Message.PointOrBuilder getEventsOrBuilder(
         int index);
   }
   public static final class Ensemble extends
@@ -78,23 +78,23 @@ public final class Storage {
       return partition_;
     }
     
-    // repeated .popeye.transport.proto.Event events = 3;
+    // repeated .popeye.transport.proto.Point events = 3;
     public static final int EVENTS_FIELD_NUMBER = 3;
-    private java.util.List<popeye.transport.proto.Message.Event> events_;
-    public java.util.List<popeye.transport.proto.Message.Event> getEventsList() {
+    private java.util.List<popeye.transport.proto.Message.Point> events_;
+    public java.util.List<popeye.transport.proto.Message.Point> getEventsList() {
       return events_;
     }
-    public java.util.List<? extends popeye.transport.proto.Message.EventOrBuilder> 
+    public java.util.List<? extends popeye.transport.proto.Message.PointOrBuilder> 
         getEventsOrBuilderList() {
       return events_;
     }
     public int getEventsCount() {
       return events_.size();
     }
-    public popeye.transport.proto.Message.Event getEvents(int index) {
+    public popeye.transport.proto.Message.Point getEvents(int index) {
       return events_.get(index);
     }
-    public popeye.transport.proto.Message.EventOrBuilder getEventsOrBuilder(
+    public popeye.transport.proto.Message.PointOrBuilder getEventsOrBuilder(
         int index) {
       return events_.get(index);
     }
@@ -454,7 +454,7 @@ public final class Storage {
               break;
             }
             case 26: {
-              popeye.transport.proto.Message.Event.Builder subBuilder = popeye.transport.proto.Message.Event.newBuilder();
+              popeye.transport.proto.Message.Point.Builder subBuilder = popeye.transport.proto.Message.Point.newBuilder();
               input.readMessage(subBuilder, extensionRegistry);
               addEvents(subBuilder.buildPartial());
               break;
@@ -507,20 +507,20 @@ public final class Storage {
         return this;
       }
       
-      // repeated .popeye.transport.proto.Event events = 3;
-      private java.util.List<popeye.transport.proto.Message.Event> events_ =
+      // repeated .popeye.transport.proto.Point events = 3;
+      private java.util.List<popeye.transport.proto.Message.Point> events_ =
         java.util.Collections.emptyList();
       private void ensureEventsIsMutable() {
         if (!((bitField0_ & 0x00000004) == 0x00000004)) {
-          events_ = new java.util.ArrayList<popeye.transport.proto.Message.Event>(events_);
+          events_ = new java.util.ArrayList<popeye.transport.proto.Message.Point>(events_);
           bitField0_ |= 0x00000004;
          }
       }
       
       private com.google.protobuf.RepeatedFieldBuilder<
-          popeye.transport.proto.Message.Event, popeye.transport.proto.Message.Event.Builder, popeye.transport.proto.Message.EventOrBuilder> eventsBuilder_;
+          popeye.transport.proto.Message.Point, popeye.transport.proto.Message.Point.Builder, popeye.transport.proto.Message.PointOrBuilder> eventsBuilder_;
       
-      public java.util.List<popeye.transport.proto.Message.Event> getEventsList() {
+      public java.util.List<popeye.transport.proto.Message.Point> getEventsList() {
         if (eventsBuilder_ == null) {
           return java.util.Collections.unmodifiableList(events_);
         } else {
@@ -534,7 +534,7 @@ public final class Storage {
           return eventsBuilder_.getCount();
         }
       }
-      public popeye.transport.proto.Message.Event getEvents(int index) {
+      public popeye.transport.proto.Message.Point getEvents(int index) {
         if (eventsBuilder_ == null) {
           return events_.get(index);
         } else {
@@ -542,7 +542,7 @@ public final class Storage {
         }
       }
       public Builder setEvents(
-          int index, popeye.transport.proto.Message.Event value) {
+          int index, popeye.transport.proto.Message.Point value) {
         if (eventsBuilder_ == null) {
           if (value == null) {
             throw new NullPointerException();
@@ -556,7 +556,7 @@ public final class Storage {
         return this;
       }
       public Builder setEvents(
-          int index, popeye.transport.proto.Message.Event.Builder builderForValue) {
+          int index, popeye.transport.proto.Message.Point.Builder builderForValue) {
         if (eventsBuilder_ == null) {
           ensureEventsIsMutable();
           events_.set(index, builderForValue.build());
@@ -566,7 +566,7 @@ public final class Storage {
         }
         return this;
       }
-      public Builder addEvents(popeye.transport.proto.Message.Event value) {
+      public Builder addEvents(popeye.transport.proto.Message.Point value) {
         if (eventsBuilder_ == null) {
           if (value == null) {
             throw new NullPointerException();
@@ -580,7 +580,7 @@ public final class Storage {
         return this;
       }
       public Builder addEvents(
-          int index, popeye.transport.proto.Message.Event value) {
+          int index, popeye.transport.proto.Message.Point value) {
         if (eventsBuilder_ == null) {
           if (value == null) {
             throw new NullPointerException();
@@ -594,7 +594,7 @@ public final class Storage {
         return this;
       }
       public Builder addEvents(
-          popeye.transport.proto.Message.Event.Builder builderForValue) {
+          popeye.transport.proto.Message.Point.Builder builderForValue) {
         if (eventsBuilder_ == null) {
           ensureEventsIsMutable();
           events_.add(builderForValue.build());
@@ -605,7 +605,7 @@ public final class Storage {
         return this;
       }
       public Builder addEvents(
-          int index, popeye.transport.proto.Message.Event.Builder builderForValue) {
+          int index, popeye.transport.proto.Message.Point.Builder builderForValue) {
         if (eventsBuilder_ == null) {
           ensureEventsIsMutable();
           events_.add(index, builderForValue.build());
@@ -616,7 +616,7 @@ public final class Storage {
         return this;
       }
       public Builder addAllEvents(
-          java.lang.Iterable<? extends popeye.transport.proto.Message.Event> values) {
+          java.lang.Iterable<? extends popeye.transport.proto.Message.Point> values) {
         if (eventsBuilder_ == null) {
           ensureEventsIsMutable();
           super.addAll(values, events_);
@@ -646,18 +646,18 @@ public final class Storage {
         }
         return this;
       }
-      public popeye.transport.proto.Message.Event.Builder getEventsBuilder(
+      public popeye.transport.proto.Message.Point.Builder getEventsBuilder(
           int index) {
         return getEventsFieldBuilder().getBuilder(index);
       }
-      public popeye.transport.proto.Message.EventOrBuilder getEventsOrBuilder(
+      public popeye.transport.proto.Message.PointOrBuilder getEventsOrBuilder(
           int index) {
         if (eventsBuilder_ == null) {
           return events_.get(index);  } else {
           return eventsBuilder_.getMessageOrBuilder(index);
         }
       }
-      public java.util.List<? extends popeye.transport.proto.Message.EventOrBuilder> 
+      public java.util.List<? extends popeye.transport.proto.Message.PointOrBuilder> 
            getEventsOrBuilderList() {
         if (eventsBuilder_ != null) {
           return eventsBuilder_.getMessageOrBuilderList();
@@ -665,25 +665,25 @@ public final class Storage {
           return java.util.Collections.unmodifiableList(events_);
         }
       }
-      public popeye.transport.proto.Message.Event.Builder addEventsBuilder() {
+      public popeye.transport.proto.Message.Point.Builder addEventsBuilder() {
         return getEventsFieldBuilder().addBuilder(
-            popeye.transport.proto.Message.Event.getDefaultInstance());
+            popeye.transport.proto.Message.Point.getDefaultInstance());
       }
-      public popeye.transport.proto.Message.Event.Builder addEventsBuilder(
+      public popeye.transport.proto.Message.Point.Builder addEventsBuilder(
           int index) {
         return getEventsFieldBuilder().addBuilder(
-            index, popeye.transport.proto.Message.Event.getDefaultInstance());
+            index, popeye.transport.proto.Message.Point.getDefaultInstance());
       }
-      public java.util.List<popeye.transport.proto.Message.Event.Builder> 
+      public java.util.List<popeye.transport.proto.Message.Point.Builder> 
            getEventsBuilderList() {
         return getEventsFieldBuilder().getBuilderList();
       }
       private com.google.protobuf.RepeatedFieldBuilder<
-          popeye.transport.proto.Message.Event, popeye.transport.proto.Message.Event.Builder, popeye.transport.proto.Message.EventOrBuilder> 
+          popeye.transport.proto.Message.Point, popeye.transport.proto.Message.Point.Builder, popeye.transport.proto.Message.PointOrBuilder> 
           getEventsFieldBuilder() {
         if (eventsBuilder_ == null) {
           eventsBuilder_ = new com.google.protobuf.RepeatedFieldBuilder<
-              popeye.transport.proto.Message.Event, popeye.transport.proto.Message.Event.Builder, popeye.transport.proto.Message.EventOrBuilder>(
+              popeye.transport.proto.Message.Point, popeye.transport.proto.Message.Point.Builder, popeye.transport.proto.Message.PointOrBuilder>(
                   events_,
                   ((bitField0_ & 0x00000004) == 0x00000004),
                   getParentForChildren(),
@@ -722,7 +722,7 @@ public final class Storage {
       "popeye.transport.proto\032$popeye/transport" +
       "/proto/message.proto\"]\n\010Ensemble\022\017\n\007batc" +
       "hId\030\001 \002(\003\022\021\n\tpartition\030\002 \002(\005\022-\n\006events\030\003" +
-      " \003(\0132\035.popeye.transport.proto.Event"
+      " \003(\0132\035.popeye.transport.proto.Point"
     };
     com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner assigner =
       new com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner() {

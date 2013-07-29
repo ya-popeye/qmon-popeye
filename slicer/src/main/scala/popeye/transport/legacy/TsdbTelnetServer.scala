@@ -8,7 +8,7 @@ import akka.io.TcpPipelineHandler.{WithinActorContext, Init}
 import java.net.InetSocketAddress
 import net.opentsdb.core.Tags
 import popeye.transport.kafka.{ProduceDone, ProducePending}
-import popeye.transport.proto.Message.{Tag, Event}
+import popeye.transport.proto.Message.{Attribute, Point}
 import scala.collection.mutable
 import scala.concurrent.duration._
 import com.codahale.metrics.{Timer, MetricRegistry}
@@ -134,8 +134,8 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], connecti
     }
   }
 
-  def parsePoint(words: Array[String]): Event = {
-    val ev = Event.newBuilder()
+  def parsePoint(words: Array[String]): Point = {
+    val ev = Point.newBuilder()
     words(0) = null; // Ditch the "put".
     if (words.length < 5) {
       // Need at least: metric timestamp value tag
@@ -166,13 +166,13 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], connecti
   }
 
   /**
-   * Parses tags into a Event.Tag structure.
+   * Parses tags into a Point.Attribute structure.
    * @param tags String array of the form "tag=value".
    * @throws IllegalArgumentException if the tag is malformed.
    * @throws IllegalArgumentException if the tag was already in tags with a
    *                                  different value.
    */
-  def parseTags(builder: Event.Builder, startIdx: Int, tags: Array[String]) {
+  def parseTags(builder: Point.Builder, startIdx: Int, tags: Array[String]) {
     val set = mutable.HashSet[String]()
     for (i <- startIdx to tags.length - 1) {
       val tag = tags(i)
@@ -183,7 +183,7 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], connecti
       if (!set.add(kv(0))) {
         throw new IllegalArgumentException("duplicate tag: " + tag + ", tags=" + tag)
       }
-      builder.addTags(Tag.newBuilder()
+      builder.addAttributes(Attribute.newBuilder()
         .setName(kv(0))
         .setValue(kv(1)))
     }

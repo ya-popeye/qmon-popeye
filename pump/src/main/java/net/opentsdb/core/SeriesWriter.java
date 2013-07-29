@@ -11,11 +11,11 @@ class SeriesWriter {
 
   public static class TsdbPut implements Comparable<TsdbPut> {
     public final byte[] row;
-    public final Message.Event event;
+    public final Message.Point point;
 
-    public TsdbPut(byte[] row, Message.Event event) {
+    public TsdbPut(byte[] row, Message.Point point) {
       this.row = row;
-      this.event = event;
+      this.point = point;
     }
 
     @Override
@@ -23,8 +23,8 @@ class SeriesWriter {
       final int c = Bytes.memcmp(this.row, o.row);
       if (c != 0)
         return c;
-      long thisVal = event.getTimestamp();
-      long anotherVal = o.event.getTimestamp();
+      long thisVal = point.getTimestamp();
+      long anotherVal = o.point.getTimestamp();
       return (thisVal<anotherVal ? -1 : (thisVal==anotherVal ? 0 : 1));
     }
   }

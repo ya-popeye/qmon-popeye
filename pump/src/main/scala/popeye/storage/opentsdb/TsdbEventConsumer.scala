@@ -18,7 +18,7 @@ import com.codahale.metrics.MetricRegistry
 import scala.collection.mutable.ArrayBuffer
 import popeye.transport.proto.Message
 import popeye.storage.opentsdb.TsdbEventConsumer.ConsumerPair
-import popeye.transport.proto.Message.Event
+import popeye.transport.proto.Message.Point
 import net.opentsdb.core.{TSDB, EventPersistFuture}
 import org.hbase.async.HBaseClient
 import popeye.transport.kafka.EnsembleDecoder
@@ -113,7 +113,7 @@ class TsdbEventConsumer(config: Config, tsdb: TSDB, val metrics: TsdbEventConsum
 
   def doNext() = {
     val batches = new ArrayBuffer[Long]
-    val points = new ArrayBuffer[Message.Event]
+    val points = new ArrayBuffer[Message.Point]
     val tctx = metrics.consumeTimer.timerContext()
     val iterator = consumer.get.iterator()
     try {
@@ -136,7 +136,7 @@ class TsdbEventConsumer(config: Config, tsdb: TSDB, val metrics: TsdbEventConsum
     }
   }
 
-  def sendBatch(batches: Seq[Long], events: Seq[Event]) = {
+  def sendBatch(batches: Seq[Long], events: Seq[Point]) = {
     val ctx = metrics.writeTimer.timerContext()
     metrics.writeBatchSizeHist.update(events.size)
     new EventPersistFuture(tsdb, events.toArray) {

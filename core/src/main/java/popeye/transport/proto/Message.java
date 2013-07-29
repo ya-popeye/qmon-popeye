@@ -8,7 +8,7 @@ public final class Message {
   public static void registerAllExtensions(
       com.google.protobuf.ExtensionRegistry registry) {
   }
-  public interface TagOrBuilder
+  public interface AttributeOrBuilder
       extends com.google.protobuf.MessageOrBuilder {
     
     // required string name = 1;
@@ -19,32 +19,32 @@ public final class Message {
     boolean hasValue();
     String getValue();
   }
-  public static final class Tag extends
+  public static final class Attribute extends
       com.google.protobuf.GeneratedMessage
-      implements TagOrBuilder {
-    // Use Tag.newBuilder() to construct.
-    private Tag(Builder builder) {
+      implements AttributeOrBuilder {
+    // Use Attribute.newBuilder() to construct.
+    private Attribute(Builder builder) {
       super(builder);
     }
-    private Tag(boolean noInit) {}
+    private Attribute(boolean noInit) {}
     
-    private static final Tag defaultInstance;
-    public static Tag getDefaultInstance() {
+    private static final Attribute defaultInstance;
+    public static Attribute getDefaultInstance() {
       return defaultInstance;
     }
     
-    public Tag getDefaultInstanceForType() {
+    public Attribute getDefaultInstanceForType() {
       return defaultInstance;
     }
     
     public static final com.google.protobuf.Descriptors.Descriptor
         getDescriptor() {
-      return popeye.transport.proto.Message.internal_static_popeye_transport_proto_Tag_descriptor;
+      return popeye.transport.proto.Message.internal_static_popeye_transport_proto_Attribute_descriptor;
     }
     
     protected com.google.protobuf.GeneratedMessage.FieldAccessorTable
         internalGetFieldAccessorTable() {
-      return popeye.transport.proto.Message.internal_static_popeye_transport_proto_Tag_fieldAccessorTable;
+      return popeye.transport.proto.Message.internal_static_popeye_transport_proto_Attribute_fieldAccessorTable;
     }
     
     private int bitField0_;
@@ -171,41 +171,41 @@ public final class Message {
       return super.writeReplace();
     }
     
-    public static popeye.transport.proto.Message.Tag parseFrom(
+    public static popeye.transport.proto.Message.Attribute parseFrom(
         com.google.protobuf.ByteString data)
         throws com.google.protobuf.InvalidProtocolBufferException {
       return newBuilder().mergeFrom(data).buildParsed();
     }
-    public static popeye.transport.proto.Message.Tag parseFrom(
+    public static popeye.transport.proto.Message.Attribute parseFrom(
         com.google.protobuf.ByteString data,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
         throws com.google.protobuf.InvalidProtocolBufferException {
       return newBuilder().mergeFrom(data, extensionRegistry)
                .buildParsed();
     }
-    public static popeye.transport.proto.Message.Tag parseFrom(byte[] data)
+    public static popeye.transport.proto.Message.Attribute parseFrom(byte[] data)
         throws com.google.protobuf.InvalidProtocolBufferException {
       return newBuilder().mergeFrom(data).buildParsed();
     }
-    public static popeye.transport.proto.Message.Tag parseFrom(
+    public static popeye.transport.proto.Message.Attribute parseFrom(
         byte[] data,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
         throws com.google.protobuf.InvalidProtocolBufferException {
       return newBuilder().mergeFrom(data, extensionRegistry)
                .buildParsed();
     }
-    public static popeye.transport.proto.Message.Tag parseFrom(java.io.InputStream input)
+    public static popeye.transport.proto.Message.Attribute parseFrom(java.io.InputStream input)
         throws java.io.IOException {
       return newBuilder().mergeFrom(input).buildParsed();
     }
-    public static popeye.transport.proto.Message.Tag parseFrom(
+    public static popeye.transport.proto.Message.Attribute parseFrom(
         java.io.InputStream input,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
         throws java.io.IOException {
       return newBuilder().mergeFrom(input, extensionRegistry)
                .buildParsed();
     }
-    public static popeye.transport.proto.Message.Tag parseDelimitedFrom(java.io.InputStream input)
+    public static popeye.transport.proto.Message.Attribute parseDelimitedFrom(java.io.InputStream input)
         throws java.io.IOException {
       Builder builder = newBuilder();
       if (builder.mergeDelimitedFrom(input)) {
@@ -214,7 +214,7 @@ public final class Message {
         return null;
       }
     }
-    public static popeye.transport.proto.Message.Tag parseDelimitedFrom(
+    public static popeye.transport.proto.Message.Attribute parseDelimitedFrom(
         java.io.InputStream input,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
         throws java.io.IOException {
@@ -225,12 +225,12 @@ public final class Message {
         return null;
       }
     }
-    public static popeye.transport.proto.Message.Tag parseFrom(
+    public static popeye.transport.proto.Message.Attribute parseFrom(
         com.google.protobuf.CodedInputStream input)
         throws java.io.IOException {
       return newBuilder().mergeFrom(input).buildParsed();
     }
-    public static popeye.transport.proto.Message.Tag parseFrom(
+    public static popeye.transport.proto.Message.Attribute parseFrom(
         com.google.protobuf.CodedInputStream input,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
         throws java.io.IOException {
@@ -240,7 +240,7 @@ public final class Message {
     
     public static Builder newBuilder() { return Builder.create(); }
     public Builder newBuilderForType() { return newBuilder(); }
-    public static Builder newBuilder(popeye.transport.proto.Message.Tag prototype) {
+    public static Builder newBuilder(popeye.transport.proto.Message.Attribute prototype) {
       return newBuilder().mergeFrom(prototype);
     }
     public Builder toBuilder() { return newBuilder(this); }
@@ -253,18 +253,18 @@ public final class Message {
     }
     public static final class Builder extends
         com.google.protobuf.GeneratedMessage.Builder<Builder>
-       implements popeye.transport.proto.Message.TagOrBuilder {
+       implements popeye.transport.proto.Message.AttributeOrBuilder {
       public static final com.google.protobuf.Descriptors.Descriptor
           getDescriptor() {
-        return popeye.transport.proto.Message.internal_static_popeye_transport_proto_Tag_descriptor;
+        return popeye.transport.proto.Message.internal_static_popeye_transport_proto_Attribute_descriptor;
       }
       
       protected com.google.protobuf.GeneratedMessage.FieldAccessorTable
           internalGetFieldAccessorTable() {
-        return popeye.transport.proto.Message.internal_static_popeye_transport_proto_Tag_fieldAccessorTable;
+        return popeye.transport.proto.Message.internal_static_popeye_transport_proto_Attribute_fieldAccessorTable;
       }
       
-      // Construct using popeye.transport.proto.Message.Tag.newBuilder()
+      // Construct using popeye.transport.proto.Message.Attribute.newBuilder()
       private Builder() {
         maybeForceBuilderInitialization();
       }
@@ -296,24 +296,24 @@ public final class Message {
       
       public com.google.protobuf.Descriptors.Descriptor
           getDescriptorForType() {
-        return popeye.transport.proto.Message.Tag.getDescriptor();
+        return popeye.transport.proto.Message.Attribute.getDescriptor();
       }
       
-      public popeye.transport.proto.Message.Tag getDefaultInstanceForType() {
-        return popeye.transport.proto.Message.Tag.getDefaultInstance();
+      public popeye.transport.proto.Message.Attribute getDefaultInstanceForType() {
+        return popeye.transport.proto.Message.Attribute.getDefaultInstance();
       }
       
-      public popeye.transport.proto.Message.Tag build() {
-        popeye.transport.proto.Message.Tag result = buildPartial();
+      public popeye.transport.proto.Message.Attribute build() {
+        popeye.transport.proto.Message.Attribute result = buildPartial();
         if (!result.isInitialized()) {
           throw newUninitializedMessageException(result);
         }
         return result;
       }
       
-      private popeye.transport.proto.Message.Tag buildParsed()
+      private popeye.transport.proto.Message.Attribute buildParsed()
           throws com.google.protobuf.InvalidProtocolBufferException {
-        popeye.transport.proto.Message.Tag result = buildPartial();
+        popeye.transport.proto.Message.Attribute result = buildPartial();
         if (!result.isInitialized()) {
           throw newUninitializedMessageException(
             result).asInvalidProtocolBufferException();
@@ -321,8 +321,8 @@ public final class Message {
         return result;
       }
       
-      public popeye.transport.proto.Message.Tag buildPartial() {
-        popeye.transport.proto.Message.Tag result = new popeye.transport.proto.Message.Tag(this);
+      public popeye.transport.proto.Message.Attribute buildPartial() {
+        popeye.transport.proto.Message.Attribute result = new popeye.transport.proto.Message.Attribute(this);
         int from_bitField0_ = bitField0_;
         int to_bitField0_ = 0;
         if (((from_bitField0_ & 0x00000001) == 0x00000001)) {
@@ -339,16 +339,16 @@ public final class Message {
       }
       
       public Builder mergeFrom(com.google.protobuf.Message other) {
-        if (other instanceof popeye.transport.proto.Message.Tag) {
-          return mergeFrom((popeye.transport.proto.Message.Tag)other);
+        if (other instanceof popeye.transport.proto.Message.Attribute) {
+          return mergeFrom((popeye.transport.proto.Message.Attribute)other);
         } else {
           super.mergeFrom(other);
           return this;
         }
       }
       
-      public Builder mergeFrom(popeye.transport.proto.Message.Tag other) {
-        if (other == popeye.transport.proto.Message.Tag.getDefaultInstance()) return this;
+      public Builder mergeFrom(popeye.transport.proto.Message.Attribute other) {
+        if (other == popeye.transport.proto.Message.Attribute.getDefaultInstance()) return this;
         if (other.hasName()) {
           setName(other.getName());
         }
@@ -482,18 +482,18 @@ public final class Message {
         onChanged();
       }
       
-      // @@protoc_insertion_point(builder_scope:popeye.transport.proto.Tag)
+      // @@protoc_insertion_point(builder_scope:popeye.transport.proto.Attribute)
     }
     
     static {
-      defaultInstance = new Tag(true);
+      defaultInstance = new Attribute(true);
       defaultInstance.initFields();
     }
     
-    // @@protoc_insertion_point(class_scope:popeye.transport.proto.Tag)
+    // @@protoc_insertion_point(class_scope:popeye.transport.proto.Attribute)
   }
   
-  public interface EventOrBuilder
+  public interface PointOrBuilder
       extends com.google.protobuf.MessageOrBuilder {
     
     // required string metric = 1;
@@ -504,14 +504,14 @@ public final class Message {
     boolean hasTimestamp();
     long getTimestamp();
     
-    // repeated .popeye.transport.proto.Tag tags = 3;
-    java.util.List<popeye.transport.proto.Message.Tag> 
-        getTagsList();
-    popeye.transport.proto.Message.Tag getTags(int index);
-    int getTagsCount();
-    java.util.List<? extends popeye.transport.proto.Message.TagOrBuilder> 
-        getTagsOrBuilderList();
-    popeye.transport.proto.Message.TagOrBuilder getTagsOrBuilder(
+    // repeated .popeye.transport.proto.Attribute attributes = 3;
+    java.util.List<popeye.transport.proto.Message.Attribute> 
+        getAttributesList();
+    popeye.transport.proto.Message.Attribute getAttributes(int index);
+    int getAttributesCount();
+    java.util.List<? extends popeye.transport.proto.Message.AttributeOrBuilder> 
+        getAttributesOrBuilderList();
+    popeye.transport.proto.Message.AttributeOrBuilder getAttributesOrBuilder(
         int index);
     
     // optional int64 int_value = 4;
@@ -522,32 +522,32 @@ public final class Message {
     boolean hasFloatValue();
     float getFloatValue();
   }
-  public static final class Event extends
+  public static final class Point extends
       com.google.protobuf.GeneratedMessage
-      implements EventOrBuilder {
-    // Use Event.newBuilder() to construct.
-    private Event(Builder builder) {
+      implements PointOrBuilder {
+    // Use Point.newBuilder() to construct.
+    private Point(Builder builder) {
       super(builder);
     }
-    private Event(boolean noInit) {}
+    private Point(boolean noInit) {}
     
-    private static final Event defaultInstance;
-    public static Event getDefaultInstance() {
+    private static final Point defaultInstance;
+    public static Point getDefaultInstance() {
       return defaultInstance;
     }
     
-    public Event getDefaultInstanceForType() {
+    public Point getDefaultInstanceForType() {
       return defaultInstance;
     }
     
     public static final com.google.protobuf.Descriptors.Descriptor
         getDescriptor() {
-      return popeye.transport.proto.Message.internal_static_popeye_transport_proto_Event_descriptor;
+      return popeye.transport.proto.Message.internal_static_popeye_transport_proto_Point_descriptor;
     }
     
     protected com.google.protobuf.GeneratedMessage.FieldAccessorTable
         internalGetFieldAccessorTable() {
-      return popeye.transport.proto.Message.internal_static_popeye_transport_proto_Event_fieldAccessorTable;
+      return popeye.transport.proto.Message.internal_static_popeye_transport_proto_Point_fieldAccessorTable;
     }
     
     private int bitField0_;
@@ -593,25 +593,25 @@ public final class Message {
       return timestamp_;
     }
     
-    // repeated .popeye.transport.proto.Tag tags = 3;
-    public static final int TAGS_FIELD_NUMBER = 3;
-    private java.util.List<popeye.transport.proto.Message.Tag> tags_;
-    public java.util.List<popeye.transport.proto.Message.Tag> getTagsList() {
-      return tags_;
+    // repeated .popeye.transport.proto.Attribute attributes = 3;
+    public static final int ATTRIBUTES_FIELD_NUMBER = 3;
+    private java.util.List<popeye.transport.proto.Message.Attribute> attributes_;
+    public java.util.List<popeye.transport.proto.Message.Attribute> getAttributesList() {
+      return attributes_;
     }
-    public java.util.List<? extends popeye.transport.proto.Message.TagOrBuilder> 
-        getTagsOrBuilderList() {
-      return tags_;
+    public java.util.List<? extends popeye.transport.proto.Message.AttributeOrBuilder> 
+        getAttributesOrBuilderList() {
+      return attributes_;
     }
-    public int getTagsCount() {
-      return tags_.size();
+    public int getAttributesCount() {
+      return attributes_.size();
     }
-    public popeye.transport.proto.Message.Tag getTags(int index) {
-      return tags_.get(index);
+    public popeye.transport.proto.Message.Attribute getAttributes(int index) {
+      return attributes_.get(index);
     }
-    public popeye.transport.proto.Message.TagOrBuilder getTagsOrBuilder(
+    public popeye.transport.proto.Message.AttributeOrBuilder getAttributesOrBuilder(
         int index) {
-      return tags_.get(index);
+      return attributes_.get(index);
     }
     
     // optional int64 int_value = 4;
@@ -637,7 +637,7 @@ public final class Message {
     private void initFields() {
       metric_ = "";
       timestamp_ = 0L;
-      tags_ = java.util.Collections.emptyList();
+      attributes_ = java.util.Collections.emptyList();
       intValue_ = 0L;
       floatValue_ = 0F;
     }
@@ -654,8 +654,8 @@ public final class Message {
         memoizedIsInitialized = 0;
         return false;
       }
-      for (int i = 0; i < getTagsCount(); i++) {
-        if (!getTags(i).isInitialized()) {
+      for (int i = 0; i < getAttributesCount(); i++) {
+        if (!getAttributes(i).isInitialized()) {
           memoizedIsInitialized = 0;
           return false;
         }
@@ -673,8 +673,8 @@ public final class Message {
       if (((bitField0_ & 0x00000002) == 0x00000002)) {
         output.writeInt64(2, timestamp_);
       }
-      for (int i = 0; i < tags_.size(); i++) {
-        output.writeMessage(3, tags_.get(i));
+      for (int i = 0; i < attributes_.size(); i++) {
+        output.writeMessage(3, attributes_.get(i));
       }
       if (((bitField0_ & 0x00000004) == 0x00000004)) {
         output.writeInt64(4, intValue_);
@@ -699,9 +699,9 @@ public final class Message {
         size += com.google.protobuf.CodedOutputStream
           .computeInt64Size(2, timestamp_);
       }
-      for (int i = 0; i < tags_.size(); i++) {
+      for (int i = 0; i < attributes_.size(); i++) {
         size += com.google.protobuf.CodedOutputStream
-          .computeMessageSize(3, tags_.get(i));
+          .computeMessageSize(3, attributes_.get(i));
       }
       if (((bitField0_ & 0x00000004) == 0x00000004)) {
         size += com.google.protobuf.CodedOutputStream
@@ -723,41 +723,41 @@ public final class Message {
       return super.writeReplace();
     }
     
-    public static popeye.transport.proto.Message.Event parseFrom(
+    public static popeye.transport.proto.Message.Point parseFrom(
         com.google.protobuf.ByteString data)
         throws com.google.protobuf.InvalidProtocolBufferException {
       return newBuilder().mergeFrom(data).buildParsed();
     }
-    public static popeye.transport.proto.Message.Event parseFrom(
+    public static popeye.transport.proto.Message.Point parseFrom(
         com.google.protobuf.ByteString data,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
         throws com.google.protobuf.InvalidProtocolBufferException {
       return newBuilder().mergeFrom(data, extensionRegistry)
                .buildParsed();
     }
-    public static popeye.transport.proto.Message.Event parseFrom(byte[] data)
+    public static popeye.transport.proto.Message.Point parseFrom(byte[] data)
         throws com.google.protobuf.InvalidProtocolBufferException {
       return newBuilder().mergeFrom(data).buildParsed();
     }
-    public static popeye.transport.proto.Message.Event parseFrom(
+    public static popeye.transport.proto.Message.Point parseFrom(
         byte[] data,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
         throws com.google.protobuf.InvalidProtocolBufferException {
       return newBuilder().mergeFrom(data, extensionRegistry)
                .buildParsed();
     }
-    public static popeye.transport.proto.Message.Event parseFrom(java.io.InputStream input)
+    public static popeye.transport.proto.Message.Point parseFrom(java.io.InputStream input)
         throws java.io.IOException {
       return newBuilder().mergeFrom(input).buildParsed();
     }
-    public static popeye.transport.proto.Message.Event parseFrom(
+    public static popeye.transport.proto.Message.Point parseFrom(
         java.io.InputStream input,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
         throws java.io.IOException {
       return newBuilder().mergeFrom(input, extensionRegistry)
                .buildParsed();
     }
-    public static popeye.transport.proto.Message.Event parseDelimitedFrom(java.io.InputStream input)
+    public static popeye.transport.proto.Message.Point parseDelimitedFrom(java.io.InputStream input)
         throws java.io.IOException {
       Builder builder = newBuilder();
       if (builder.mergeDelimitedFrom(input)) {
@@ -766,7 +766,7 @@ public final class Message {
         return null;
       }
     }
-    public static popeye.transport.proto.Message.Event parseDelimitedFrom(
+    public static popeye.transport.proto.Message.Point parseDelimitedFrom(
         java.io.InputStream input,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
         throws java.io.IOException {
@@ -777,12 +777,12 @@ public final class Message {
         return null;
       }
     }
-    public static popeye.transport.proto.Message.Event parseFrom(
+    public static popeye.transport.proto.Message.Point parseFrom(
         com.google.protobuf.CodedInputStream input)
         throws java.io.IOException {
       return newBuilder().mergeFrom(input).buildParsed();
     }
-    public static popeye.transport.proto.Message.Event parseFrom(
+    public static popeye.transport.proto.Message.Point parseFrom(
         com.google.protobuf.CodedInputStream input,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
         throws java.io.IOException {
@@ -792,7 +792,7 @@ public final class Message {
     
     public static Builder newBuilder() { return Builder.create(); }
     public Builder newBuilderForType() { return newBuilder(); }
-    public static Builder newBuilder(popeye.transport.proto.Message.Event prototype) {
+    public static Builder newBuilder(popeye.transport.proto.Message.Point prototype) {
       return newBuilder().mergeFrom(prototype);
     }
     public Builder toBuilder() { return newBuilder(this); }
@@ -805,18 +805,18 @@ public final class Message {
     }
     public static final class Builder extends
         com.google.protobuf.GeneratedMessage.Builder<Builder>
-       implements popeye.transport.proto.Message.EventOrBuilder {
+       implements popeye.transport.proto.Message.PointOrBuilder {
       public static final com.google.protobuf.Descriptors.Descriptor
           getDescriptor() {
-        return popeye.transport.proto.Message.internal_static_popeye_transport_proto_Event_descriptor;
+        return popeye.transport.proto.Message.internal_static_popeye_transport_proto_Point_descriptor;
       }
       
       protected com.google.protobuf.GeneratedMessage.FieldAccessorTable
           internalGetFieldAccessorTable() {
-        return popeye.transport.proto.Message.internal_static_popeye_transport_proto_Event_fieldAccessorTable;
+        return popeye.transport.proto.Message.internal_static_popeye_transport_proto_Point_fieldAccessorTable;
       }
       
-      // Construct using popeye.transport.proto.Message.Event.newBuilder()
+      // Construct using popeye.transport.proto.Message.Point.newBuilder()
       private Builder() {
         maybeForceBuilderInitialization();
       }
@@ -827,7 +827,7 @@ public final class Message {
       }
       private void maybeForceBuilderInitialization() {
         if (com.google.protobuf.GeneratedMessage.alwaysUseFieldBuilders) {
-          getTagsFieldBuilder();
+          getAttributesFieldBuilder();
         }
       }
       private static Builder create() {
@@ -840,11 +840,11 @@ public final class Message {
         bitField0_ = (bitField0_ & ~0x00000001);
         timestamp_ = 0L;
         bitField0_ = (bitField0_ & ~0x00000002);
-        if (tagsBuilder_ == null) {
-          tags_ = java.util.Collections.emptyList();
+        if (attributesBuilder_ == null) {
+          attributes_ = java.util.Collections.emptyList();
           bitField0_ = (bitField0_ & ~0x00000004);
         } else {
-          tagsBuilder_.clear();
+          attributesBuilder_.clear();
         }
         intValue_ = 0L;
         bitField0_ = (bitField0_ & ~0x00000008);
@@ -859,24 +859,24 @@ public final class Message {
       
       public com.google.protobuf.Descriptors.Descriptor
           getDescriptorForType() {
-        return popeye.transport.proto.Message.Event.getDescriptor();
+        return popeye.transport.proto.Message.Point.getDescriptor();
       }
       
-      public popeye.transport.proto.Message.Event getDefaultInstanceForType() {
-        return popeye.transport.proto.Message.Event.getDefaultInstance();
+      public popeye.transport.proto.Message.Point getDefaultInstanceForType() {
+        return popeye.transport.proto.Message.Point.getDefaultInstance();
       }
       
-      public popeye.transport.proto.Message.Event build() {
-        popeye.transport.proto.Message.Event result = buildPartial();
+      public popeye.transport.proto.Message.Point build() {
+        popeye.transport.proto.Message.Point result = buildPartial();
         if (!result.isInitialized()) {
           throw newUninitializedMessageException(result);
         }
         return result;
       }
       
-      private popeye.transport.proto.Message.Event buildParsed()
+      private popeye.transport.proto.Message.Point buildParsed()
           throws com.google.protobuf.InvalidProtocolBufferException {
-        popeye.transport.proto.Message.Event result = buildPartial();
+        popeye.transport.proto.Message.Point result = buildPartial();
         if (!result.isInitialized()) {
           throw newUninitializedMessageException(
             result).asInvalidProtocolBufferException();
@@ -884,8 +884,8 @@ public final class Message {
         return result;
       }
       
-      public popeye.transport.proto.Message.Event buildPartial() {
-        popeye.transport.proto.Message.Event result = new popeye.transport.proto.Message.Event(this);
+      public popeye.transport.proto.Message.Point buildPartial() {
+        popeye.transport.proto.Message.Point result = new popeye.transport.proto.Message.Point(this);
         int from_bitField0_ = bitField0_;
         int to_bitField0_ = 0;
         if (((from_bitField0_ & 0x00000001) == 0x00000001)) {
@@ -896,14 +896,14 @@ public final class Message {
           to_bitField0_ |= 0x00000002;
         }
         result.timestamp_ = timestamp_;
-        if (tagsBuilder_ == null) {
+        if (attributesBuilder_ == null) {
           if (((bitField0_ & 0x00000004) == 0x00000004)) {
-            tags_ = java.util.Collections.unmodifiableList(tags_);
+            attributes_ = java.util.Collections.unmodifiableList(attributes_);
             bitField0_ = (bitField0_ & ~0x00000004);
           }
-          result.tags_ = tags_;
+          result.attributes_ = attributes_;
         } else {
-          result.tags_ = tagsBuilder_.build();
+          result.attributes_ = attributesBuilder_.build();
         }
         if (((from_bitField0_ & 0x00000008) == 0x00000008)) {
           to_bitField0_ |= 0x00000004;
@@ -919,45 +919,45 @@ public final class Message {
       }
       
       public Builder mergeFrom(com.google.protobuf.Message other) {
-        if (other instanceof popeye.transport.proto.Message.Event) {
-          return mergeFrom((popeye.transport.proto.Message.Event)other);
+        if (other instanceof popeye.transport.proto.Message.Point) {
+          return mergeFrom((popeye.transport.proto.Message.Point)other);
         } else {
           super.mergeFrom(other);
           return this;
         }
       }
       
-      public Builder mergeFrom(popeye.transport.proto.Message.Event other) {
-        if (other == popeye.transport.proto.Message.Event.getDefaultInstance()) return this;
+      public Builder mergeFrom(popeye.transport.proto.Message.Point other) {
+        if (other == popeye.transport.proto.Message.Point.getDefaultInstance()) return this;
         if (other.hasMetric()) {
           setMetric(other.getMetric());
         }
         if (other.hasTimestamp()) {
           setTimestamp(other.getTimestamp());
         }
-        if (tagsBuilder_ == null) {
-          if (!other.tags_.isEmpty()) {
-            if (tags_.isEmpty()) {
-              tags_ = other.tags_;
+        if (attributesBuilder_ == null) {
+          if (!other.attributes_.isEmpty()) {
+            if (attributes_.isEmpty()) {
+              attributes_ = other.attributes_;
               bitField0_ = (bitField0_ & ~0x00000004);
             } else {
-              ensureTagsIsMutable();
-              tags_.addAll(other.tags_);
+              ensureAttributesIsMutable();
+              attributes_.addAll(other.attributes_);
             }
             onChanged();
           }
         } else {
-          if (!other.tags_.isEmpty()) {
-            if (tagsBuilder_.isEmpty()) {
-              tagsBuilder_.dispose();
-              tagsBuilder_ = null;
-              tags_ = other.tags_;
+          if (!other.attributes_.isEmpty()) {
+            if (attributesBuilder_.isEmpty()) {
+              attributesBuilder_.dispose();
+              attributesBuilder_ = null;
+              attributes_ = other.attributes_;
               bitField0_ = (bitField0_ & ~0x00000004);
-              tagsBuilder_ = 
+              attributesBuilder_ = 
                 com.google.protobuf.GeneratedMessage.alwaysUseFieldBuilders ?
-                   getTagsFieldBuilder() : null;
+                   getAttributesFieldBuilder() : null;
             } else {
-              tagsBuilder_.addAllMessages(other.tags_);
+              attributesBuilder_.addAllMessages(other.attributes_);
             }
           }
         }
@@ -980,8 +980,8 @@ public final class Message {
           
           return false;
         }
-        for (int i = 0; i < getTagsCount(); i++) {
-          if (!getTags(i).isInitialized()) {
+        for (int i = 0; i < getAttributesCount(); i++) {
+          if (!getAttributes(i).isInitialized()) {
             
             return false;
           }
@@ -1023,9 +1023,9 @@ public final class Message {
               break;
             }
             case 26: {
-              popeye.transport.proto.Message.Tag.Builder subBuilder = popeye.transport.proto.Message.Tag.newBuilder();
+              popeye.transport.proto.Message.Attribute.Builder subBuilder = popeye.transport.proto.Message.Attribute.newBuilder();
               input.readMessage(subBuilder, extensionRegistry);
-              addTags(subBuilder.buildPartial());
+              addAttributes(subBuilder.buildPartial());
               break;
             }
             case 32: {
@@ -1101,190 +1101,190 @@ public final class Message {
         return this;
       }
       
-      // repeated .popeye.transport.proto.Tag tags = 3;
-      private java.util.List<popeye.transport.proto.Message.Tag> tags_ =
+      // repeated .popeye.transport.proto.Attribute attributes = 3;
+      private java.util.List<popeye.transport.proto.Message.Attribute> attributes_ =
         java.util.Collections.emptyList();
-      private void ensureTagsIsMutable() {
+      private void ensureAttributesIsMutable() {
         if (!((bitField0_ & 0x00000004) == 0x00000004)) {
-          tags_ = new java.util.ArrayList<popeye.transport.proto.Message.Tag>(tags_);
+          attributes_ = new java.util.ArrayList<popeye.transport.proto.Message.Attribute>(attributes_);
           bitField0_ |= 0x00000004;
          }
       }
       
       private com.google.protobuf.RepeatedFieldBuilder<
-          popeye.transport.proto.Message.Tag, popeye.transport.proto.Message.Tag.Builder, popeye.transport.proto.Message.TagOrBuilder> tagsBuilder_;
+          popeye.transport.proto.Message.Attribute, popeye.transport.proto.Message.Attribute.Builder, popeye.transport.proto.Message.AttributeOrBuilder> attributesBuilder_;
       
-      public java.util.List<popeye.transport.proto.Message.Tag> getTagsList() {
-        if (tagsBuilder_ == null) {
-          return java.util.Collections.unmodifiableList(tags_);
+      public java.util.List<popeye.transport.proto.Message.Attribute> getAttributesList() {
+        if (attributesBuilder_ == null) {
+          return java.util.Collections.unmodifiableList(attributes_);
         } else {
-          return tagsBuilder_.getMessageList();
+          return attributesBuilder_.getMessageList();
         }
       }
-      public int getTagsCount() {
-        if (tagsBuilder_ == null) {
-          return tags_.size();
+      public int getAttributesCount() {
+        if (attributesBuilder_ == null) {
+          return attributes_.size();
         } else {
-          return tagsBuilder_.getCount();
+          return attributesBuilder_.getCount();
         }
       }
-      public popeye.transport.proto.Message.Tag getTags(int index) {
-        if (tagsBuilder_ == null) {
-          return tags_.get(index);
+      public popeye.transport.proto.Message.Attribute getAttributes(int index) {
+        if (attributesBuilder_ == null) {
+          return attributes_.get(index);
         } else {
-          return tagsBuilder_.getMessage(index);
+          return attributesBuilder_.getMessage(index);
         }
       }
-      public Builder setTags(
-          int index, popeye.transport.proto.Message.Tag value) {
-        if (tagsBuilder_ == null) {
+      public Builder setAttributes(
+          int index, popeye.transport.proto.Message.Attribute value) {
+        if (attributesBuilder_ == null) {
           if (value == null) {
             throw new NullPointerException();
           }
-          ensureTagsIsMutable();
-          tags_.set(index, value);
+          ensureAttributesIsMutable();
+          attributes_.set(index, value);
           onChanged();
         } else {
-          tagsBuilder_.setMessage(index, value);
+          attributesBuilder_.setMessage(index, value);
         }
         return this;
       }
-      public Builder setTags(
-          int index, popeye.transport.proto.Message.Tag.Builder builderForValue) {
-        if (tagsBuilder_ == null) {
-          ensureTagsIsMutable();
-          tags_.set(index, builderForValue.build());
+      public Builder setAttributes(
+          int index, popeye.transport.proto.Message.Attribute.Builder builderForValue) {
+        if (attributesBuilder_ == null) {
+          ensureAttributesIsMutable();
+          attributes_.set(index, builderForValue.build());
           onChanged();
         } else {
-          tagsBuilder_.setMessage(index, builderForValue.build());
+          attributesBuilder_.setMessage(index, builderForValue.build());
         }
         return this;
       }
-      public Builder addTags(popeye.transport.proto.Message.Tag value) {
-        if (tagsBuilder_ == null) {
+      public Builder addAttributes(popeye.transport.proto.Message.Attribute value) {
+        if (attributesBuilder_ == null) {
           if (value == null) {
             throw new NullPointerException();
           }
-          ensureTagsIsMutable();
-          tags_.add(value);
+          ensureAttributesIsMutable();
+          attributes_.add(value);
           onChanged();
         } else {
-          tagsBuilder_.addMessage(value);
+          attributesBuilder_.addMessage(value);
         }
         return this;
       }
-      public Builder addTags(
-          int index, popeye.transport.proto.Message.Tag value) {
-        if (tagsBuilder_ == null) {
+      public Builder addAttributes(
+          int index, popeye.transport.proto.Message.Attribute value) {
+        if (attributesBuilder_ == null) {
           if (value == null) {
             throw new NullPointerException();
           }
-          ensureTagsIsMutable();
-          tags_.add(index, value);
+          ensureAttributesIsMutable();
+          attributes_.add(index, value);
           onChanged();
         } else {
-          tagsBuilder_.addMessage(index, value);
+          attributesBuilder_.addMessage(index, value);
         }
         return this;
       }
-      public Builder addTags(
-          popeye.transport.proto.Message.Tag.Builder builderForValue) {
-        if (tagsBuilder_ == null) {
-          ensureTagsIsMutable();
-          tags_.add(builderForValue.build());
+      public Builder addAttributes(
+          popeye.transport.proto.Message.Attribute.Builder builderForValue) {
+        if (attributesBuilder_ == null) {
+          ensureAttributesIsMutable();
+          attributes_.add(builderForValue.build());
           onChanged();
         } else {
-          tagsBuilder_.addMessage(builderForValue.build());
+          attributesBuilder_.addMessage(builderForValue.build());
         }
         return this;
       }
-      public Builder addTags(
-          int index, popeye.transport.proto.Message.Tag.Builder builderForValue) {
-        if (tagsBuilder_ == null) {
-          ensureTagsIsMutable();
-          tags_.add(index, builderForValue.build());
+      public Builder addAttributes(
+          int index, popeye.transport.proto.Message.Attribute.Builder builderForValue) {
+        if (attributesBuilder_ == null) {
+          ensureAttributesIsMutable();
+          attributes_.add(index, builderForValue.build());
           onChanged();
         } else {
-          tagsBuilder_.addMessage(index, builderForValue.build());
+          attributesBuilder_.addMessage(index, builderForValue.build());
         }
         return this;
       }
-      public Builder addAllTags(
-          java.lang.Iterable<? extends popeye.transport.proto.Message.Tag> values) {
-        if (tagsBuilder_ == null) {
-          ensureTagsIsMutable();
-          super.addAll(values, tags_);
+      public Builder addAllAttributes(
+          java.lang.Iterable<? extends popeye.transport.proto.Message.Attribute> values) {
+        if (attributesBuilder_ == null) {
+          ensureAttributesIsMutable();
+          super.addAll(values, attributes_);
           onChanged();
         } else {
-          tagsBuilder_.addAllMessages(values);
+          attributesBuilder_.addAllMessages(values);
         }
         return this;
       }
-      public Builder clearTags() {
-        if (tagsBuilder_ == null) {
-          tags_ = java.util.Collections.emptyList();
+      public Builder clearAttributes() {
+        if (attributesBuilder_ == null) {
+          attributes_ = java.util.Collections.emptyList();
           bitField0_ = (bitField0_ & ~0x00000004);
           onChanged();
         } else {
-          tagsBuilder_.clear();
+          attributesBuilder_.clear();
         }
         return this;
       }
-      public Builder removeTags(int index) {
-        if (tagsBuilder_ == null) {
-          ensureTagsIsMutable();
-          tags_.remove(index);
+      public Builder removeAttributes(int index) {
+        if (attributesBuilder_ == null) {
+          ensureAttributesIsMutable();
+          attributes_.remove(index);
           onChanged();
         } else {
-          tagsBuilder_.remove(index);
+          attributesBuilder_.remove(index);
         }
         return this;
       }
-      public popeye.transport.proto.Message.Tag.Builder getTagsBuilder(
+      public popeye.transport.proto.Message.Attribute.Builder getAttributesBuilder(
           int index) {
-        return getTagsFieldBuilder().getBuilder(index);
+        return getAttributesFieldBuilder().getBuilder(index);
       }
-      public popeye.transport.proto.Message.TagOrBuilder getTagsOrBuilder(
+      public popeye.transport.proto.Message.AttributeOrBuilder getAttributesOrBuilder(
           int index) {
-        if (tagsBuilder_ == null) {
-          return tags_.get(index);  } else {
-          return tagsBuilder_.getMessageOrBuilder(index);
+        if (attributesBuilder_ == null) {
+          return attributes_.get(index);  } else {
+          return attributesBuilder_.getMessageOrBuilder(index);
         }
       }
-      public java.util.List<? extends popeye.transport.proto.Message.TagOrBuilder> 
-           getTagsOrBuilderList() {
-        if (tagsBuilder_ != null) {
-          return tagsBuilder_.getMessageOrBuilderList();
+      public java.util.List<? extends popeye.transport.proto.Message.AttributeOrBuilder> 
+           getAttributesOrBuilderList() {
+        if (attributesBuilder_ != null) {
+          return attributesBuilder_.getMessageOrBuilderList();
         } else {
-          return java.util.Collections.unmodifiableList(tags_);
+          return java.util.Collections.unmodifiableList(attributes_);
         }
       }
-      public popeye.transport.proto.Message.Tag.Builder addTagsBuilder() {
-        return getTagsFieldBuilder().addBuilder(
-            popeye.transport.proto.Message.Tag.getDefaultInstance());
+      public popeye.transport.proto.Message.Attribute.Builder addAttributesBuilder() {
+        return getAttributesFieldBuilder().addBuilder(
+            popeye.transport.proto.Message.Attribute.getDefaultInstance());
       }
-      public popeye.transport.proto.Message.Tag.Builder addTagsBuilder(
+      public popeye.transport.proto.Message.Attribute.Builder addAttributesBuilder(
           int index) {
-        return getTagsFieldBuilder().addBuilder(
-            index, popeye.transport.proto.Message.Tag.getDefaultInstance());
+        return getAttributesFieldBuilder().addBuilder(
+            index, popeye.transport.proto.Message.Attribute.getDefaultInstance());
       }
-      public java.util.List<popeye.transport.proto.Message.Tag.Builder> 
-           getTagsBuilderList() {
-        return getTagsFieldBuilder().getBuilderList();
+      public java.util.List<popeye.transport.proto.Message.Attribute.Builder> 
+           getAttributesBuilderList() {
+        return getAttributesFieldBuilder().getBuilderList();
       }
       private com.google.protobuf.RepeatedFieldBuilder<
-          popeye.transport.proto.Message.Tag, popeye.transport.proto.Message.Tag.Builder, popeye.transport.proto.Message.TagOrBuilder> 
-          getTagsFieldBuilder() {
-        if (tagsBuilder_ == null) {
-          tagsBuilder_ = new com.google.protobuf.RepeatedFieldBuilder<
-              popeye.transport.proto.Message.Tag, popeye.transport.proto.Message.Tag.Builder, popeye.transport.proto.Message.TagOrBuilder>(
-                  tags_,
+          popeye.transport.proto.Message.Attribute, popeye.transport.proto.Message.Attribute.Builder, popeye.transport.proto.Message.AttributeOrBuilder> 
+          getAttributesFieldBuilder() {
+        if (attributesBuilder_ == null) {
+          attributesBuilder_ = new com.google.protobuf.RepeatedFieldBuilder<
+              popeye.transport.proto.Message.Attribute, popeye.transport.proto.Message.Attribute.Builder, popeye.transport.proto.Message.AttributeOrBuilder>(
+                  attributes_,
                   ((bitField0_ & 0x00000004) == 0x00000004),
                   getParentForChildren(),
                   isClean());
-          tags_ = null;
+          attributes_ = null;
         }
-        return tagsBuilder_;
+        return attributesBuilder_;
       }
       
       // optional int64 int_value = 4;
@@ -1329,28 +1329,28 @@ public final class Message {
         return this;
       }
       
-      // @@protoc_insertion_point(builder_scope:popeye.transport.proto.Event)
+      // @@protoc_insertion_point(builder_scope:popeye.transport.proto.Point)
     }
     
     static {
-      defaultInstance = new Event(true);
+      defaultInstance = new Point(true);
       defaultInstance.initFields();
     }
     
-    // @@protoc_insertion_point(class_scope:popeye.transport.proto.Event)
+    // @@protoc_insertion_point(class_scope:popeye.transport.proto.Point)
   }
   
   public interface BatchOrBuilder
       extends com.google.protobuf.MessageOrBuilder {
     
-    // repeated .popeye.transport.proto.Event event = 1;
-    java.util.List<popeye.transport.proto.Message.Event> 
-        getEventList();
-    popeye.transport.proto.Message.Event getEvent(int index);
-    int getEventCount();
-    java.util.List<? extends popeye.transport.proto.Message.EventOrBuilder> 
-        getEventOrBuilderList();
-    popeye.transport.proto.Message.EventOrBuilder getEventOrBuilder(
+    // repeated .popeye.transport.proto.Point point = 1;
+    java.util.List<popeye.transport.proto.Message.Point> 
+        getPointList();
+    popeye.transport.proto.Message.Point getPoint(int index);
+    int getPointCount();
+    java.util.List<? extends popeye.transport.proto.Message.PointOrBuilder> 
+        getPointOrBuilderList();
+    popeye.transport.proto.Message.PointOrBuilder getPointOrBuilder(
         int index);
     
     // optional int64 correlation = 2;
@@ -1386,25 +1386,25 @@ public final class Message {
     }
     
     private int bitField0_;
-    // repeated .popeye.transport.proto.Event event = 1;
-    public static final int EVENT_FIELD_NUMBER = 1;
-    private java.util.List<popeye.transport.proto.Message.Event> event_;
-    public java.util.List<popeye.transport.proto.Message.Event> getEventList() {
-      return event_;
+    // repeated .popeye.transport.proto.Point point = 1;
+    public static final int POINT_FIELD_NUMBER = 1;
+    private java.util.List<popeye.transport.proto.Message.Point> point_;
+    public java.util.List<popeye.transport.proto.Message.Point> getPointList() {
+      return point_;
     }
-    public java.util.List<? extends popeye.transport.proto.Message.EventOrBuilder> 
-        getEventOrBuilderList() {
-      return event_;
+    public java.util.List<? extends popeye.transport.proto.Message.PointOrBuilder> 
+        getPointOrBuilderList() {
+      return point_;
     }
-    public int getEventCount() {
-      return event_.size();
+    public int getPointCount() {
+      return point_.size();
     }
-    public popeye.transport.proto.Message.Event getEvent(int index) {
-      return event_.get(index);
+    public popeye.transport.proto.Message.Point getPoint(int index) {
+      return point_.get(index);
     }
-    public popeye.transport.proto.Message.EventOrBuilder getEventOrBuilder(
+    public popeye.transport.proto.Message.PointOrBuilder getPointOrBuilder(
         int index) {
-      return event_.get(index);
+      return point_.get(index);
     }
     
     // optional int64 correlation = 2;
@@ -1418,7 +1418,7 @@ public final class Message {
     }
     
     private void initFields() {
-      event_ = java.util.Collections.emptyList();
+      point_ = java.util.Collections.emptyList();
       correlation_ = 0L;
     }
     private byte memoizedIsInitialized = -1;
@@ -1426,8 +1426,8 @@ public final class Message {
       byte isInitialized = memoizedIsInitialized;
       if (isInitialized != -1) return isInitialized == 1;
       
-      for (int i = 0; i < getEventCount(); i++) {
-        if (!getEvent(i).isInitialized()) {
+      for (int i = 0; i < getPointCount(); i++) {
+        if (!getPoint(i).isInitialized()) {
           memoizedIsInitialized = 0;
           return false;
         }
@@ -1439,8 +1439,8 @@ public final class Message {
     public void writeTo(com.google.protobuf.CodedOutputStream output)
                         throws java.io.IOException {
       getSerializedSize();
-      for (int i = 0; i < event_.size(); i++) {
-        output.writeMessage(1, event_.get(i));
+      for (int i = 0; i < point_.size(); i++) {
+        output.writeMessage(1, point_.get(i));
       }
       if (((bitField0_ & 0x00000001) == 0x00000001)) {
         output.writeInt64(2, correlation_);
@@ -1454,9 +1454,9 @@ public final class Message {
       if (size != -1) return size;
     
       size = 0;
-      for (int i = 0; i < event_.size(); i++) {
+      for (int i = 0; i < point_.size(); i++) {
         size += com.google.protobuf.CodedOutputStream
-          .computeMessageSize(1, event_.get(i));
+          .computeMessageSize(1, point_.get(i));
       }
       if (((bitField0_ & 0x00000001) == 0x00000001)) {
         size += com.google.protobuf.CodedOutputStream
@@ -1578,7 +1578,7 @@ public final class Message {
       }
       private void maybeForceBuilderInitialization() {
         if (com.google.protobuf.GeneratedMessage.alwaysUseFieldBuilders) {
-          getEventFieldBuilder();
+          getPointFieldBuilder();
         }
       }
       private static Builder create() {
@@ -1587,11 +1587,11 @@ public final class Message {
       
       public Builder clear() {
         super.clear();
-        if (eventBuilder_ == null) {
-          event_ = java.util.Collections.emptyList();
+        if (pointBuilder_ == null) {
+          point_ = java.util.Collections.emptyList();
           bitField0_ = (bitField0_ & ~0x00000001);
         } else {
-          eventBuilder_.clear();
+          pointBuilder_.clear();
         }
         correlation_ = 0L;
         bitField0_ = (bitField0_ & ~0x00000002);
@@ -1633,14 +1633,14 @@ public final class Message {
         popeye.transport.proto.Message.Batch result = new popeye.transport.proto.Message.Batch(this);
         int from_bitField0_ = bitField0_;
         int to_bitField0_ = 0;
-        if (eventBuilder_ == null) {
+        if (pointBuilder_ == null) {
           if (((bitField0_ & 0x00000001) == 0x00000001)) {
-            event_ = java.util.Collections.unmodifiableList(event_);
+            point_ = java.util.Collections.unmodifiableList(point_);
             bitField0_ = (bitField0_ & ~0x00000001);
           }
-          result.event_ = event_;
+          result.point_ = point_;
         } else {
-          result.event_ = eventBuilder_.build();
+          result.point_ = pointBuilder_.build();
         }
         if (((from_bitField0_ & 0x00000002) == 0x00000002)) {
           to_bitField0_ |= 0x00000001;
@@ -1662,29 +1662,29 @@ public final class Message {
       
       public Builder mergeFrom(popeye.transport.proto.Message.Batch other) {
         if (other == popeye.transport.proto.Message.Batch.getDefaultInstance()) return this;
-        if (eventBuilder_ == null) {
-          if (!other.event_.isEmpty()) {
-            if (event_.isEmpty()) {
-              event_ = other.event_;
+        if (pointBuilder_ == null) {
+          if (!other.point_.isEmpty()) {
+            if (point_.isEmpty()) {
+              point_ = other.point_;
               bitField0_ = (bitField0_ & ~0x00000001);
             } else {
-              ensureEventIsMutable();
-              event_.addAll(other.event_);
+              ensurePointIsMutable();
+              point_.addAll(other.point_);
             }
             onChanged();
           }
         } else {
-          if (!other.event_.isEmpty()) {
-            if (eventBuilder_.isEmpty()) {
-              eventBuilder_.dispose();
-              eventBuilder_ = null;
-              event_ = other.event_;
+          if (!other.point_.isEmpty()) {
+            if (pointBuilder_.isEmpty()) {
+              pointBuilder_.dispose();
+              pointBuilder_ = null;
+              point_ = other.point_;
               bitField0_ = (bitField0_ & ~0x00000001);
-              eventBuilder_ = 
+              pointBuilder_ = 
                 com.google.protobuf.GeneratedMessage.alwaysUseFieldBuilders ?
-                   getEventFieldBuilder() : null;
+                   getPointFieldBuilder() : null;
             } else {
-              eventBuilder_.addAllMessages(other.event_);
+              pointBuilder_.addAllMessages(other.point_);
             }
           }
         }
@@ -1696,8 +1696,8 @@ public final class Message {
       }
       
       public final boolean isInitialized() {
-        for (int i = 0; i < getEventCount(); i++) {
-          if (!getEvent(i).isInitialized()) {
+        for (int i = 0; i < getPointCount(); i++) {
+          if (!getPoint(i).isInitialized()) {
             
             return false;
           }
@@ -1729,9 +1729,9 @@ public final class Message {
               break;
             }
             case 10: {
-              popeye.transport.proto.Message.Event.Builder subBuilder = popeye.transport.proto.Message.Event.newBuilder();
+              popeye.transport.proto.Message.Point.Builder subBuilder = popeye.transport.proto.Message.Point.newBuilder();
               input.readMessage(subBuilder, extensionRegistry);
-              addEvent(subBuilder.buildPartial());
+              addPoint(subBuilder.buildPartial());
               break;
             }
             case 16: {
@@ -1745,190 +1745,190 @@ public final class Message {
       
       private int bitField0_;
       
-      // repeated .popeye.transport.proto.Event event = 1;
-      private java.util.List<popeye.transport.proto.Message.Event> event_ =
+      // repeated .popeye.transport.proto.Point point = 1;
+      private java.util.List<popeye.transport.proto.Message.Point> point_ =
         java.util.Collections.emptyList();
-      private void ensureEventIsMutable() {
+      private void ensurePointIsMutable() {
         if (!((bitField0_ & 0x00000001) == 0x00000001)) {
-          event_ = new java.util.ArrayList<popeye.transport.proto.Message.Event>(event_);
+          point_ = new java.util.ArrayList<popeye.transport.proto.Message.Point>(point_);
           bitField0_ |= 0x00000001;
          }
       }
       
       private com.google.protobuf.RepeatedFieldBuilder<
-          popeye.transport.proto.Message.Event, popeye.transport.proto.Message.Event.Builder, popeye.transport.proto.Message.EventOrBuilder> eventBuilder_;
+          popeye.transport.proto.Message.Point, popeye.transport.proto.Message.Point.Builder, popeye.transport.proto.Message.PointOrBuilder> pointBuilder_;
       
-      public java.util.List<popeye.transport.proto.Message.Event> getEventList() {
-        if (eventBuilder_ == null) {
-          return java.util.Collections.unmodifiableList(event_);
+      public java.util.List<popeye.transport.proto.Message.Point> getPointList() {
+        if (pointBuilder_ == null) {
+          return java.util.Collections.unmodifiableList(point_);
         } else {
-          return eventBuilder_.getMessageList();
+          return pointBuilder_.getMessageList();
         }
       }
-      public int getEventCount() {
-        if (eventBuilder_ == null) {
-          return event_.size();
+      public int getPointCount() {
+        if (pointBuilder_ == null) {
+          return point_.size();
         } else {
-          return eventBuilder_.getCount();
+          return pointBuilder_.getCount();
         }
       }
-      public popeye.transport.proto.Message.Event getEvent(int index) {
-        if (eventBuilder_ == null) {
-          return event_.get(index);
+      public popeye.transport.proto.Message.Point getPoint(int index) {
+        if (pointBuilder_ == null) {
+          return point_.get(index);
         } else {
-          return eventBuilder_.getMessage(index);
+          return pointBuilder_.getMessage(index);
         }
       }
-      public Builder setEvent(
-          int index, popeye.transport.proto.Message.Event value) {
-        if (eventBuilder_ == null) {
+      public Builder setPoint(
+          int index, popeye.transport.proto.Message.Point value) {
+        if (pointBuilder_ == null) {
           if (value == null) {
             throw new NullPointerException();
           }
-          ensureEventIsMutable();
-          event_.set(index, value);
+          ensurePointIsMutable();
+          point_.set(index, value);
           onChanged();
         } else {
-          eventBuilder_.setMessage(index, value);
+          pointBuilder_.setMessage(index, value);
         }
         return this;
       }
-      public Builder setEvent(
-          int index, popeye.transport.proto.Message.Event.Builder builderForValue) {
-        if (eventBuilder_ == null) {
-          ensureEventIsMutable();
-          event_.set(index, builderForValue.build());
+      public Builder setPoint(
+          int index, popeye.transport.proto.Message.Point.Builder builderForValue) {
+        if (pointBuilder_ == null) {
+          ensurePointIsMutable();
+          point_.set(index, builderForValue.build());
           onChanged();
         } else {
-          eventBuilder_.setMessage(index, builderForValue.build());
+          pointBuilder_.setMessage(index, builderForValue.build());
         }
         return this;
       }
-      public Builder addEvent(popeye.transport.proto.Message.Event value) {
-        if (eventBuilder_ == null) {
+      public Builder addPoint(popeye.transport.proto.Message.Point value) {
+        if (pointBuilder_ == null) {
           if (value == null) {
             throw new NullPointerException();
           }
-          ensureEventIsMutable();
-          event_.add(value);
+          ensurePointIsMutable();
+          point_.add(value);
           onChanged();
         } else {
-          eventBuilder_.addMessage(value);
+          pointBuilder_.addMessage(value);
         }
         return this;
       }
-      public Builder addEvent(
-          int index, popeye.transport.proto.Message.Event value) {
-        if (eventBuilder_ == null) {
+      public Builder addPoint(
+          int index, popeye.transport.proto.Message.Point value) {
+        if (pointBuilder_ == null) {
           if (value == null) {
             throw new NullPointerException();
           }
-          ensureEventIsMutable();
-          event_.add(index, value);
+          ensurePointIsMutable();
+          point_.add(index, value);
           onChanged();
         } else {
-          eventBuilder_.addMessage(index, value);
+          pointBuilder_.addMessage(index, value);
         }
         return this;
       }
-      public Builder addEvent(
-          popeye.transport.proto.Message.Event.Builder builderForValue) {
-        if (eventBuilder_ == null) {
-          ensureEventIsMutable();
-          event_.add(builderForValue.build());
+      public Builder addPoint(
+          popeye.transport.proto.Message.Point.Builder builderForValue) {
+        if (pointBuilder_ == null) {
+          ensurePointIsMutable();
+          point_.add(builderForValue.build());
           onChanged();
         } else {
-          eventBuilder_.addMessage(builderForValue.build());
+          pointBuilder_.addMessage(builderForValue.build());
         }
         return this;
       }
-      public Builder addEvent(
-          int index, popeye.transport.proto.Message.Event.Builder builderForValue) {
-        if (eventBuilder_ == null) {
-          ensureEventIsMutable();
-          event_.add(index, builderForValue.build());
+      public Builder addPoint(
+          int index, popeye.transport.proto.Message.Point.Builder builderForValue) {
+        if (pointBuilder_ == null) {
+          ensurePointIsMutable();
+          point_.add(index, builderForValue.build());
           onChanged();
         } else {
-          eventBuilder_.addMessage(index, builderForValue.build());
+          pointBuilder_.addMessage(index, builderForValue.build());
         }
         return this;
       }
-      public Builder addAllEvent(
-          java.lang.Iterable<? extends popeye.transport.proto.Message.Event> values) {
-        if (eventBuilder_ == null) {
-          ensureEventIsMutable();
-          super.addAll(values, event_);
+      public Builder addAllPoint(
+          java.lang.Iterable<? extends popeye.transport.proto.Message.Point> values) {
+        if (pointBuilder_ == null) {
+          ensurePointIsMutable();
+          super.addAll(values, point_);
           onChanged();
         } else {
-          eventBuilder_.addAllMessages(values);
+          pointBuilder_.addAllMessages(values);
         }
         return this;
       }
-      public Builder clearEvent() {
-        if (eventBuilder_ == null) {
-          event_ = java.util.Collections.emptyList();
+      public Builder clearPoint() {
+        if (pointBuilder_ == null) {
+          point_ = java.util.Collections.emptyList();
           bitField0_ = (bitField0_ & ~0x00000001);
           onChanged();
         } else {
-          eventBuilder_.clear();
+          pointBuilder_.clear();
         }
         return this;
       }
-      public Builder removeEvent(int index) {
-        if (eventBuilder_ == null) {
-          ensureEventIsMutable();
-          event_.remove(index);
+      public Builder removePoint(int index) {
+        if (pointBuilder_ == null) {
+          ensurePointIsMutable();
+          point_.remove(index);
           onChanged();
         } else {
-          eventBuilder_.remove(index);
+          pointBuilder_.remove(index);
         }
         return this;
       }
-      public popeye.transport.proto.Message.Event.Builder getEventBuilder(
+      public popeye.transport.proto.Message.Point.Builder getPointBuilder(
           int index) {
-        return getEventFieldBuilder().getBuilder(index);
+        return getPointFieldBuilder().getBuilder(index);
       }
-      public popeye.transport.proto.Message.EventOrBuilder getEventOrBuilder(
+      public popeye.transport.proto.Message.PointOrBuilder getPointOrBuilder(
           int index) {
-        if (eventBuilder_ == null) {
-          return event_.get(index);  } else {
-          return eventBuilder_.getMessageOrBuilder(index);
+        if (pointBuilder_ == null) {
+          return point_.get(index);  } else {
+          return pointBuilder_.getMessageOrBuilder(index);
         }
       }
-      public java.util.List<? extends popeye.transport.proto.Message.EventOrBuilder> 
-           getEventOrBuilderList() {
-        if (eventBuilder_ != null) {
-          return eventBuilder_.getMessageOrBuilderList();
+      public java.util.List<? extends popeye.transport.proto.Message.PointOrBuilder> 
+           getPointOrBuilderList() {
+        if (pointBuilder_ != null) {
+          return pointBuilder_.getMessageOrBuilderList();
         } else {
-          return java.util.Collections.unmodifiableList(event_);
+          return java.util.Collections.unmodifiableList(point_);
         }
       }
-      public popeye.transport.proto.Message.Event.Builder addEventBuilder() {
-        return getEventFieldBuilder().addBuilder(
-            popeye.transport.proto.Message.Event.getDefaultInstance());
+      public popeye.transport.proto.Message.Point.Builder addPointBuilder() {
+        return getPointFieldBuilder().addBuilder(
+            popeye.transport.proto.Message.Point.getDefaultInstance());
       }
-      public popeye.transport.proto.Message.Event.Builder addEventBuilder(
+      public popeye.transport.proto.Message.Point.Builder addPointBuilder(
           int index) {
-        return getEventFieldBuilder().addBuilder(
-            index, popeye.transport.proto.Message.Event.getDefaultInstance());
+        return getPointFieldBuilder().addBuilder(
+            index, popeye.transport.proto.Message.Point.getDefaultInstance());
       }
-      public java.util.List<popeye.transport.proto.Message.Event.Builder> 
-           getEventBuilderList() {
-        return getEventFieldBuilder().getBuilderList();
+      public java.util.List<popeye.transport.proto.Message.Point.Builder> 
+           getPointBuilderList() {
+        return getPointFieldBuilder().getBuilderList();
       }
       private com.google.protobuf.RepeatedFieldBuilder<
-          popeye.transport.proto.Message.Event, popeye.transport.proto.Message.Event.Builder, popeye.transport.proto.Message.EventOrBuilder> 
-          getEventFieldBuilder() {
-        if (eventBuilder_ == null) {
-          eventBuilder_ = new com.google.protobuf.RepeatedFieldBuilder<
-              popeye.transport.proto.Message.Event, popeye.transport.proto.Message.Event.Builder, popeye.transport.proto.Message.EventOrBuilder>(
-                  event_,
+          popeye.transport.proto.Message.Point, popeye.transport.proto.Message.Point.Builder, popeye.transport.proto.Message.PointOrBuilder> 
+          getPointFieldBuilder() {
+        if (pointBuilder_ == null) {
+          pointBuilder_ = new com.google.protobuf.RepeatedFieldBuilder<
+              popeye.transport.proto.Message.Point, popeye.transport.proto.Message.Point.Builder, popeye.transport.proto.Message.PointOrBuilder>(
+                  point_,
                   ((bitField0_ & 0x00000001) == 0x00000001),
                   getParentForChildren(),
                   isClean());
-          event_ = null;
+          point_ = null;
         }
-        return eventBuilder_;
+        return pointBuilder_;
       }
       
       // optional int64 correlation = 2;
@@ -2518,15 +2518,15 @@ public final class Message {
   }
   
   private static com.google.protobuf.Descriptors.Descriptor
-    internal_static_popeye_transport_proto_Tag_descriptor;
+    internal_static_popeye_transport_proto_Attribute_descriptor;
   private static
     com.google.protobuf.GeneratedMessage.FieldAccessorTable
-      internal_static_popeye_transport_proto_Tag_fieldAccessorTable;
+      internal_static_popeye_transport_proto_Attribute_fieldAccessorTable;
   private static com.google.protobuf.Descriptors.Descriptor
-    internal_static_popeye_transport_proto_Event_descriptor;
+    internal_static_popeye_transport_proto_Point_descriptor;
   private static
     com.google.protobuf.GeneratedMessage.FieldAccessorTable
-      internal_static_popeye_transport_proto_Event_fieldAccessorTable;
+      internal_static_popeye_transport_proto_Point_fieldAccessorTable;
   private static com.google.protobuf.Descriptors.Descriptor
     internal_static_popeye_transport_proto_Batch_descriptor;
   private static
@@ -2547,45 +2547,45 @@ public final class Message {
   static {
     java.lang.String[] descriptorData = {
       "\n$popeye/transport/proto/message.proto\022\026" +
-      "popeye.transport.proto\"\"\n\003Tag\022\014\n\004name\030\001 " +
-      "\002(\t\022\r\n\005value\030\002 \002(\t\"}\n\005Event\022\016\n\006metric\030\001 " +
-      "\002(\t\022\021\n\ttimestamp\030\002 \002(\003\022)\n\004tags\030\003 \003(\0132\033.p" +
-      "opeye.transport.proto.Tag\022\021\n\tint_value\030\004" +
-      " \001(\003\022\023\n\013float_value\030\005 \001(\002\"J\n\005Batch\022,\n\005ev" +
-      "ent\030\001 \003(\0132\035.popeye.transport.proto.Event" +
-      "\022\023\n\013correlation\030\002 \001(\003\"\211\001\n\nBatchReply\022\023\n\013" +
-      "correlation\030\001 \002(\003\022\017\n\007batchId\030\002 \002(\003\0229\n\006st" +
-      "atus\030\003 \002(\0162).popeye.transport.proto.Batc",
-      "hReply.Status\"\032\n\006Status\022\006\n\002OK\020\001\022\010\n\004FAIL\020" +
-      "\002"
+      "popeye.transport.proto\"(\n\tAttribute\022\014\n\004n" +
+      "ame\030\001 \002(\t\022\r\n\005value\030\002 \002(\t\"\211\001\n\005Point\022\016\n\006me" +
+      "tric\030\001 \002(\t\022\021\n\ttimestamp\030\002 \002(\003\0225\n\nattribu" +
+      "tes\030\003 \003(\0132!.popeye.transport.proto.Attri" +
+      "bute\022\021\n\tint_value\030\004 \001(\003\022\023\n\013float_value\030\005" +
+      " \001(\002\"J\n\005Batch\022,\n\005point\030\001 \003(\0132\035.popeye.tr" +
+      "ansport.proto.Point\022\023\n\013correlation\030\002 \001(\003" +
+      "\"\211\001\n\nBatchReply\022\023\n\013correlation\030\001 \002(\003\022\017\n\007" +
+      "batchId\030\002 \002(\003\0229\n\006status\030\003 \002(\0162).popeye.t",
+      "ransport.proto.BatchReply.Status\"\032\n\006Stat" +
+      "us\022\006\n\002OK\020\001\022\010\n\004FAIL\020\002"
     };
     com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner assigner =
       new com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner() {
         public com.google.protobuf.ExtensionRegistry assignDescriptors(
             com.google.protobuf.Descriptors.FileDescriptor root) {
           descriptor = root;
-          internal_static_popeye_transport_proto_Tag_descriptor =
+          internal_static_popeye_transport_proto_Attribute_descriptor =
             getDescriptor().getMessageTypes().get(0);
-          internal_static_popeye_transport_proto_Tag_fieldAccessorTable = new
+          internal_static_popeye_transport_proto_Attribute_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
-              internal_static_popeye_transport_proto_Tag_descriptor,
+              internal_static_popeye_transport_proto_Attribute_descriptor,
               new java.lang.String[] { "Name", "Value", },
-              popeye.transport.proto.Message.Tag.class,
-              popeye.transport.proto.Message.Tag.Builder.class);
-          internal_static_popeye_transport_proto_Event_descriptor =
+              popeye.transport.proto.Message.Attribute.class,
+              popeye.transport.proto.Message.Attribute.Builder.class);
+          internal_static_popeye_transport_proto_Point_descriptor =
             getDescriptor().getMessageTypes().get(1);
-          internal_static_popeye_transport_proto_Event_fieldAccessorTable = new
+          internal_static_popeye_transport_proto_Point_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
-              internal_static_popeye_transport_proto_Event_descriptor,
-              new java.lang.String[] { "Metric", "Timestamp", "Tags", "IntValue", "FloatValue", },
-              popeye.transport.proto.Message.Event.class,
-              popeye.transport.proto.Message.Event.Builder.class);
+              internal_static_popeye_transport_proto_Point_descriptor,
+              new java.lang.String[] { "Metric", "Timestamp", "Attributes", "IntValue", "FloatValue", },
+              popeye.transport.proto.Message.Point.class,
+              popeye.transport.proto.Message.Point.Builder.class);
           internal_static_popeye_transport_proto_Batch_descriptor =
             getDescriptor().getMessageTypes().get(2);
           internal_static_popeye_transport_proto_Batch_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_popeye_transport_proto_Batch_descriptor,
-              new java.lang.String[] { "Event", "Correlation", },
+              new java.lang.String[] { "Point", "Correlation", },
               popeye.transport.proto.Message.Batch.class,
               popeye.transport.proto.Message.Batch.Builder.class);
           internal_static_popeye_transport_proto_BatchReply_descriptor =

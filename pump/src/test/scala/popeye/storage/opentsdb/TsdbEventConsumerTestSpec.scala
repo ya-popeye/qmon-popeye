@@ -5,7 +5,7 @@ import popeye.transport.test.{AkkaTestKitSpec, KafkaServerTestSpec}
 import akka.testkit.TestActorRef
 import org.hbase.async.{Bytes, KeyValue, HBaseClient}
 import popeye.uuid.IdGenerator
-import popeye.transport.proto.Message.{Tag, Event}
+import popeye.transport.proto.Message.{Attribute, Point}
 import java.util.Random
 import java.util.concurrent.atomic.AtomicInteger
 import org.mockito.Mockito._
@@ -76,7 +76,7 @@ class TsdbEventConsumerTestSpec extends AkkaTestKitSpec("tsdb-writer") with Kafk
 
   val rnd = new Random(12345)
 
-  def mkEvents(msgs: Int = 2): Traversable[Event] = {
+  def mkEvents(msgs: Int = 2): Traversable[Point] = {
     for {
       i <- 0 to msgs - 1
     } yield {
@@ -84,18 +84,18 @@ class TsdbEventConsumerTestSpec extends AkkaTestKitSpec("tsdb-writer") with Kafk
     }
   }
 
-  def mkEvent(): Event = {
-    Event.newBuilder()
+  def mkEvent(): Point = {
+    Point.newBuilder()
       .setTimestamp(ts.getAndIncrement)
       .setIntValue(rnd.nextLong())
       .setMetric("proc.net.bytes")
-      .addTags(Tag.newBuilder()
+      .addAttributes(Attribute.newBuilder()
       .setName("host")
       .setValue("localhost")
     ).build()
   }
 
-  def makeBatch(): Seq[Event] = {
+  def makeBatch(): Seq[Point] = {
     mkEvents().toSeq
   }
 
