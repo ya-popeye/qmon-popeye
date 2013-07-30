@@ -19,19 +19,17 @@ import popeye.transport.proto.Message.Point
 import scala.collection.mutable
 import scala.concurrent.duration._
 import akka.actor.SupervisorStrategy.Restart
-import scala.collection.immutable.Queue
 
 case class KafkaPointProducerMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
   val writeTimer = metrics.timer("kafka.produce.time")
   val sendTimer = metrics.timer("kafka.send.time")
   val pointsMeter = metrics.meter("kafka.produce.points")
-  val batchSizeHist = metrics.histogram("kafka.produce.batch.size")
   val batchFailedMeter = metrics.meter("kafka.produce.batch.failed")
   val batchFailedComplete = metrics.meter("kafka.produce.batch.complete")
 }
 
 case object PointSenderReady
-case class ProducePack(batchId: Long, pointsCount: Long, notificationsCount: Long, started: Timer.Context)
+case class ProducePack(batchId: Long, started: Timer.Context)
                       (val ensembles: mutable.HashMap[Int, Ensemble.Builder],
                        val notifications: mutable.Map[ActorRef, ArrayBuffer[Long]])
 
@@ -53,14 +51,10 @@ class KafkaPointSender(topic: String, producerConfig: ProducerConfig, metrics: K
   }
 
   def receive = {
-    case p@ProducePack(batchId, pointCount, ensemblesCount, started) =>
+    case p@ProducePack(batchId, started) =>
+      val sendctx = metrics.sendTimer.timerContext()
       try {
-        metrics.pointsMeter.mark(p.pointsCount)
-        metrics.sendTimer.time {
-          producer.send(p.ensembles.map(e => new KeyedMessage(topic, e._2.build)).toArray: _*)
-        }
-        if (log.isDebugEnabled)
-          log.debug("Sent {} ensembles with {} points", ensemblesCount, p.pointsCount)
+        producer.send(p.ensembles.map(e => new KeyedMessage(topic, e._2.build)).toArray: _*)
         p.notifications foreach {
           p =>
             p._1 ! ProduceDone(p._2, batchId)
@@ -75,7 +69,10 @@ class KafkaPointSender(topic: String, producerConfig: ProducerConfig, metrics: K
           }
           throw e
       } finally {
-        started.close()
+        val sended = sendctx.stop.nano
+        val elapsed = started.stop().nano
+        if (log.isDebugEnabled)
+          log.debug("batch {} sent in {}ms at total {}ms", p.batchId, sended.toMillis, elapsed.toMillis)
         context.parent ! PointSenderReady
       }
 
@@ -98,15 +95,16 @@ class KafkaPointProducer(config: Config,
     .head.partitionsMetadata.size
 
   val batchWaitTimeout: FiniteDuration = toFiniteDuration(config.getMilliseconds("kafka.produce.batch-timeout"))
+  val maxQueued = config.getInt("kafka.produce.max-queued")
   val batchSize = config.getInt("kafka.produce.batch-size")
   val senders = config.getInt("kafka.produce.senders")
 
-  case class CorrelatedPoint(correlationId: Long, sender: ActorRef)(val events: Seq[Point])
+  case class CorrelatedPoint(correlationId: Long, sender: ActorRef)(val points: Seq[Point])
 
   var pending = new ArrayBuffer[CorrelatedPoint]
   var flusher: Option[Cancellable] = None
 
-  var workQueue = Queue[ActorRef]()
+  var workQueue = List[ActorRef]()
 
   override val supervisorStrategy =
     OneForOneStrategy(loggingEnabled = true) {
@@ -135,11 +133,11 @@ class KafkaPointProducer(config: Config,
 
   def receive: Actor.Receive = {
     case FlushPoints =>
-      sendPoints()
+      flushPoints(0)
 
     case PointSenderReady =>
-      workQueue = workQueue.enqueue(sender)
-      sendPoints()
+      workQueue = workQueue :+ sender
+      flushPoints(batchSize)
 
     case p@ProducePending(corr) =>
       p.data match {
@@ -147,61 +145,51 @@ class KafkaPointProducer(config: Config,
         case points =>
           pending += CorrelatedPoint(p.correlationId, sender)(points)
       }
-      sendPoints(batchSize)
+      flushPoints(batchSize)
+      if (pending.size > maxQueued)
+        sender ! ProduceNeedThrottle
   }
 
-  def tryFlush() = {
-    if (pending.length >= batchSize) {
-      self ! FlushPoints
+  private def flushPoints(minSend: Long) = {
+    while(pending.size > minSend && !workQueue.isEmpty) {
+      if (log.isDebugEnabled)
+        log.debug("Flushing {} points with available wokers {}", pending.size, workQueue.size)
+      workQueue match {
+        case head :: tail =>
+          workQueue = tail
+          pending.splitAt(batchSize) match {
+            case (batch, tail) =>
+              pending = tail
+              sendPoints(head, batch)
+          }
+        case Nil =>
+      }
     }
   }
 
-  def sendPoints(batchSize: Int = 0) = if (workQueue.size > 0 && pending.length > batchSize)
-  {
+  private def sendPoints(worker: ActorRef, batch: Seq[CorrelatedPoint]) = {
     val ctx = metrics.writeTimer.timerContext()
     val batchId = idGenerator.nextId()
     val ensembles = new collection.mutable.HashMap[Int, Ensemble.Builder]
-    val batch = if (batchSize > 0) {
-      val parts = pending.splitAt(batchSize)
-      pending = parts._2
-      parts._1
-    } else {
-      val what = pending
-      pending = new ArrayBuffer
-      what
-    }
     if (log.isDebugEnabled)
       log.debug("Ready to produce {} points, pending {}", batch.size, pending.size)
     val notifications = mutable.Map[ActorRef, ArrayBuffer[Long]]()
-    batch.foreach {
-      ev =>
-        ev.events.foreach {
-          event =>
-            val part = Math.abs(event.getMetric.hashCode()) % partitions
-            val ensemble = ensembles.getOrElseUpdate(part,
-              Ensemble.newBuilder()
-                .setBatchId(batchId)
-                .setPartition(part)
-            )
-            ensemble.addPoints(event)
-            val senderPointId = notifications.getOrElse(ev.sender, new ArrayBuffer)
-            senderPointId += ev.correlationId
-            notifications.put(ev.sender, senderPointId)
-        }
+    for( correlatedPoint <- batch;
+         point <- correlatedPoint.points)
+    {
+      metrics.pointsMeter.mark()
+      val part = Math.abs(point.getMetric.hashCode()) % partitions
+      val ensemble = ensembles.getOrElseUpdate(part,
+        Ensemble.newBuilder()
+          .setBatchId(batchId)
+          .setPartition(part)
+      )
+      ensemble.addPoints(point)
+      val senderPointsId = notifications.getOrElseUpdate(correlatedPoint.sender, new ArrayBuffer)
+      senderPointsId += correlatedPoint.correlationId
+      notifications.put(correlatedPoint.sender, senderPointsId)
     }
-    var pointsCount = 0;
-    val ensemblesCount = ensembles.size
-    ensembles foreach {
-      e =>
-        metrics.batchSizeHist.update(e._2.getPointsCount)
-        pointsCount += e._2.getPointsCount
-    }
-    workQueue.dequeue match {
-      case (actor, wq) =>
-        workQueue = wq
-        actor ! ProducePack(batchId, pointsCount, ensemblesCount, ctx)(ensembles, notifications)
-    }
-    tryFlush()
+    worker ! ProducePack(batchId, ctx)(ensembles, notifications)
   }
 }
 

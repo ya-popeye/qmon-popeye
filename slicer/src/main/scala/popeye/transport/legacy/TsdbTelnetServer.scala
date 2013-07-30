@@ -7,7 +7,7 @@ import akka.io.IO
 import akka.io.TcpPipelineHandler.{WithinActorContext, Init}
 import java.net.InetSocketAddress
 import net.opentsdb.core.Tags
-import popeye.transport.kafka.{ProduceDone, ProducePending}
+import popeye.transport.kafka.{ProduceNeedThrottle, ProduceDone, ProducePending}
 import popeye.transport.proto.Message.{Attribute, Point}
 import scala.collection.mutable
 import scala.concurrent.duration._
@@ -88,6 +88,10 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String], connecti
       }
       tryReplyOk()
       checkSuspension()
+
+    case ProduceNeedThrottle =>
+      connection ! Tcp.SuspendReading
+      suspended = true
 
     case ProduceDone(completePointId, batchId) =>
       if (lastBatchId < batchId) {
