@@ -177,7 +177,7 @@ class KafkaPointProducer(config: Config,
       ev =>
         ev.events.foreach {
           event =>
-            val part = event.getMetric.hashCode() % partitions
+            val part = Math.abs(event.getMetric.hashCode()) % partitions
             val ensemble = ensembles.getOrElseUpdate(part,
               Ensemble.newBuilder()
                 .setBatchId(batchId)
@@ -207,7 +207,7 @@ class KafkaPointProducer(config: Config,
 
 class EnsemblePartitioner(props: VerifiableProperties = null) extends Partitioner[Ensemble] {
   def partition(data: Ensemble, numPartitions: Int): Int = {
-    data.getPartition
+    Math.abs(data.getPartition) % numPartitions
   }
 }
 
