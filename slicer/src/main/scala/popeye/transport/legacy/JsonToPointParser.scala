@@ -6,12 +6,13 @@ import com.google.protobuf.{ByteString => GoogleByteString}
 import akka.actor.{ActorLogging, Actor}
 import akka.actor.Status.Failure
 import popeye.Logging
+import scala.collection.mutable
 
 class ParserActor extends Actor with ActorLogging {
   def receive = {
     case ParseRequest(data) => {
       try {
-        sender ! ParseResult(new JsonToPointParser(data).toList)
+        sender ! ParseResult(JsonToPointParser.parseJson(data))
       } catch {
         case ex: Throwable => sender ! Failure(ex)
           throw ex
@@ -36,7 +37,13 @@ sealed class MetricBuilder(string: String) {
 
 case class ParseRequest(data: Array[Byte])
 
-case class ParseResult(batch: List[Point])
+case class ParseResult(batch: Seq[Point])
+
+object JsonToPointParser {
+  def parseJson(data: Array[Byte]): Seq[Point] = {
+    new JsonToPointParser(data).toBuffer
+  }
+}
 
 class JsonToPointParser(data: Array[Byte]) extends Traversable[Point] with Logging {
 
@@ -74,24 +81,24 @@ class JsonToPointParser(data: Array[Byte]) extends Traversable[Point] with Loggi
   def parseMetric[U](f: (Point) => U, parser: JsonParser) = {
     require(parser.getCurrentToken == JsonToken.START_OBJECT,
       "Start of OBJECT expected, but " + parser.getCurrentToken + " found")
-    parser.nextToken
-    val metric = new MetricBuilder(parser.getCurrentName)
-    parser.nextToken match {
-      case JsonToken.START_ARRAY => {
-        while (parser.nextToken() != JsonToken.END_ARRAY) {
-          parseValue(metric, f, parser)
+    while (parser.nextToken != JsonToken.END_OBJECT) {
+      val metric = new MetricBuilder(parser.getCurrentName)
+      parser.nextToken match {
+        case JsonToken.START_ARRAY => {
+          while (parser.nextToken() != JsonToken.END_ARRAY) {
+            parseValue(metric, f, parser)
+          }
         }
+        case JsonToken.START_OBJECT => parseValue(metric, f, parser)
+        case token => throw new IllegalArgumentException("Object or Array expected, got " + token)
       }
-      case JsonToken.START_OBJECT => parseValue(metric, f, parser)
-      case _ => throw new IllegalArgumentException("Object or Array expected, got " + parser.getCurrentToken)
     }
   }
 
   def parseArray[U](f: (Point) => U, parser: JsonParser) = {
     require(parser.getCurrentToken == JsonToken.START_ARRAY)
-    while (parser.nextToken() != JsonToken.END_ARRAY) {
+    while (parser.nextToken != JsonToken.END_ARRAY) {
       parseMetric(f, parser)
-      parser.nextToken
     }
     parser.nextToken
   }
