@@ -1,4 +1,4 @@
-package popeye.uuid
+package popeye
 
 import popeye.Logging
 

@@ -4,7 +4,6 @@ import org.scalatest.mock.MockitoSugar
 import popeye.transport.test.{AkkaTestKitSpec, KafkaServerTestSpec}
 import akka.testkit.TestActorRef
 import org.hbase.async.{Bytes, KeyValue, HBaseClient}
-import popeye.uuid.IdGenerator
 import popeye.transport.proto.Message.{Attribute, Point}
 import java.util.Random
 import java.util.concurrent.atomic.AtomicInteger
@@ -26,7 +25,7 @@ import popeye.transport.kafka.ProduceDone
 import scala.Some
 import popeye.transport.kafka.ProducePending
 import kafka.admin.CreateTopicCommand
-import popeye.ConfigUtil
+import popeye.{IdGenerator, ConfigUtil}
 
 /**
  * @author Andrey Stepachev

@@ -2,7 +2,7 @@ package popeye.transport
 
 import popeye.transport.kafka.KafkaPointProducer
 import popeye.transport.legacy.{LegacyHttpHandler, TsdbTelnetServer}
-import popeye.uuid.IdGenerator
+import popeye.IdGenerator
 
 /**
  * @author Andrey Stepachev

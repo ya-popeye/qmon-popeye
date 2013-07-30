@@ -4,15 +4,13 @@ import akka.actor._
 import kafka.producer._
 import java.util.Properties
 import com.typesafe.config.Config
-import popeye.ConfigUtil
+import popeye.{IdGenerator, ConfigUtil, Instrumented}
 import ConfigUtil._
-import popeye.uuid.IdGenerator
 import popeye.transport.proto.Storage.Ensemble
 import akka.routing.FromConfig
 import kafka.producer.KeyedMessage
 import akka.actor.Status.Failure
 import com.codahale.metrics.{Timer, MetricRegistry}
-import popeye.Instrumented
 import kafka.client.ClientUtils
 import scala.collection
 import kafka.utils.VerifiableProperties
