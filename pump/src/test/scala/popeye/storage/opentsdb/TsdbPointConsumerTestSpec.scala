@@ -17,12 +17,9 @@ import akka.util.Timeout
 import akka.pattern.ask
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.{ConfigFactory, Config}
-import kafka.admin.CreateTopicCommand
 import kafka.utils.TestUtils._
-import scala.Some
-import popeye.transport.kafka.{ProduceDone, ProducePending, KafkaPointProducer}
+import popeye.transport.kafka.KafkaPointProducer
 import popeye.transport.kafka.ProduceDone
-import scala.Some
 import popeye.transport.kafka.ProducePending
 import kafka.admin.CreateTopicCommand
 import popeye.{IdGenerator, ConfigUtil}
@@ -61,15 +58,13 @@ class TsdbPointConsumerTestSpec extends AkkaTestKitSpec("tsdb-writer") with Kafk
         |   }
         |   kafka.metadata.broker.list="$kafkaBrokersList"
         |   kafka.produce.batch-size = 1
+        |   kafka.produce.senders = 1
         |   kafka.points.topic="$topic"
       """.stripMargin).withFallback(ConfigUtil.loadSubsysConfig("pump")).resolve()
-    val actor = TestActorRef(KafkaPointProducer.props(config, generator))
+    val actor: TestActorRef[KafkaPointProducer] = TestActorRef(KafkaPointProducer.props(config, generator))
     val future = ask(actor, ProducePending(123)(makeBatch())).mapTo[ProduceDone]
-    Await.result(future, timeout.duration)
-    logger.debug(s"Got result ${future.value}, ready for consume")
-
-    val consumer: TestActorRef[TsdbPointConsumer] = TestActorRef(TsdbPointConsumer.props(config, Some(hbc)))
-    consumer.underlyingActor.metrics.batchCompleteHist.count must be(1)
+    val done = Await.result(future, timeout.duration)
+    actor.underlyingActor.metrics.batchCompleteMeter.count must be(1)
     system.shutdown()
   }
 

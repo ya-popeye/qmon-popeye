@@ -25,7 +25,7 @@ case class KafkaPointProducerMetrics(override val metricRegistry: MetricRegistry
   val sendTimer = metrics.timer("kafka.send.time")
   val pointsMeter = metrics.meter("kafka.produce.points")
   val batchFailedMeter = metrics.meter("kafka.produce.batch.failed")
-  val batchFailedComplete = metrics.meter("kafka.produce.batch.complete")
+  val batchCompleteMeter = metrics.meter("kafka.produce.batch.complete")
 }
 
 case object PointSenderReady
@@ -55,14 +55,14 @@ class KafkaPointSender(topic: String, producerConfig: ProducerConfig, metrics: K
       val sendctx = metrics.sendTimer.timerContext()
       try {
         producer.send(p.ensembles.map(e => new KeyedMessage(topic, e._2.build)).toArray: _*)
+        metrics.batchCompleteMeter.mark
         p.notifications foreach {
           p =>
             p._1 ! ProduceDone(p._2, batchId)
         }
-        metrics.batchFailedComplete.mark(p.ensembles.size)
       } catch {
         case e: Exception => sender ! Failure(e)
-          metrics.batchFailedComplete.mark(p.ensembles.size)
+          metrics.batchFailedMeter.mark
           p.notifications foreach {
             p =>
               p._1 ! ProduceFailed(p._2, e)
@@ -82,7 +82,7 @@ class KafkaPointSender(topic: String, producerConfig: ProducerConfig, metrics: K
 class KafkaPointProducer(config: Config,
                          producerConfig: ProducerConfig,
                          idGenerator: IdGenerator,
-                         metrics: KafkaPointProducerMetrics)
+                         val metrics: KafkaPointProducerMetrics)
   extends Actor with ActorLogging {
 
   val topic = config.getString("kafka.points.topic")
@@ -153,7 +153,7 @@ class KafkaPointProducer(config: Config,
   private def flushPoints(minSend: Long) = {
     while(pending.size > minSend && !workQueue.isEmpty) {
       if (log.isDebugEnabled)
-        log.debug("Flushing {} points with available wokers {}", pending.size, workQueue.size)
+        log.debug("Flushing {} points with {} available workers", pending.size, workQueue.size)
       workQueue match {
         case head :: tail =>
           workQueue = tail
