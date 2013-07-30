@@ -1,7 +1,7 @@
 package popeye.transport.legacy
 
 import popeye.transport.proto.Message.{Attribute, Point}
-import org.codehaus.jackson.{JsonToken, JsonParser}
+import org.codehaus.jackson.{JsonFactory, JsonToken, JsonParser}
 import com.google.protobuf.{ByteString => GoogleByteString}
 import akka.actor.{ActorLogging, Actor}
 import akka.actor.Status.Failure
@@ -40,6 +40,11 @@ case class ParseRequest(data: Array[Byte])
 case class ParseResult(batch: Seq[Point])
 
 object JsonToPointParser {
+  import JsonParser.Feature
+  val parserFactory: JsonFactory = new JsonFactory()
+    .disable(Feature.CANONICALIZE_FIELD_NAMES)
+    .disable(Feature.INTERN_FIELD_NAMES)
+
   def parseJson(data: Array[Byte]): Seq[Point] = {
     new JsonToPointParser(data).toBuffer
   }
@@ -104,7 +109,8 @@ class JsonToPointParser(data: Array[Byte]) extends Traversable[Point] with Loggi
   }
 
   def foreach[U](f: (Point) => U) {
-    val parser: JsonParser = LegacyHttpHandler.parserFactory.createJsonParser(data)
+    import JsonToPointParser._
+    val parser: JsonParser = parserFactory.createJsonParser(data)
 
     parser.nextToken match {
       case JsonToken.START_ARRAY => parseArray(f, parser)
