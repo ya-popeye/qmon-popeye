@@ -1,8 +1,5 @@
 package popeye
 
-import popeye.Logging
-
-
 /**
  * Snowflake generator. (origin: https://github.com/twitter/snowflake )
  * @param workerId unique worker id. should be unique across datacenter
