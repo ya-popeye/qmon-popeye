@@ -43,7 +43,7 @@ class LegacyHttpHandler(config: Config, kafkaProducer: ActorRef, metrics: Legacy
 
   implicit val timeout: Timeout = 5.second
   // for the actor 'asks'
-  val kafkaTimeout: Timeout = new Timeout(config.getDuration("kafka.produce.timeout").asInstanceOf[FiniteDuration])
+  val kafkaTimeout: Timeout = new Timeout(config.getDuration("legacy.http.produce.timeout").asInstanceOf[FiniteDuration])
 
   import context.dispatcher
 
@@ -133,7 +133,6 @@ class LegacyHttpHandler(config: Config, kafkaProducer: ActorRef, metrics: Legacy
 }
 
 object LegacyHttpHandler {
-  val parserFactory: JsonFactory = new JsonFactory()
   implicit val timeout: Timeout = 5 seconds
 
   def start(config: Config, kafkaProducer: ActorRef)(implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
