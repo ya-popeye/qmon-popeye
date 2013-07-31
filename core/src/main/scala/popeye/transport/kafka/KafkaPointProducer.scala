@@ -19,6 +19,7 @@ import popeye.transport.proto.Message.Point
 import scala.collection.mutable
 import scala.concurrent.duration._
 import akka.actor.SupervisorStrategy.Restart
+import scala.util.Success
 
 case class KafkaPointProducerMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
   val writeTimer = metrics.timer("kafka.produce.time")
@@ -28,12 +29,20 @@ case class KafkaPointProducerMetrics(override val metricRegistry: MetricRegistry
   val batchCompleteMeter = metrics.meter("kafka.produce.batch.complete")
 }
 
-case object PointSenderReady
-case class ProducePack(batchId: Long, started: Timer.Context)
-                      (val ensembles: mutable.HashMap[Int, Ensemble.Builder],
-                       val notifications: mutable.Map[ActorRef, ArrayBuffer[Long]])
+private object KafkaPointProducerProtocol {
 
-class KafkaPointSender(topic: String, producerConfig: ProducerConfig, metrics: KafkaPointProducerMetrics) extends Actor with ActorLogging {
+  case class WorkDone(batchId: Long)
+
+  case class CorrelatedPoint(correlationId: Long, sender: ActorRef)(val points: Seq[Point])
+
+  case class ProducePack(batchId: Long, started: Timer.Context, partitions: Int)
+                        (val batch: Seq[CorrelatedPoint])
+
+}
+
+class KafkaPointSender(topic: String, producerConfig: ProducerConfig, metrics: KafkaPointProducerMetrics, batcher: KafkaPointProducer) extends Actor with ActorLogging {
+
+  import KafkaPointProducerProtocol._
 
   val producer = new Producer[Nothing, Ensemble](producerConfig)
 
@@ -41,7 +50,7 @@ class KafkaPointSender(topic: String, producerConfig: ProducerConfig, metrics: K
   override def preStart() {
     super.preStart()
     log.debug("Starting sender")
-    context.parent ! PointSenderReady
+    batcher.addWorker(self)
   }
 
   override def postStop() {
@@ -51,19 +60,35 @@ class KafkaPointSender(topic: String, producerConfig: ProducerConfig, metrics: K
   }
 
   def receive = {
-    case p@ProducePack(batchId, started) =>
+    case p@ProducePack(batchId, started, partitions) =>
       val sendctx = metrics.sendTimer.timerContext()
+      val ensembles = new collection.mutable.HashMap[Int, Ensemble.Builder]
+      val notifications = mutable.Map[ActorRef, ArrayBuffer[Long]]()
+      for (correlatedPoint <- p.batch;
+           point <- correlatedPoint.points) {
+        metrics.pointsMeter.mark()
+        val part = Math.abs(point.getMetric.hashCode()) % partitions
+        val ensemble = ensembles.getOrElseUpdate(part,
+          Ensemble.newBuilder()
+            .setBatchId(batchId)
+            .setPartition(part)
+        )
+        ensemble.addPoints(point)
+        val senderPointsId = notifications.getOrElseUpdate(correlatedPoint.sender, new ArrayBuffer)
+        senderPointsId += correlatedPoint.correlationId
+        notifications.put(correlatedPoint.sender, senderPointsId)
+      }
       try {
-        producer.send(p.ensembles.map(e => new KeyedMessage(topic, e._2.build)).toArray: _*)
+        producer.send(ensembles.map(e => new KeyedMessage(topic, e._2.build)).toArray: _*)
         metrics.batchCompleteMeter.mark
-        p.notifications foreach {
+        notifications foreach {
           p =>
             p._1 ! ProduceDone(p._2, batchId)
         }
       } catch {
         case e: Exception => sender ! Failure(e)
           metrics.batchFailedMeter.mark
-          p.notifications foreach {
+          notifications foreach {
             p =>
               p._1 ! ProduceFailed(p._2, e)
           }
@@ -73,9 +98,9 @@ class KafkaPointSender(topic: String, producerConfig: ProducerConfig, metrics: K
         val elapsed = started.stop().nano
         if (log.isDebugEnabled)
           log.debug("batch {} sent in {}ms at total {}ms", p.batchId, sended.toMillis, elapsed.toMillis)
-        context.parent ! PointSenderReady
+        batcher.addWorker(self)
+        sender ! WorkDone(batchId)
       }
-
   }
 }
 
@@ -84,6 +109,8 @@ class KafkaPointProducer(config: Config,
                          idGenerator: IdGenerator,
                          val metrics: KafkaPointProducerMetrics)
   extends Actor with ActorLogging {
+
+  import KafkaPointProducerProtocol._
 
   val topic = config.getString("kafka.points.topic")
   val partitions = ClientUtils
@@ -99,24 +126,27 @@ class KafkaPointProducer(config: Config,
   val batchSize = config.getInt("kafka.produce.batch-size")
   val senders = config.getInt("kafka.produce.senders")
 
-  case class CorrelatedPoint(correlationId: Long, sender: ActorRef)(val points: Seq[Point])
-
-  var pending = new ArrayBuffer[CorrelatedPoint]
   var flusher: Option[Cancellable] = None
 
-  var workQueue = List[ActorRef]()
+  var workQueue = new AtomicList[ActorRef]()
 
   override val supervisorStrategy =
     OneForOneStrategy(loggingEnabled = true) {
       case _ ⇒ Restart
     }
 
+  def addWorker(worker: ActorRef) {
+    workQueue.add(worker)
+  }
+
   override def preStart() {
     super.preStart()
     log.debug("Starting batcher")
 
     for (i <- 1 to senders) {
-      context.actorOf(Props(new KafkaPointSender(topic, producerConfig, metrics)), "points-sender-" + i)
+      context.actorOf(
+        Props(new KafkaPointSender(topic, producerConfig, metrics, this)).withDeploy(Deploy.local),
+        "points-sender-" + i)
     }
 
     import context.dispatcher
@@ -131,66 +161,63 @@ class KafkaPointProducer(config: Config,
     super.postStop()
   }
 
+  private var pendingSize: Long = 0
+  private var pending = new ArrayBuffer[CorrelatedPoint]
+
+  private def addPending(point: CorrelatedPoint) = {
+    pending += point
+    pendingSize += point.points.size
+  }
+
+  private def removePending(amount: Int): Seq[CorrelatedPoint] = {
+    pending.splitAt(amount) match {
+      case (batch, tail) =>
+        pending = tail
+        pendingSize -= batch.size
+        batch
+      case _ => Nil
+    }
+  }
+
   def receive: Actor.Receive = {
     case FlushPoints =>
       flushPoints(0)
 
-    case PointSenderReady =>
-      workQueue = workQueue :+ sender
+    case WorkDone(_) =>
       flushPoints(batchSize)
 
     case p@ProducePending(corr) =>
       p.data match {
         case Nil =>
         case points =>
-          pending += CorrelatedPoint(p.correlationId, sender)(points)
+          addPending(CorrelatedPoint(p.correlationId, sender)(points))
       }
       flushPoints(batchSize)
-      if (pending.size > maxQueued)
+      if (pendingSize > maxQueued)
         sender ! ProduceNeedThrottle
   }
 
-  private def flushPoints(minSend: Long) = {
-    while(pending.size > minSend && !workQueue.isEmpty) {
-      if (log.isDebugEnabled)
-        log.debug("Flushing {} points with {} available workers", pending.size, workQueue.size)
-      workQueue match {
-        case head :: tail =>
-          workQueue = tail
-          pending.splitAt(batchSize) match {
-            case (batch, tail) =>
-              pending = tail
-              sendPoints(head, batch)
-          }
-        case Nil =>
+  private def flushPoints(minSend: Long): Unit = {
+    while (pendingSize > minSend && !workQueue.isEmpty) {
+      if (log.isDebugEnabled) {
+        log.debug("Flushing {} points with {} available workers",
+          pendingSize, workQueue.size)
+      }
+      workQueue.headOption() match {
+        case Some(worker: ActorRef) =>
+          val pp = pendingSize
+          val batch = removePending(batchSize)
+          log.debug("Batch with {} points was created, pending changed {} -> {}",
+            batch.size, pp, pendingSize)
+
+          if (!batch.isEmpty)
+            worker ! ProducePack(idGenerator.nextId(), metrics.writeTimer.timerContext(), partitions)(batch)
+        case None =>
+          return
       }
     }
   }
 
-  private def sendPoints(worker: ActorRef, batch: Seq[CorrelatedPoint]) = {
-    val ctx = metrics.writeTimer.timerContext()
-    val batchId = idGenerator.nextId()
-    val ensembles = new collection.mutable.HashMap[Int, Ensemble.Builder]
-    if (log.isDebugEnabled)
-      log.debug("Ready to produce {} points, pending {}", batch.size, pending.size)
-    val notifications = mutable.Map[ActorRef, ArrayBuffer[Long]]()
-    for( correlatedPoint <- batch;
-         point <- correlatedPoint.points)
-    {
-      metrics.pointsMeter.mark()
-      val part = Math.abs(point.getMetric.hashCode()) % partitions
-      val ensemble = ensembles.getOrElseUpdate(part,
-        Ensemble.newBuilder()
-          .setBatchId(batchId)
-          .setPartition(part)
-      )
-      ensemble.addPoints(point)
-      val senderPointsId = notifications.getOrElseUpdate(correlatedPoint.sender, new ArrayBuffer)
-      senderPointsId += correlatedPoint.correlationId
-      notifications.put(correlatedPoint.sender, senderPointsId)
-    }
-    worker ! ProducePack(batchId, ctx)(ensembles, notifications)
-  }
 }
 
 class EnsemblePartitioner(props: VerifiableProperties = null) extends Partitioner[Ensemble] {
