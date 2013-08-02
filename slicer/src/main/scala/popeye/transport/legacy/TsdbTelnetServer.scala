@@ -66,7 +66,6 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String],
   private def sendPack() {
     import context.dispatcher
 
-    log.debug(s"Flusing ${bufferedPoints.size} points")
     correlationId += 1
     val p = Promise[Long]()
     kafkaProducer ! ProducePending(Some(p))(bufferedPoints)
