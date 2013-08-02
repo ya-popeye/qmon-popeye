@@ -27,7 +27,8 @@ class PendingPointsTestSpec extends FlatSpec {
 
     val (buffers, promises) = validPP(pp).consume()
     assert(buffers.size == 2)
-    assert(promises.size == 4)
+    assert(promises.size == 0)
+    promises.foreach(_.success(1))
 
     val stat11 = countStat(buffers, promises)
     val stat2 = pp.stat
@@ -36,6 +37,7 @@ class PendingPointsTestSpec extends FlatSpec {
     val (buffers2, promises2) = validPP(pp).consume(ignoreMinAmount = true)
     assert(buffers2.size == 1)
     assert(promises2.size == 2)
+    promises2.foreach(_.success(1))
 
     val stat22 = countStat(buffers2, promises2)
     val stat3 = pp.stat
@@ -44,14 +46,17 @@ class PendingPointsTestSpec extends FlatSpec {
     val (buffers3, promises3) = validPP(pp).consume(ignoreMinAmount = true)
     assert(buffers3.size == 0)
     assert(promises3.size == 0)
+    promises3.foreach(_.success(1))
 
     val stat33 = countStat(buffers3, promises3)
     val stat4 = pp.stat
     assert(stat4 + stat33 === stat3, s"$stat4 + $stat33 === $stat3")
 
     checkEmptyPP(pp)
-  }
 
+    assert(pr1.isCompleted)
+    assert(pr2.isCompleted)
+  }
 
   behavior of "PointsQueue with 1 partition"
 
@@ -77,6 +82,7 @@ class PendingPointsTestSpec extends FlatSpec {
     val (buffers, promises) = validPP(pp).consume()
     assert(buffers.size == 0)
     assert(promises.size == 0)
+    promises.foreach(_.success(1))
     val stat11 = countStat(buffers, promises)
     val stat2 = pp.stat
     assert(stat2 + stat11 === stat1, s"$stat2 + $stat11 === $stat1")
@@ -98,6 +104,7 @@ class PendingPointsTestSpec extends FlatSpec {
     val (buffers, promises) = validPP(pp).consume()
     assert(buffers.size == 1)
     assert(promises.size == 1)
+    promises.foreach(_.success(1))
 
     val stat11 = countStat(buffers, promises)
     val stat2 = pp.stat
@@ -106,6 +113,7 @@ class PendingPointsTestSpec extends FlatSpec {
     val (buffers2, promises2) = validPP(pp).consume(ignoreMinAmount = true)
     assert(buffers2.size == 1)
     assert(promises2.size == 0)
+    promises2.foreach(_.success(1))
 
     val stat22 = countStat(buffers2, promises2)
     val stat3 = pp.stat
@@ -114,6 +122,7 @@ class PendingPointsTestSpec extends FlatSpec {
     val (buffers3, promises3) = validPP(pp).consume(ignoreMinAmount = true)
     assert(buffers3.size == 1)
     assert(promises3.size == 1)
+    promises3.foreach(_.success(1))
 
     val stat33 = countStat(buffers3, promises3)
     val stat4 = pp.stat

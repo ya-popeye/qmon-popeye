@@ -10,6 +10,7 @@ import popeye.Logging
 import popeye.transport.proto.Message.Point
 import scala.concurrent.duration._
 import scala.collection.mutable.ArrayBuffer
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * @author Andrey Stepachev
@@ -20,7 +21,7 @@ object PointsQueue extends Logging {
     def +(other: Stat) = Stat(bytes + other.bytes, points + other.points, promises + other.promises)
   }
 
-  final class PromiseForOffset(val offset: Int, val promise: Promise[Long])
+  final class PromiseForOffset(val offset: Int, val promise: Promise[Long], val shares: AtomicInteger)
 
   final class PartitionBuffer(val partitionId: Int, val points: Long, val buffer: Array[Byte])
 
@@ -125,7 +126,7 @@ class PointsQueue(partitions: Int, minAmount: Int, maxAmount: Int, timeStep: Lon
     val bufferStat = buffers.foldLeft((0l /* points */ , 0 /* bytes */ )) {
       (accum, bp) => (accum._1 + bp.points, accum._2 + bp.buffer.size())
     }
-    val promisesStat = promises.foldLeft(0) { (a, queue) => a + queue.size }
+    val promisesStat = promises.flatMap {a => a}.map {_.promise}.distinct.size
     Stat(bufferStat._2, bufferStat._1, promisesStat)
   }
 
@@ -144,10 +145,12 @@ class PointsQueue(partitions: Int, minAmount: Int, maxAmount: Int, timeStep: Lon
         promiseOffsets(partIdx) = pb.cumulativeOffset
     }
 
+    val shares = new AtomicInteger(0)
     maybePromise foreach (
       promise =>
         for (partition <- 0 until promiseOffsets.length if promiseOffsets(partition) > 0) {
-          promises(partition).enqueue(new PromiseForOffset(promiseOffsets(partition), promise))
+          shares.incrementAndGet()
+          promises(partition).enqueue(new PromiseForOffset(promiseOffsets(partition), promise, shares))
         }
       )
   }
@@ -160,13 +163,16 @@ class PointsQueue(partitions: Int, minAmount: Int, maxAmount: Int, timeStep: Lon
     var rv = ArrayBuffer[Promise[Long]]()
     var partition = 0
     while (partition < promises.length) {
-      val bp = buffers(partition)
-      val queue = promises(partition)
       def traverseQueue() {
+        val bp = buffers(partition)
+        val queue = promises(partition)
         while (!queue.isEmpty) {
           val op = queue.dequeue()
           if (op.offset <= bp.consumed) {
-            rv += op.promise
+            val shares = op.shares.decrementAndGet()
+            require(shares >= 0)
+            if (shares == 0)
+              rv += op.promise
           } else {
             queue.enqueue(op)
             return
