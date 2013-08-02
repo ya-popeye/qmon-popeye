@@ -3,23 +3,20 @@ package popeye.storage.opentsdb
 import org.scalatest.mock.MockitoSugar
 import popeye.transport.test.{AkkaTestKitSpec, KafkaServerTestSpec}
 import akka.testkit.TestActorRef
-import org.hbase.async.{Bytes, KeyValue, HBaseClient}
+import org.hbase.async.{Bytes, KeyValue}
 import popeye.transport.proto.Message.{Attribute, Point}
 import java.util.Random
 import java.util.concurrent.atomic.AtomicInteger
 import org.mockito.Mockito._
-import org.mockito.Matchers.{eq => the, any}
-import com.stumbleupon.async.Deferred
+import org.mockito.Matchers.{eq => the}
 import java.util
 import scala.concurrent.{Promise, Await}
 import scala.concurrent.duration._
 import akka.util.Timeout
-import akka.pattern.ask
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.{ConfigFactory, Config}
 import kafka.utils.TestUtils._
 import popeye.transport.kafka.KafkaPointProducer
-import popeye.transport.kafka.ProduceDone
 import popeye.transport.kafka.ProducePending
 import kafka.admin.CreateTopicCommand
 import popeye.{IdGenerator, ConfigUtil}
@@ -47,9 +44,6 @@ class TsdbPointConsumerTestSpec extends AkkaTestKitSpec("tsdb-writer") with Kafk
     CreateTopicCommand.createTopic(zkClient, topic, 1, 1, "")
     waitUntilLeaderIsElectedOrChanged(zkClient, topic, 0, 500, None)
 
-    val hbc = mock[HBaseClient](mockSettings)
-    when(hbc.get(any())).thenReturn(Deferred.fromResult(mkIdKeyValue(1)))
-    when(hbc.put(any())).thenReturn(Deferred.fromResult(new Object))
     val config: Config = ConfigFactory.parseString(
       s"""
         |   zk.cluster = "$zkConnect"
