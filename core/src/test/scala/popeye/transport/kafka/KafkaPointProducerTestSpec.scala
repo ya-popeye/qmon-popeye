@@ -1,4 +1,4 @@
-package popeye.storage.opentsdb
+package popeye.transport.kafka
 
 import org.scalatest.mock.MockitoSugar
 import popeye.transport.test.{AkkaTestKitSpec, KafkaServerTestSpec}
@@ -25,7 +25,7 @@ import popeye.transport.proto.PackedPoints
 /**
  * @author Andrey Stepachev
  */
-class TsdbPointConsumerTestSpec extends AkkaTestKitSpec("tsdb-writer") with KafkaServerTestSpec with MockitoSugar {
+class KafkaPointProducerTestSpec extends AkkaTestKitSpec("tsdb-writer") with KafkaServerTestSpec with MockitoSugar {
 
   val mockSettings = withSettings()
   //.verboseLogging()
