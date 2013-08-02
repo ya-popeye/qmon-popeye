@@ -11,7 +11,7 @@ import org.mockito.Mockito._
 import org.mockito.Matchers.{eq => the, any}
 import com.stumbleupon.async.Deferred
 import java.util
-import scala.concurrent.Await
+import scala.concurrent.{Promise, Await}
 import scala.concurrent.duration._
 import akka.util.Timeout
 import akka.pattern.ask
@@ -58,13 +58,14 @@ class TsdbPointConsumerTestSpec extends AkkaTestKitSpec("tsdb-writer") with Kafk
         |         group=$group
         |   }
         |   kafka.metadata.broker.list="$kafkaBrokersList"
-        |   kafka.produce.batch-size = 1
+        |   kafka.produce.message.min-bytes = 1
         |   kafka.produce.senders = 1
         |   kafka.points.topic="$topic"
       """.stripMargin).withFallback(ConfigUtil.loadSubsysConfig("pump")).resolve()
     val actor: TestActorRef[KafkaPointProducer] = TestActorRef(KafkaPointProducer.props(config, generator))
-    val future = ask(actor, ProducePending(None)(PackedPoints(makeBatch()))).mapTo[ProduceDone]
-    val done = Await.result(future, timeout.duration)
+    val p = Promise[Long]()
+    actor ! ProducePending(Some(p))(PackedPoints(makeBatch()))
+    val done = Await.result(p.future, timeout.duration)
     actor.underlyingActor.metrics.batchCompleteMeter.count must be(1)
     system.shutdown()
   }
