@@ -1,24 +1,12 @@
-package popeye.transport.kafka
+package popeye.transport.proto
 
 import scala.concurrent.Promise
 import java.io.ByteArrayOutputStream
-import popeye.transport.proto.PackedPointsBuffer
 import com.google.protobuf.{CodedOutputStream, CodedInputStream}
 import java.util
 import scala.collection.mutable
 import scala.util.Random
 import scala.annotation.tailrec
-import com.typesafe.config.Config
-import kafka.producer.ProducerConfig
-import popeye.IdGenerator
-import akka.actor._
-import kafka.client.ClientUtils
-import scala.concurrent.duration.FiniteDuration
-import popeye.ConfigUtil._
-import akka.actor.SupervisorStrategy.Restart
-import scala.Some
-import akka.actor.OneForOneStrategy
-import popeye.transport.proto.PackedPointsIndex
 
 /**
  * @author Andrey Stepachev
@@ -112,9 +100,9 @@ class PendingPoints(partitions: Int, minAmount: Int, maxAmount: Int) {
       )
   }
 
-  def consume(): (Seq[PartitionBuffer], Seq[Promise[Long]]) = {
+  def consume(ignoreMinAmount: Boolean = false): (Seq[PartitionBuffer], Seq[Promise[Long]]) = {
     checkOrder = mkOrder
-    (consumeInternal(checkOrder.iterator, 0, Seq()), consumePromises())
+    (consumeInternal(ignoreMinAmount, checkOrder.iterator, 0, Seq()), consumePromises())
   }
 
   private def consumePromises(partition: Int): Seq[Promise[Long]] = {
@@ -141,18 +129,18 @@ class PendingPoints(partitions: Int, minAmount: Int, maxAmount: Int) {
   }
 
   @tailrec
-  private def consumeInternal(partitions: Iterator[Int], total: Int, seq: Seq[PartitionBuffer]): Seq[PartitionBuffer] = {
+  private def consumeInternal(ignoreMinAmount: Boolean, partitions: Iterator[Int], total: Int, seq: Seq[PartitionBuffer]): Seq[PartitionBuffer] = {
     if (total > minAmount)
       return seq
     if (!partitions.hasNext)
       return seq
     val partitionIndex = partitions.next
     val pb = buffers(partitionIndex)
-    if (pb.buffer.size < minAmount) {
-      consumeInternal(partitions, total, seq)
-    } else {
+    if ((ignoreMinAmount && pb.buffer.size > 0) || pb.buffer.size >= minAmount) {
       val buffer = pb.consume(partitionIndex)
-      consumeInternal(partitions, total + buffer.buffer.length, seq :+ buffer)
+      consumeInternal(ignoreMinAmount, partitions, total + buffer.buffer.length, seq :+ buffer)
+    } else {
+      consumeInternal(ignoreMinAmount, partitions, total, seq)
     }
   }
 

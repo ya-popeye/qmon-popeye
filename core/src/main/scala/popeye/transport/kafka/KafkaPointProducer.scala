@@ -15,7 +15,7 @@ import scala.collection.mutable
 import scala.concurrent.duration._
 import akka.actor.SupervisorStrategy.Restart
 import java.io.ByteArrayOutputStream
-import popeye.transport.proto.{PackedPoints, PackedPointsIndex, PackedPointsBuffer}
+import popeye.transport.proto.{PendingPoints, PackedPoints, PackedPointsIndex, PackedPointsBuffer}
 import com.google.protobuf.{CodedOutputStream, CodedInputStream}
 import scala.annotation.tailrec
 import scala.concurrent.Promise
@@ -174,8 +174,9 @@ class KafkaPointProducer(config: Config,
     workQueue.headOption() match {
       case Some(worker: ActorRef) =>
         val batchId = idGenerator.nextId()
-        val (data, promises) = pendingPoints.consume()
+        val (data, promises) = pendingPoints.consume(ignoreMinSize)
         if (!data.isEmpty) {
+          log.debug(s"Sending ${data.length} bytes, will trigger ${promises.size} promises")
           worker ! ProducePack(batchId, metrics.writeTimer.timerContext())(data, promises)
           flushPoints(ignoreMinSize)
         } else {
