@@ -6,20 +6,25 @@ import java.util.Properties
 import com.typesafe.config.Config
 import popeye.{IdGenerator, ConfigUtil, Instrumented}
 import ConfigUtil._
-import popeye.transport.proto.Storage.Ensemble
 import akka.routing.FromConfig
-import kafka.producer.KeyedMessage
-import akka.actor.Status.Failure
 import com.codahale.metrics.{Timer, MetricRegistry}
 import kafka.client.ClientUtils
-import scala.collection
 import kafka.utils.VerifiableProperties
-import scala.collection.mutable.ArrayBuffer
 import popeye.transport.proto.Message.Point
 import scala.collection.mutable
 import scala.concurrent.duration._
 import akka.actor.SupervisorStrategy.Restart
-import scala.util.Success
+import java.io.ByteArrayOutputStream
+import popeye.transport.proto.{PackedPoints, PackedPointsIndex, PackedPointsBuffer}
+import com.google.protobuf.{CodedOutputStream, CodedInputStream}
+import scala.annotation.tailrec
+import scala.concurrent.Promise
+import akka.actor.Status.Failure
+import scala.Some
+import scala.util.Random
+import akka.actor.OneForOneStrategy
+import java.util
+
 
 case class KafkaPointProducerMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
   val writeTimer = metrics.timer("kafka.produce.time")
@@ -35,8 +40,8 @@ private object KafkaPointProducerProtocol {
 
   case class CorrelatedPoint(correlationId: Long, sender: ActorRef)(val points: Seq[Point])
 
-  case class ProducePack(batchId: Long, started: Timer.Context, partitions: Int)
-                        (val batch: Seq[CorrelatedPoint])
+  case class ProducePack(batchId: Long, started: Timer.Context)
+                        (val batch: Seq[PendingPoints.PartitionBuffer], val promises: Seq[Promise[Long]])
 
 }
 
@@ -44,7 +49,7 @@ class KafkaPointSender(topic: String, producerConfig: ProducerConfig, metrics: K
 
   import KafkaPointProducerProtocol._
 
-  val producer = new Producer[Nothing, Ensemble](producerConfig)
+  val producer = new Producer[Int, Array[Byte]](producerConfig)
 
 
   override def preStart() {
@@ -60,38 +65,23 @@ class KafkaPointSender(topic: String, producerConfig: ProducerConfig, metrics: K
   }
 
   def receive = {
-    case p@ProducePack(batchId, started, partitions) =>
+    case p@ProducePack(batchId, started) =>
       val sendctx = metrics.sendTimer.timerContext()
-      val ensembles = new collection.mutable.HashMap[Int, Ensemble.Builder]
-      val notifications = mutable.Map[ActorRef, ArrayBuffer[Long]]()
-      for (correlatedPoint <- p.batch;
-           point <- correlatedPoint.points) {
-        metrics.pointsMeter.mark()
-        val part = Math.abs(point.getMetric.hashCode()) % partitions
-        val ensemble = ensembles.getOrElseUpdate(part,
-          Ensemble.newBuilder()
-            .setBatchId(batchId)
-            .setPartition(part)
-        )
-        ensemble.addPoints(point)
-        val senderPointsId = notifications.getOrElseUpdate(correlatedPoint.sender, new ArrayBuffer)
-        senderPointsId += correlatedPoint.correlationId
-        notifications.put(correlatedPoint.sender, senderPointsId)
+
+      val messages: Seq[KeyedMessage[Int, Array[Byte]]] = p.batch.map {
+        pb =>
+          metrics.pointsMeter.mark(pb.points)
+          new KeyedMessage(topic, pb.partitionId, PackedPoints.prependBatchId(batchId, pb.buffer))
       }
+
       try {
-        producer.send(ensembles.map(e => new KeyedMessage(topic, e._2.build)).toArray: _*)
+        producer.send(messages: _*)
         metrics.batchCompleteMeter.mark
-        notifications foreach {
-          p =>
-            p._1 ! ProduceDone(p._2, batchId)
-        }
+        p.promises foreach (_.success(batchId))
       } catch {
         case e: Exception => sender ! Failure(e)
           metrics.batchFailedMeter.mark
-          notifications foreach {
-            p =>
-              p._1 ! ProduceFailed(p._2, e)
-          }
+          p.promises foreach (_.failure(e))
           throw e
       } finally {
         val sended = sendctx.stop.nano
@@ -103,6 +93,7 @@ class KafkaPointSender(topic: String, producerConfig: ProducerConfig, metrics: K
       }
   }
 }
+
 
 class KafkaPointProducer(config: Config,
                          producerConfig: ProducerConfig,
@@ -123,8 +114,10 @@ class KafkaPointProducer(config: Config,
 
   val batchWaitTimeout: FiniteDuration = toFiniteDuration(config.getMilliseconds("kafka.produce.batch-timeout"))
   val maxQueued = config.getInt("kafka.produce.max-queued")
-  val batchSize = config.getInt("kafka.produce.batch-size")
   val senders = config.getInt("kafka.produce.senders")
+  val minMessageBytes = config.getInt("kafka.produce.message.min-bytes")
+  val maxMessageBytes = config.getInt("kafka.produce.message.max-bytes")
+  val pendingPoints = new PendingPoints(partitions, minMessageBytes, maxMessageBytes)
 
   var flusher: Option[Cancellable] = None
 
@@ -143,7 +136,7 @@ class KafkaPointProducer(config: Config,
     super.preStart()
     log.debug("Starting batcher")
 
-    for (i <- 1 to senders) {
+    for (i <- 0 to senders) {
       context.actorOf(
         Props(new KafkaPointSender(topic, producerConfig, metrics, this)).withDeploy(Deploy.local),
         "points-sender-" + i)
@@ -161,69 +154,34 @@ class KafkaPointProducer(config: Config,
     super.postStop()
   }
 
-  private var pendingSize: Long = 0
-  private var pending = new ArrayBuffer[CorrelatedPoint]
-
-  private def addPending(point: CorrelatedPoint) = {
-    pending += point
-    pendingSize += point.points.size
-  }
-
-  private def removePending(amount: Int): Seq[CorrelatedPoint] = {
-    pending.splitAt(amount) match {
-      case (batch, tail) =>
-        pending = tail
-        pendingSize -= batch.size
-        batch
-      case _ => Nil
-    }
-  }
-
   def receive: Actor.Receive = {
     case FlushPoints =>
-      flushPoints(0)
+      flushPoints(ignoreMinSize = true)
 
     case WorkDone(_) =>
-      flushPoints(batchSize)
+      flushPoints()
 
-    case p@ProducePending(corr) =>
-      p.data match {
-        case Nil =>
-        case points =>
-          addPending(CorrelatedPoint(p.correlationId, sender)(points))
-      }
-      flushPoints(batchSize)
-      if (pendingSize > maxQueued)
-        sender ! ProduceNeedThrottle
+    case p@ProducePending(promise) =>
+      pendingPoints.addPending(p.data, p.batchIdPromise)
+      flushPoints()
   }
 
-  private def flushPoints(minSend: Long): Unit = {
-    while (pendingSize > minSend && !workQueue.isEmpty) {
-      if (log.isDebugEnabled) {
-        log.debug("Flushing {} points with {} available workers",
-          pendingSize, workQueue.size)
-      }
+  private def flushPoints(ignoreMinSize: Boolean = false): Unit = {
+    while (!workQueue.isEmpty) {
       workQueue.headOption() match {
         case Some(worker: ActorRef) =>
-          val pp = pendingSize
-          val batch = removePending(batchSize)
-          log.debug("Batch with {} points was created, pending changed {} -> {}",
-            batch.size, pp, pendingSize)
 
-          if (!batch.isEmpty)
-            worker ! ProducePack(idGenerator.nextId(), metrics.writeTimer.timerContext(), partitions)(batch)
+          val batchId = idGenerator.nextId()
+          val (data, promises) = pendingPoints.consume()
+          if (!data.isEmpty)
+            worker ! ProducePack(batchId, metrics.writeTimer.timerContext())(data, promises)
+
         case None =>
           return
       }
     }
   }
 
-}
-
-class EnsemblePartitioner(props: VerifiableProperties = null) extends Partitioner[Ensemble] {
-  def partition(data: Ensemble, numPartitions: Int): Int = {
-    Math.abs(data.getPartition) % numPartitions
-  }
 }
 
 object KafkaPointProducer {
@@ -237,8 +195,6 @@ object KafkaPointProducer {
   def producerConfig(globalConfig: Config): ProducerConfig = {
     val config: Config = globalConfig.getConfig("kafka.producer")
     val producerProps: Properties = config
-    producerProps.setProperty("serializer.class", classOf[EnsembleEncoder].getName)
-    producerProps.setProperty("partitioner.class", classOf[EnsemblePartitioner].getName)
     producerProps.setProperty("producer.type", "sync")
     new ProducerConfig(producerProps)
   }
