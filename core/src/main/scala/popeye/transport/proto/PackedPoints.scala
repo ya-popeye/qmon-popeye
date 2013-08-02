@@ -28,6 +28,16 @@ class PackedPoints {
     this
   }
 
+  def pointsBuffer = {
+    pointsCoder.flush()
+    points.toByteArray
+  }
+
+  def hashesBuffer = {
+    hashesCoder.flush()
+    hashes.toByteArray
+  }
+
   def asPacketsBuffer = {
     hashesCoder.flush()
     pointsCoder.flush()

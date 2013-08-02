@@ -8,28 +8,41 @@ import java.util.Random
  * @author Andrey Stepachev
  */
 object PopeyeTestUtils {
-  val ts = new AtomicLong(1234123412)
+  val ts = new AtomicLong(1375452320874l)
 
-  def tsStream = Stream.continually(ts.incrementAndGet())
+  def names: List[String] = List("my.metric1", "proc.net.bytes", "proc.fs.descriptors")
 
-  def makeBatch(msgs: Int = 2, timestamps: Stream[Long] = tsStream)(implicit rnd: Random): Seq[Point] = {
-    mkEvents(msgs, timestamps).toSeq
+  def hosts: List[String] = List("test.yandex.ru", "localhost", "other.com")
+
+  def makeBatch(msgs: Int = 2,
+                names: List[String] = names,
+                hosts: List[String] = hosts)
+               (implicit rnd: Random): Seq[Point] = {
+    mkEvents(msgs, names, hosts).toSeq
   }
 
-  def mkEvents(msgs: Int = 2, timestamps: Stream[Long] = tsStream)(implicit rnd: Random): Seq[Point] = {
+  def mkEvents(msgs: Int = 2,
+               names: List[String] = names,
+               hosts: List[String] = hosts)
+              (implicit rnd: Random): Seq[Point] = {
     0 until msgs collect {
-      case i => mkEvent(timestamps)
+      case i => mkEvent(names, hosts)
     }
   }
 
-  def mkEvent(timestamps: Stream[Long] = tsStream)(implicit rnd: Random): Point = {
+  def mkEvent(names: List[String] = names,
+              hosts: List[String] = hosts)
+             (implicit rnd: Random): Point = {
+    val host: String = hosts(rnd.nextInt(hosts.length))
+    val timestamp: Long = ts.addAndGet(rnd.nextInt(2000) + 1000l)
+    val name: String = names(rnd.nextInt(names.length))
     Point.newBuilder()
-      .setTimestamp(timestamps.head)
+      .setTimestamp(timestamp)
       .setIntValue(rnd.nextLong())
-      .setMetric("proc.net.bytes")
+      .setMetric(name)
       .addAttributes(Attribute.newBuilder()
       .setName("host")
-      .setValue("localhost")
+      .setValue(host)
     ).build()
   }
 
