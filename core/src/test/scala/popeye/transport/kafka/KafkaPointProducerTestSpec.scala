@@ -4,9 +4,7 @@ import org.scalatest.mock.MockitoSugar
 import popeye.transport.test.{AkkaTestKitSpec, KafkaServerTestSpec}
 import akka.testkit.TestActorRef
 import org.hbase.async.{Bytes, KeyValue}
-import popeye.transport.proto.Message.{Attribute, Point}
 import java.util.Random
-import java.util.concurrent.atomic.AtomicInteger
 import org.mockito.Mockito._
 import org.mockito.Matchers.{eq => the}
 import java.util
@@ -16,11 +14,10 @@ import akka.util.Timeout
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.{ConfigFactory, Config}
 import kafka.utils.TestUtils._
-import popeye.transport.kafka.KafkaPointProducer
-import popeye.transport.kafka.ProducePending
 import kafka.admin.CreateTopicCommand
 import popeye.{IdGenerator, ConfigUtil}
 import popeye.transport.proto.PackedPoints
+import popeye.test.PopeyeTestUtils._
 
 /**
  * @author Andrey Stepachev
@@ -30,7 +27,7 @@ class KafkaPointProducerTestSpec extends AkkaTestKitSpec("tsdb-writer") with Kaf
   val mockSettings = withSettings()
   //.verboseLogging()
   val idGenerator = new IdGenerator(1)
-  val ts = new AtomicInteger(1234123412)
+  implicit val rnd = new Random(1234)
   implicit val timeout: Timeout = 5 seconds
   implicit val generator: IdGenerator = new IdGenerator(1)
   implicit val metricRegistry = new MetricRegistry()
@@ -63,32 +60,6 @@ class KafkaPointProducerTestSpec extends AkkaTestKitSpec("tsdb-writer") with Kaf
     actor.underlyingActor.metrics.batchCompleteMeter.count must be(1)
     system.shutdown()
   }
-
-  val rnd = new Random(12345)
-
-  def mkEvents(msgs: Int = 2): Traversable[Point] = {
-    for {
-      i <- 0 until msgs
-    } yield {
-      mkEvent()
-    }
-  }
-
-  def mkEvent(): Point = {
-    Point.newBuilder()
-      .setTimestamp(ts.getAndIncrement)
-      .setIntValue(rnd.nextLong())
-      .setMetric("proc.net.bytes")
-      .addAttributes(Attribute.newBuilder()
-      .setName("host")
-      .setValue("localhost")
-    ).build()
-  }
-
-  def makeBatch(): Seq[Point] = {
-    mkEvents().toSeq
-  }
-
 
   def mkIdKeyValue(id: Long): util.ArrayList[KeyValue] = {
     val a = new util.ArrayList[KeyValue]()
