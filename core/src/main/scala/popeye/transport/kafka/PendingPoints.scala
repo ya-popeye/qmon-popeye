@@ -90,7 +90,7 @@ class PendingPoints(partitions: Int, minAmount: Int, maxAmount: Int) {
   private[this] var checkOrder = mkOrder
 
   private def mkOrder: List[Int] = {
-    Random.shuffle((0 to partitions - 1).toList)
+    Random.shuffle((0 until partitions).toList)
   }
 
   def addPending(buffer: PackedPointsBuffer, maybePromise: Option[Promise[Long]]) = {
@@ -105,7 +105,7 @@ class PendingPoints(partitions: Int, minAmount: Int, maxAmount: Int) {
 
     maybePromise foreach (
       promise =>
-        for (partition <- 0 to promiseOffsets.length if promiseOffsets(partition) > 0) {
+        for (partition <- 0 until promiseOffsets.length if promiseOffsets(partition) > 0) {
           promises(partition).enqueue(new PromiseForOffset(promiseOffsets(partition), promise))
         }
       )
@@ -113,7 +113,7 @@ class PendingPoints(partitions: Int, minAmount: Int, maxAmount: Int) {
 
   def consume(): (Seq[PartitionBuffer], Seq[Promise[Long]]) = {
     checkOrder = mkOrder
-    (consumeInternal(checkOrder.toStream, 0, Seq()), consumePromises())
+    (consumeInternal(checkOrder.iterator, 0, Seq()), consumePromises())
   }
 
   private def consumePromises(partition: Int): Seq[Promise[Long]] = {
@@ -134,27 +134,24 @@ class PendingPoints(partitions: Int, minAmount: Int, maxAmount: Int) {
 
   private def consumePromises(): Seq[Promise[Long]] = {
     for {
-      partition <- 0 to promises.length - 1
+      partition <- 0 until promises.length
       promise <- consumePromises(partition)
     } yield promise
   }
 
   @tailrec
-  private def consumeInternal(partitions: Stream[Int], total: Int, seq: Seq[PartitionBuffer]): Seq[PartitionBuffer] = {
+  private def consumeInternal(partitions: Iterator[Int], total: Int, seq: Seq[PartitionBuffer]): Seq[PartitionBuffer] = {
     if (total > minAmount)
       return seq
-    partitions.headOption match {
-      case Some(partitionIndex) =>
-        val pb = buffers(partitionIndex)
-        if (pb.buffer.size < minAmount) {
-          consumeInternal(partitions, total, seq)
-        } else {
-          val buffer = pb.consume(partitionIndex)
-          consumeInternal(partitions, total + buffer.buffer.length, seq :+ buffer)
-        }
-
-      case None =>
-        seq
+    if (!partitions.hasNext)
+      return seq
+    val partitionIndex = partitions.next
+    val pb = buffers(partitionIndex)
+    if (pb.buffer.size < minAmount) {
+      consumeInternal(partitions, total, seq)
+    } else {
+      val buffer = pb.consume(partitionIndex)
+      consumeInternal(partitions, total + buffer.buffer.length, seq :+ buffer)
     }
   }
 

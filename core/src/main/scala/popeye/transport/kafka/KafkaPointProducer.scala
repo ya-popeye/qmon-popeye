@@ -136,7 +136,7 @@ class KafkaPointProducer(config: Config,
     super.preStart()
     log.debug("Starting batcher")
 
-    for (i <- 0 to senders) {
+    for (i <- 0 until senders) {
       context.actorOf(
         Props(new KafkaPointSender(topic, producerConfig, metrics, this)).withDeploy(Deploy.local),
         "points-sender-" + i)

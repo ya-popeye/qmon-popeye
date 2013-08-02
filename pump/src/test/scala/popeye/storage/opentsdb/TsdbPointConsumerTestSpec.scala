@@ -73,7 +73,7 @@ class TsdbPointConsumerTestSpec extends AkkaTestKitSpec("tsdb-writer") with Kafk
 
   def mkEvents(msgs: Int = 2): Traversable[Point] = {
     for {
-      i <- 0 to msgs - 1
+      i <- 0 until msgs
     } yield {
       mkEvent()
     }

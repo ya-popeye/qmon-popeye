@@ -213,7 +213,7 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String],
    */
   def parseTags(builder: Point.Builder, startIdx: Int, tags: Array[String]) {
     val set = mutable.HashSet[String]()
-    for (i <- startIdx to tags.length - 1) {
+    for (i <- startIdx until tags.length) {
       val tag = tags(i)
       val kv: Array[String] = Tags.splitString(tag, '=')
       if (kv.length != 2 || kv(0).length <= 0 || kv(1).length <= 0) {
