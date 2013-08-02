@@ -47,10 +47,11 @@ object PendingPoints {
 
     def consume(partitionId: Int): PartitionBuffer = {
       val bytes = buffer.toByteArray
+      val r = new PartitionBuffer(partitionId, points, bytes)
       consumed += buffer.size()
       points = 0
       buffer.reset()
-      new PartitionBuffer(partitionId, points, bytes)
+      r
     }
 
     def consume(partitionId: Int, amount: Int): PartitionBuffer = {
