@@ -14,7 +14,7 @@ import scala.collection.mutable.ArrayBuffer
 /**
  * @author Andrey Stepachev
  */
-object PendingPoints extends Logging {
+object PointsQueue extends Logging {
 
   case class Stat(bytes: Long, points: Long, promises: Int) {
     def +(other: Stat) = Stat(bytes + other.bytes, points + other.points, promises + other.promises)
@@ -88,9 +88,9 @@ object PendingPoints extends Logging {
 
 }
 
-class PendingPoints(partitions: Int, minAmount: Int, maxAmount: Int, timeStep: Long = (100 millis).toMillis) {
+class PointsQueue(partitions: Int, minAmount: Int, maxAmount: Int, timeStep: Long = (100 millis).toMillis) {
 
-  import PendingPoints._
+  import PointsQueue._
 
   private[this] val promises: Array[mutable.PriorityQueue[PromiseForOffset]] = Array.fill(partitions) {
     mutable.PriorityQueue[PromiseForOffset]()(Ordering.by(-_.offset))
@@ -139,7 +139,7 @@ class PendingPoints(partitions: Int, minAmount: Int, maxAmount: Int, timeStep: L
     buffer.foreach {
       pidx =>
         val partIdx: Int = Math.abs(pidx.hash) % partitions
-        val pb: PendingPoints.BufferForPartition = buffers(partIdx)
+        val pb: PointsQueue.BufferForPartition = buffers(partIdx)
         pb.append(pidx)
         promiseOffsets(partIdx) = pb.cumulativeOffset
     }

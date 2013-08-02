@@ -15,7 +15,7 @@ import scala.collection.mutable
 import scala.concurrent.duration._
 import akka.actor.SupervisorStrategy.Restart
 import java.io.ByteArrayOutputStream
-import popeye.transport.proto.{PendingPoints, PackedPoints, PackedPointsIndex, PackedPointsBuffer}
+import popeye.transport.proto.{PointsQueue, PackedPoints, PackedPointsIndex, PackedPointsBuffer}
 import com.google.protobuf.{CodedOutputStream, CodedInputStream}
 import scala.annotation.tailrec
 import scala.concurrent.Promise
@@ -42,7 +42,7 @@ private object KafkaPointProducerProtocol {
   case class CorrelatedPoint(correlationId: Long, sender: ActorRef)(val points: Seq[Point])
 
   case class ProducePack(batchId: Long, started: Timer.Context)
-                        (val batch: Seq[PendingPoints.PartitionBuffer], val promises: Seq[Promise[Long]])
+                        (val batch: Seq[PointsQueue.PartitionBuffer], val promises: Seq[Promise[Long]])
 
 }
 
@@ -118,7 +118,7 @@ class KafkaPointProducer(config: Config,
   val senders = config.getInt("kafka.produce.senders")
   val minMessageBytes = config.getInt("kafka.produce.message.min-bytes")
   val maxMessageBytes = config.getInt("kafka.produce.message.max-bytes")
-  val pendingPoints = new PendingPoints(partitions, minMessageBytes, maxMessageBytes)
+  val pendingPoints = new PointsQueue(partitions, minMessageBytes, maxMessageBytes)
 
   var flusher: Option[Cancellable] = None
 
