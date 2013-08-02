@@ -2,28 +2,25 @@ package popeye.storage.opentsdb
 
 import popeye.{Instrumented, Logging}
 import popeye.ConfigUtil._
-import kafka.serializer.DefaultDecoder
 import akka.actor._
 import com.typesafe.config.Config
 import kafka.consumer._
 import java.util.Properties
 import scala.concurrent.duration._
-import scala.collection.JavaConversions.asScalaBuffer
 import akka.actor.SupervisorStrategy.Restart
 import scala.Option
 import scala.Some
 import akka.actor.OneForOneStrategy
-import popeye.transport.proto.Storage.Ensemble
 import com.codahale.metrics.MetricRegistry
 import scala.collection.mutable.ArrayBuffer
-import popeye.transport.proto.Message
-import popeye.storage.opentsdb.TsdbPointConsumer.ConsumerPair
+import popeye.transport.proto.{PackedPoints, Message}
 import popeye.transport.proto.Message.Point
 import net.opentsdb.core.{TSDB, EventPersistFuture}
 import org.hbase.async.HBaseClient
-import popeye.transport.kafka.EnsembleDecoder
 import TsdbPointConsumerProtocol._
 import akka.routing.FromConfig
+import kafka.message.MessageAndMetadata
+import kafka.serializer.DefaultDecoder
 
 /**
  * @author Andrey Stepachev
@@ -59,7 +56,6 @@ object TsdbPointConsumerProtocol {
 class TsdbPointConsumer(config: Config, tsdb: TSDB, val metrics: TsdbPointConsumerMetrics)
   extends Actor with ActorLogging {
 
-  import context._
   import TsdbPointConsumer._
 
   val topic = config.getString("kafka.points.topic")
@@ -90,7 +86,7 @@ class TsdbPointConsumer(config: Config, tsdb: TSDB, val metrics: TsdbPointConsum
   }
 
   override def postStop() {
-    checker foreach {_.cancel()}
+    checker foreach { _.cancel() }
     super.postStop()
     log.debug("Stopping TsdbPointConsumer for group " + group + " and topic " + topic)
     connector.shutdown()
@@ -112,16 +108,17 @@ class TsdbPointConsumer(config: Config, tsdb: TSDB, val metrics: TsdbPointConsum
   }
 
   def doNext() = {
-    val batches = new ArrayBuffer[Long]
-    val points = new ArrayBuffer[Message.Point]
+    val batchIds = new ArrayBuffer[Long]
+    val batch = new ArrayBuffer[Message.Point]
     val tctx = metrics.consumeTimer.timerContext()
     val iterator = consumer.get.iterator()
     try {
-      while (iterator.hasNext && points.size < maxBatchSize) {
-        val msg = iterator.next()
-        metrics.batchSizeHist.update(msg.message.getPointsCount)
-        batches += msg.message.getBatchId
-        points ++= msg.message.getPointsList
+      while (iterator.hasNext && batch.size < maxBatchSize) {
+        val msg: MessageAndMetadata[Array[Byte], Array[Byte]] = iterator.next()
+        val (batchId, points) = PackedPoints.decodeWithBatchId(msg.message)
+        metrics.batchSizeHist.update(points.size)
+        batchIds += batchId
+        batch ++= points
       }
     } catch {
       case ex: ConsumerTimeoutException => // ok
@@ -129,10 +126,10 @@ class TsdbPointConsumer(config: Config, tsdb: TSDB, val metrics: TsdbPointConsum
         log.error("Failed to consume", ex)
         throw ex
     }
-    if (batches.size > 0) {
-      metrics.pointsMeter.mark(points.size)
-      tctx.close
-      sendBatch(batches, points)
+    if (batchIds.size > 0) {
+      metrics.pointsMeter.mark(batch.size)
+      tctx.close()
+      sendBatch(batchIds, batch)
     }
   }
 
@@ -196,7 +193,7 @@ object TsdbPointConsumer extends Logging {
     new ConsumerConfig(consumerProps)
   }
 
-  class ConsumerPair(val connector: ConsumerConnector, val consumer: Option[KafkaStream[Array[Byte], Ensemble]]) {
+  class ConsumerPair(val connector: ConsumerConnector, val consumer: Option[KafkaStream[Array[Byte], Array[Byte]]]) {
     def shutdown = {
       connector.shutdown()
     }
@@ -206,11 +203,7 @@ object TsdbPointConsumer extends Logging {
     val consumerConnector: ConsumerConnector = Consumer.create(config)
 
     val topicThreadCount = Map((topic, 1))
-    val topicMessageStreams = consumerConnector.createMessageStreams(
-      topicThreadCount,
-      new DefaultDecoder(),
-      new EnsembleDecoder()
-    )
+    val topicMessageStreams = consumerConnector.createMessageStreams(topicThreadCount)
     val streams = topicMessageStreams.get(topic)
 
     val stream = streams match {

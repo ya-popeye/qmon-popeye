@@ -26,6 +26,8 @@ import popeye.transport.kafka.ProducePending
 import com.typesafe.config.Config
 import popeye.Instrumented
 import com.codahale.metrics.MetricRegistry
+import popeye.transport.proto.PackedPoints
+import scala.concurrent.Promise
 
 
 class LegacyHttpHandlerMetrics (override val metricRegistry: MetricRegistry) extends Instrumented {
@@ -70,7 +72,7 @@ class LegacyHttpHandler(config: Config, kafkaProducer: ActorRef, metrics: Legacy
 
       val result = for {
         parsed <- ask(parser, ParseRequest(entity.buffer)).mapTo[ParseResult]
-        stored <- ask(kafkaProducer, ProducePending(0)(parsed.batch))(kafkaTimeout)
+        stored <- ask(kafkaProducer, ProducePending(None)(PackedPoints(parsed.batch)))(kafkaTimeout)
       } yield {
         metrics.requestsBatches.update(parsed.batch.size)
         timer.stop()

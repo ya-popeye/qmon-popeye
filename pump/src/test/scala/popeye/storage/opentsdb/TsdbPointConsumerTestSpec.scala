@@ -23,6 +23,7 @@ import popeye.transport.kafka.ProduceDone
 import popeye.transport.kafka.ProducePending
 import kafka.admin.CreateTopicCommand
 import popeye.{IdGenerator, ConfigUtil}
+import popeye.transport.proto.PackedPoints
 
 /**
  * @author Andrey Stepachev
@@ -62,7 +63,7 @@ class TsdbPointConsumerTestSpec extends AkkaTestKitSpec("tsdb-writer") with Kafk
         |   kafka.points.topic="$topic"
       """.stripMargin).withFallback(ConfigUtil.loadSubsysConfig("pump")).resolve()
     val actor: TestActorRef[KafkaPointProducer] = TestActorRef(KafkaPointProducer.props(config, generator))
-    val future = ask(actor, ProducePending(123)(makeBatch())).mapTo[ProduceDone]
+    val future = ask(actor, ProducePending(None)(PackedPoints(makeBatch()))).mapTo[ProduceDone]
     val done = Await.result(future, timeout.duration)
     actor.underlyingActor.metrics.batchCompleteMeter.count must be(1)
     system.shutdown()
