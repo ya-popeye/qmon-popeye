@@ -23,7 +23,7 @@ class PackedPoints {
     hashesCoder.writeInt32NoTag(hash)
     val size = point.getSerializedSize
     pointsCoder.writeRawVarint32(size)
-    point.writeTo(points)
+    point.writeTo(pointsCoder)
     pointsCount += 1
     this
   }
