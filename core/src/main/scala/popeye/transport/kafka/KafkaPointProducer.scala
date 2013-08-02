@@ -24,6 +24,7 @@ import scala.Some
 import scala.util.Random
 import akka.actor.OneForOneStrategy
 import java.util
+import kafka.serializer.Encoder
 
 
 case class KafkaPointProducerMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
@@ -166,19 +167,22 @@ class KafkaPointProducer(config: Config,
       flushPoints()
   }
 
+  @tailrec
   private def flushPoints(ignoreMinSize: Boolean = false): Unit = {
-    while (!workQueue.isEmpty) {
-      workQueue.headOption() match {
-        case Some(worker: ActorRef) =>
-
-          val batchId = idGenerator.nextId()
-          val (data, promises) = pendingPoints.consume()
-          if (!data.isEmpty)
-            worker ! ProducePack(batchId, metrics.writeTimer.timerContext())(data, promises)
-
-        case None =>
-          return
-      }
+    if (workQueue.isEmpty)
+      return
+    workQueue.headOption() match {
+      case Some(worker: ActorRef) =>
+        val batchId = idGenerator.nextId()
+        val (data, promises) = pendingPoints.consume()
+        if (!data.isEmpty) {
+          worker ! ProducePack(batchId, metrics.writeTimer.timerContext())(data, promises)
+          flushPoints(ignoreMinSize)
+        } else {
+          workQueue.add(worker)
+        }
+      case None =>
+        return
     }
   }
 
@@ -196,6 +200,8 @@ object KafkaPointProducer {
     val config: Config = globalConfig.getConfig("kafka.producer")
     val producerProps: Properties = config
     producerProps.setProperty("producer.type", "sync")
+    producerProps.setProperty("key.serializer.class", classOf[KeySerialiser].getName)
+    producerProps.setProperty("partitioner.class", classOf[KeyPartitioner].getName)
     new ProducerConfig(producerProps)
   }
 
@@ -207,6 +213,26 @@ object KafkaPointProducer {
       idGenerator,
       metrics))
   }
+}
+
+class KeySerialiser(props: VerifiableProperties = null) extends Encoder[Int] {
+  def toBytes(p1: Int): Array[Byte] = {
+    val conv = new Array[Byte](4)
+    var input = p1
+    conv(3) = (input & 0xff).toByte;
+    input >>= 8;
+    conv(2) = (input & 0xff).toByte;
+    input >>= 8;
+    conv(1) = (input & 0xff).toByte;
+    input >>= 8;
+    conv(0) = input.toByte;
+    conv
+  }
+
+}
+
+class KeyPartitioner(props: VerifiableProperties = null) extends Partitioner[Int] {
+  def partition(data: Int, numPartitions: Int): Int = data % numPartitions
 }
 
 
