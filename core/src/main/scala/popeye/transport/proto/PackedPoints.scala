@@ -119,16 +119,14 @@ object PackedPoints {
 
   val expectedMessageSize = 50
 
-  def prependBatchId(batchId: Long, two: Array[Byte]) = {
-    val b = new ByteArrayOutputStream()
+  def prependBatchId(batchId: Long, array: Array[Byte]): Array[Byte] = {
+    val longSize = CodedOutputStream.computeInt64SizeNoTag(batchId)
+    val b = new ExpandingBuffer(longSize + array.length)
     val cs = CodedOutputStream.newInstance(b)
     cs.writeInt64NoTag(batchId)
+    cs.writeRawBytes(array)
     cs.flush()
-    val combined = new Array[Byte](b.size + two.length)
-    val one = b.toByteArray
-    System.arraycopy(one,0,combined,0         ,one.length)
-    System.arraycopy(two,0,combined,one.length,two.length)
-    combined
+    b.toByteArray
   }
 
   def decodeWithBatchId(buffer: Array[Byte]): (Long, Seq[Point]) = {
