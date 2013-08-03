@@ -1,38 +1,33 @@
-package popeye.storage.opentsdb
+package popeye.transport.kafka
 
 import org.scalatest.mock.MockitoSugar
 import popeye.transport.test.{AkkaTestKitSpec, KafkaServerTestSpec}
 import akka.testkit.TestActorRef
-import org.hbase.async.{Bytes, KeyValue, HBaseClient}
-import popeye.transport.proto.Message.{Attribute, Point}
+import org.hbase.async.{Bytes, KeyValue}
 import java.util.Random
-import java.util.concurrent.atomic.AtomicInteger
 import org.mockito.Mockito._
-import org.mockito.Matchers.{eq => the, any}
-import com.stumbleupon.async.Deferred
+import org.mockito.Matchers.{eq => the}
 import java.util
-import scala.concurrent.Await
+import scala.concurrent.{Promise, Await}
 import scala.concurrent.duration._
 import akka.util.Timeout
-import akka.pattern.ask
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.{ConfigFactory, Config}
 import kafka.utils.TestUtils._
-import popeye.transport.kafka.KafkaPointProducer
-import popeye.transport.kafka.ProduceDone
-import popeye.transport.kafka.ProducePending
 import kafka.admin.CreateTopicCommand
 import popeye.{IdGenerator, ConfigUtil}
+import popeye.transport.proto.PackedPoints
+import popeye.test.PopeyeTestUtils._
 
 /**
  * @author Andrey Stepachev
  */
-class TsdbPointConsumerTestSpec extends AkkaTestKitSpec("tsdb-writer") with KafkaServerTestSpec with MockitoSugar {
+class KafkaPointProducerTestSpec extends AkkaTestKitSpec("tsdb-writer") with KafkaServerTestSpec with MockitoSugar {
 
   val mockSettings = withSettings()
   //.verboseLogging()
   val idGenerator = new IdGenerator(1)
-  val ts = new AtomicInteger(1234123412)
+  implicit val rnd = new Random(1234)
   implicit val timeout: Timeout = 5 seconds
   implicit val generator: IdGenerator = new IdGenerator(1)
   implicit val metricRegistry = new MetricRegistry()
@@ -46,9 +41,6 @@ class TsdbPointConsumerTestSpec extends AkkaTestKitSpec("tsdb-writer") with Kafk
     CreateTopicCommand.createTopic(zkClient, topic, 1, 1, "")
     waitUntilLeaderIsElectedOrChanged(zkClient, topic, 0, 500, None)
 
-    val hbc = mock[HBaseClient](mockSettings)
-    when(hbc.get(any())).thenReturn(Deferred.fromResult(mkIdKeyValue(1)))
-    when(hbc.put(any())).thenReturn(Deferred.fromResult(new Object))
     val config: Config = ConfigFactory.parseString(
       s"""
         |   zk.cluster = "$zkConnect"
@@ -57,42 +49,17 @@ class TsdbPointConsumerTestSpec extends AkkaTestKitSpec("tsdb-writer") with Kafk
         |         group=$group
         |   }
         |   kafka.metadata.broker.list="$kafkaBrokersList"
-        |   kafka.produce.batch-size = 1
+        |   kafka.produce.message.min-bytes = 1
         |   kafka.produce.senders = 1
         |   kafka.points.topic="$topic"
       """.stripMargin).withFallback(ConfigUtil.loadSubsysConfig("pump")).resolve()
     val actor: TestActorRef[KafkaPointProducer] = TestActorRef(KafkaPointProducer.props(config, generator))
-    val future = ask(actor, ProducePending(123)(makeBatch())).mapTo[ProduceDone]
-    val done = Await.result(future, timeout.duration)
+    val p = Promise[Long]()
+    actor ! ProducePending(Some(p))(PackedPoints(makeBatch()))
+    val done = Await.result(p.future, timeout.duration)
     actor.underlyingActor.metrics.batchCompleteMeter.count must be(1)
     system.shutdown()
   }
-
-  val rnd = new Random(12345)
-
-  def mkEvents(msgs: Int = 2): Traversable[Point] = {
-    for {
-      i <- 0 to msgs - 1
-    } yield {
-      mkEvent()
-    }
-  }
-
-  def mkEvent(): Point = {
-    Point.newBuilder()
-      .setTimestamp(ts.getAndIncrement)
-      .setIntValue(rnd.nextLong())
-      .setMetric("proc.net.bytes")
-      .addAttributes(Attribute.newBuilder()
-      .setName("host")
-      .setValue("localhost")
-    ).build()
-  }
-
-  def makeBatch(): Seq[Point] = {
-    mkEvents().toSeq
-  }
-
 
   def mkIdKeyValue(id: Long): util.ArrayList[KeyValue] = {
     val a = new util.ArrayList[KeyValue]()

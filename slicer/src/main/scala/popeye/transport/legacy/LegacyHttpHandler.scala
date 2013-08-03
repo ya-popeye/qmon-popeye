@@ -26,6 +26,8 @@ import popeye.transport.kafka.ProducePending
 import com.typesafe.config.Config
 import popeye.Instrumented
 import com.codahale.metrics.MetricRegistry
+import popeye.transport.proto.PackedPoints
+import scala.concurrent.Promise
 
 
 class LegacyHttpHandlerMetrics (override val metricRegistry: MetricRegistry) extends Instrumented {
@@ -43,7 +45,7 @@ class LegacyHttpHandler(config: Config, kafkaProducer: ActorRef, metrics: Legacy
 
   implicit val timeout: Timeout = 5.second
   // for the actor 'asks'
-  val kafkaTimeout: Timeout = new Timeout(config.getDuration("kafka.produce.timeout").asInstanceOf[FiniteDuration])
+  val kafkaTimeout: Timeout = new Timeout(config.getDuration("legacy.http.produce.timeout").asInstanceOf[FiniteDuration])
 
   import context.dispatcher
 
@@ -70,7 +72,7 @@ class LegacyHttpHandler(config: Config, kafkaProducer: ActorRef, metrics: Legacy
 
       val result = for {
         parsed <- ask(parser, ParseRequest(entity.buffer)).mapTo[ParseResult]
-        stored <- ask(kafkaProducer, ProducePending(0)(parsed.batch))(kafkaTimeout)
+        stored <- ask(kafkaProducer, ProducePending(None)(PackedPoints(parsed.batch)))(kafkaTimeout)
       } yield {
         metrics.requestsBatches.update(parsed.batch.size)
         timer.stop()
@@ -133,7 +135,6 @@ class LegacyHttpHandler(config: Config, kafkaProducer: ActorRef, metrics: Legacy
 }
 
 object LegacyHttpHandler {
-  val parserFactory: JsonFactory = new JsonFactory()
   implicit val timeout: Timeout = 5 seconds
 
   def start(config: Config, kafkaProducer: ActorRef)(implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {

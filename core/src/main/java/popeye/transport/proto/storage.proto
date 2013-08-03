@@ -1,9 +1,0 @@
-package popeye.transport.proto;
-
-import "popeye/transport/proto/message.proto";
-
-message Ensemble {
-    required int64 batchId   = 1;
-    required int32 partition = 2;
-    repeated Point points    = 3;
-}
