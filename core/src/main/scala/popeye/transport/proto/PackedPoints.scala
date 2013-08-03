@@ -136,7 +136,10 @@ object PackedPoints {
     val batchId = cs.readInt64()
     val points = new ArrayBuffer[Point](buffer.length / expectedMessageSize)
     while(!cs.isAtEnd) {
+      val size = cs.readRawVarint32()
+      val limit = cs.pushLimit(size)
       points += Point.newBuilder().mergeFrom(cs).build
+      cs.popLimit(limit)
     }
     (batchId, points)
   }
