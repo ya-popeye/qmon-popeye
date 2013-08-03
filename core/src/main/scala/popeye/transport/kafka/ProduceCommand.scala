@@ -1,6 +1,7 @@
 package popeye.transport.kafka
 
-import popeye.transport.proto.Message.Point
+import popeye.transport.proto.PackedPointsBuffer
+import scala.concurrent.Promise
 
 sealed class ProduceReply
 
@@ -14,6 +15,6 @@ sealed class ProduceCommand
 
 case object FlushPoints extends ProduceCommand
 
-case class ProducePending(correlationId: Long)(val data: Seq[Point]) extends ProduceCommand
+case class ProducePending(batchIdPromise: Option[Promise[Long]] = None)(val data: PackedPointsBuffer) extends ProduceCommand
 
 
