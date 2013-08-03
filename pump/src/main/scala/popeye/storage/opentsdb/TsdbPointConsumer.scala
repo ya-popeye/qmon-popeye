@@ -21,6 +21,7 @@ import TsdbPointConsumerProtocol._
 import akka.routing.FromConfig
 import kafka.message.MessageAndMetadata
 import kafka.serializer.DefaultDecoder
+import com.google.protobuf.InvalidProtocolBufferException
 
 /**
  * @author Andrey Stepachev
@@ -36,6 +37,7 @@ case class TsdbPointConsumerMetrics(override val metricRegistry: MetricRegistry)
   val batchSizeHist = metrics.histogram("tsdb.consume.batch.size")
   val batchCompleteHist = metrics.meter("tsdb.consume.batch.complete")
   val batchFailedHist = metrics.meter("tsdb.consume.batch.complete")
+  val batchDecodeFailuresMeter = metrics.meter("tsdb.consume.bached.decode-errors")
   val writeTimer = metrics.timer("tsdb.write.write")
   val writeBatchSizeHist = metrics.histogram("tsdb.write.batch-size.write")
   val incomingBatchSizeHist = metrics.histogram("tsdb.write.batch-size.incoming")
@@ -115,10 +117,15 @@ class TsdbPointConsumer(config: Config, tsdb: TSDB, val metrics: TsdbPointConsum
     try {
       while (iterator.hasNext && batch.size < maxBatchSize) {
         val msg: MessageAndMetadata[Array[Byte], Array[Byte]] = iterator.next()
-        val (batchId, points) = PackedPoints.decodeWithBatchId(msg.message)
-        metrics.batchSizeHist.update(points.size)
-        batchIds += batchId
-        batch ++= points
+        try {
+          val (batchId, points) = PackedPoints.decodeWithBatchId(msg.message)
+          metrics.batchSizeHist.update(points.size)
+          batchIds += batchId
+          batch ++= points
+        } catch {
+          case e: InvalidProtocolBufferException =>
+            metrics.batchDecodeFailuresMeter.mark()
+        }
       }
     } catch {
       case ex: ConsumerTimeoutException => // ok
