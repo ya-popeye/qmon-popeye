@@ -5,7 +5,6 @@ import akka.io._
 import akka.util.{Timeout, ByteString}
 import akka.io.IO
 import akka.io.TcpPipelineHandler.{WithinActorContext, Init}
-import akka.pattern.ask
 import java.net.InetSocketAddress
 import net.opentsdb.core.Tags
 import popeye.transport.kafka.{ProduceFailed, ProduceNeedThrottle, ProduceDone, ProducePending}
@@ -17,8 +16,8 @@ import popeye.Instrumented
 import popeye.transport.proto.PackedPoints
 import scala.concurrent.{Future, Promise}
 import scala.concurrent.duration._
-import akka.actor.Status.Success
-import scala.util.Failure
+import scala.util.{Success, Failure}
+import akka.pattern.AskTimeoutException
 
 class TsdbTelnetMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
   val requestTimer = metrics.timer("request-time")
@@ -56,7 +55,7 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String],
   private var correlationId: PointId = 0
   private var suspended = false
 
-  private var requestTimer = metrics.requestTimer.timerContext()
+  private val requestTimer = metrics.requestTimer.timerContext()
 
   override def postStop() {
     super.postStop()
@@ -65,21 +64,25 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String],
 
   private def sendPack() {
     import context.dispatcher
-
-    correlationId += 1
-    val p = Promise[Long]()
-    kafkaProducer ! ProducePending(Some(p))(bufferedPoints)
-    bufferedPoints = new PackedPoints
-    pendingCorrelations.add(correlationId)
-    val me = self
-    val f =p.future
-    f onSuccess{
-      case l =>
-        me ! ProduceDone(Seq(correlationId), l)
-    }
-    f onFailure {
-      case ex: Throwable =>
-        me ! ProduceFailed(Seq(correlationId), ex)
+    if (!bufferedPoints.isEmpty) {
+      correlationId += 1
+      val p = Promise[Long]()
+      kafkaProducer ! ProducePending(Some(p))(bufferedPoints)
+      bufferedPoints = new PackedPoints
+      pendingCorrelations.add(correlationId)
+      val timer = context.system.scheduler.scheduleOnce(askTimeout.duration, new Runnable {
+        def run() {p.tryFailure(new AskTimeoutException("Producer timeout"))}
+      })
+      val cId = Seq(correlationId)
+      p.future onComplete {
+        case Success(l) =>
+          timer.cancel()
+          self ! ProduceDone(cId, l)
+        case Failure(ex) =>
+          timer.cancel()
+          connection ! init.Command(s"ERR Command processing timeout\n")
+          context.stop(self)
+      }
     }
   }
 
@@ -141,17 +144,19 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String],
       context.stop(self)
   }
 
-  def tryReplyOk() = {
+  def tryReplyOk() {
 
-    val minPoint: Long = pendingCorrelations.headOption getOrElse Long.MaxValue
-    pendingCommits.span(_.pointId < minPoint) match {
-      case (complete, incomplete) =>
-        complete foreach {
-          p =>
-            p.sender ! init.Command("OK " + p.correlation + "=" + lastBatchId + "\n")
-            p.timerContext.stop()
-        }
-        pendingCommits = incomplete
+    if (!pendingCommits.isEmpty) {
+      val minPoint: Long = pendingCorrelations.headOption getOrElse Long.MaxValue
+      pendingCommits.span(_.pointId < minPoint) match {
+        case (complete, incomplete) =>
+          complete foreach {
+            p =>
+              p.sender ! init.Command("OK " + p.correlation + "=" + lastBatchId + "\n")
+              p.timerContext.stop()
+          }
+          pendingCommits = incomplete
+      }
     }
 
     if (pendingExit && pendingCommits.isEmpty) {
@@ -159,7 +164,7 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String],
     }
   }
 
-  def checkSuspension() = {
+  def checkSuspension() {
     val size: Int = pendingCorrelations.size
     if (size > hwPendingPoints && !suspended) {
       connection ! Tcp.SuspendReading
