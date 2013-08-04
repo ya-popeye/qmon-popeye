@@ -1,0 +1,30 @@
+#! /usr/bin/make -f
+
+.PHONY: binary build clean
+
+sbt=./scripts/sbt
+sbt_options=-sbt-dir debian/.sbt/sbtboot -sbt-boot debian/.sbt/boot -ivy debian/.sbt/ivy
+
+install:
+	@set -e;\
+		${sbt} ${sbt_options} update;\
+		${sbt} ${sbt_options} compile;\
+		${sbt} ${sbt_options} test;\
+		${sbt} ${sbt_options} dist;
+	dh_install --list-missing
+	dh_installdeb
+	dh_shlibdeps
+	dh_gencontrol
+	dh_md5sums
+	dh_builddeb
+
+binary: install
+
+build: clean
+	dh_testdir
+
+clean:
+	dh_clean
+	rm -rf project/.sbtboot project/.boot
+	${sbt} ${sbt_options} clean
+	${sbt} ${sbt_options} clean-files
