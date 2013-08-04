@@ -1,0 +1,5 @@
+qmon-popeye (0.1.0-1) unstable; urgency=low
+
+  * Initial debian release.
+
+ -- Andrey Stepachev <octo@yandex-team.ru>  Mon, 4 Aug 2013 21:44:07 +0400

@@ -1,0 +1,5 @@
+tar-ignore=.sbt
+tar-ignore=.idea
+tar-ignore=.idea_modules
+tar-ignore=target
+tar-ignore=.git
