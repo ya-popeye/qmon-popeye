@@ -1,15 +1,19 @@
 Source: qmon-popeye
-Section: yandex
+Section: misc
 Priority: optional
-Build-Depends: debhelper (>= 7), java7-jdk | java6-sdk | yandex-jdk6 | yandex-jdk7, git
-Maintainer: Andrey Stepachev <octo47@gmail.com>
+Standards-Version: 3.9.3
+Build-Depends: debhelper (>= 9), openjdk-7-jdk | java7-jdk | java6-sdk | yandex-jdk7 | yandex-jdk6, git
+Maintainer: Nikolay Bryskin <devel.niks@gmail.com>
 
 Package: qmon-popeye-slicer
 Architecture: all
-Depends: ${shlibs:Depends}, java6-runtime-headless | java7-runtime-headless | yandex-jdk6 | yandex-jdk7
+Depends: ${misc:Depends}, openjdk-7-jre-headless | java7-runtime-headless | java6-runtime-headless | yandex-jdk7 | yandex-jdk6, adduser
 Description: QMon Popeye metrics frontend daemon
+ Popeye Slicer accepts timeseries data on telnet or
+ HTTP API and pushes it to Kafka
 
 Package: qmon-popeye-pump
 Architecture: all
-Depends: ${shlibs:Depends}, java6-runtime-headless | java7-runtime-headless | yandex-jdk6 | yandex-jdk7
-Description: QMon Popeye metrics consumer daemons
+Depends: ${misc:Depends}, openjdk-7-jre-headless | java7-runtime-headless | java6-runtime-headless | yandex-jdk7 | yandex-jdk6, adduser
+Description: QMon Popeye metrics consumer daemon
+ Popeye Pump consumes timeseries data from Kafka and stores it to OpenTSDB
