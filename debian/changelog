@@ -1,4 +1,10 @@
-qmon-popeye (0.1.0-1) unstable; urgency=low
+qmon-popeye (0.1.1) unstable; urgency=low
+
+  *  Various debian/ fixes
+
+ -- Nikolay Bryskin <devel.niks@gmail.com>  Mon, 05 Aug 2013 19:33:01 +0400
+
+qmon-popeye (0.1.0) unstable; urgency=low
 
   * Initial debian release.
 

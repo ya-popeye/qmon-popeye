@@ -1,1 +1,1 @@
-pump/target/dist/* /usr/lib/qmon-popeye-pump
+pump/target/dist/* usr/share/qmon-popeye-pump
