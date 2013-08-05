@@ -20,3 +20,4 @@ debian/files
 debian/*.substvars
 debian/qmon-popeye-pump/
 debian/qmon-popeye-slicer/
+debian/*.debhelper

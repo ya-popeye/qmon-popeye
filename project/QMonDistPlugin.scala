@@ -107,8 +107,7 @@ object QMonDistPlugin extends Plugin {
 
     private case class DistScript(name: String, contents: String, executable: Boolean)
 
-    private def scripts = Set(DistScript("start", distShScript, true),
-      DistScript("start.bat", distBatScript, true))
+    private def scripts = Set(DistScript("start", distShScript, true))
 
     private def distShScript =
       ("#!/bin/sh\n\n" +
@@ -116,13 +115,6 @@ object QMonDistPlugin extends Plugin {
         "QMON_CLASSPATH=\"$QMON_HOME/config:$QMON_HOME/lib/*\"\n" +
         "JAVA_OPTS=\"$QMON_OPTS %s\"\n\n" +
         "java $JAVA_OPTS -cp \"$QMON_CLASSPATH\" -Dqmon.home=\"$QMON_HOME\" %s \"$@\"\n").format(jvmOptions, mainClass)
-
-    private def distBatScript =
-      ("@echo off\r\n\r\n" +
-        "set QMON_HOME=%%~dp0..\r\n" +
-        "set QMON_CLASSPATH=%%QMON_HOME%%\\config;%%QMON_HOME%%\\lib\\*\r\n" +
-        "set JAVA_OPTS=%%QMON_OPTS%% %s\r\n\r\n" +
-        "java %%JAVA_OPTS%% -cp \"%%QMON_CLASSPATH%%\" -Dqmon.home=\"%%QMON_HOME%%\" %s %%*\r\n").format(jvmOptions, mainClass)
 
     private def setExecutable(target: File, executable: Boolean): Option[String] = {
       val success = target.setExecutable(executable, false)

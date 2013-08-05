@@ -1,0 +1,3 @@
+description "QMon Popeye Slicer Service"
+setuid qmon-popeye-slicer
+exec /usr/share/qmon-popeye-slicer/bin/start
