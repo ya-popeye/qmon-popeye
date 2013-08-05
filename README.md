@@ -20,7 +20,6 @@ To able to run anything, following steps are needed:
 ```
 bin/kafka-create-topic.sh --zookeeper <zk.host1:port,zk.host2:port> --topic popeye-points --partition <partitons>
 ```
-
 3. Create configuration file config/application.conf (also possible to create pump.conf/slicer.conf in case of different settings per daemon)
 
 ```
