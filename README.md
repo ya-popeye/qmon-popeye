@@ -13,7 +13,7 @@ Running
 
 To able to run anything, following steps are needed:
 
-1. running kafka from https://github.com/octo47/kafka/tree/0.8-scala2.10
+1. run kafka from https://github.com/octo47/kafka/tree/0.8-scala2.10
 
 2. create topic
 
