@@ -1,15 +1,15 @@
 Source: qmon-popeye
 Section: yandex
 Priority: optional
-Build-Depends: debhelper (>= 7), jdk (>= 1.6) | yandex-jdk6 | yandex-jdk7, git
+Build-Depends: debhelper (>= 7), java7-jdk | java6-sdk | yandex-jdk6 | yandex-jdk7, git
 Maintainer: Andrey Stepachev <octo47@gmail.com>
 
 Package: qmon-popeye-slicer
 Architecture: all
-Depends: ${shlibs:Depends}, jdk (>= 1.6) | yandex-jdk6 | yandex-jdk7
+Depends: ${shlibs:Depends}, java6-runtime-headless | java7-runtime-headless | yandex-jdk6 | yandex-jdk7
 Description: QMon Popeye metrics frontend daemon
 
 Package: qmon-popeye-pump
 Architecture: all
-Depends: ${shlibs:Depends}, jdk (>= 1.6) | yandex-jdk6 | yandex-jdk7
+Depends: ${shlibs:Depends}, java6-runtime-headless | java7-runtime-headless | yandex-jdk6 | yandex-jdk7
 Description: QMon Popeye metrics consumer daemons
