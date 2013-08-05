@@ -15,7 +15,7 @@ To able to run anything, following steps are needed:
 
 1. run kafka from https://github.com/octo47/kafka/tree/0.8-scala2.10
 
-2. create topic
+2. create topic, number of partitons defines number of threads from one group, able to read topic in parallel. Expected to be > 10 x (consumers in 1 group)
 
 ```
 bin/kafka-create-topic.sh --zookeeper <zk.host1:2181,zk.host2:2181> --topic popeye-points --partition <partitons>
