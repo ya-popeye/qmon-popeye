@@ -20,7 +20,6 @@ import org.hbase.async.HBaseClient
 import TsdbPointConsumerProtocol._
 import akka.routing.FromConfig
 import kafka.message.MessageAndMetadata
-import kafka.serializer.DefaultDecoder
 import com.google.protobuf.InvalidProtocolBufferException
 
 /**
@@ -144,14 +143,14 @@ class TsdbPointConsumer(config: Config, tsdb: TSDB, val metrics: TsdbPointConsum
     val ctx = metrics.writeTimer.timerContext()
     metrics.writeBatchSizeHist.update(events.size)
     new EventPersistFuture(tsdb, events.toArray) {
-      protected def complete() {
+      protected def complete(): Unit = {
         val nanos = ctx.stop()
         self ! ConsumeDone(batches)
         if (log.isDebugEnabled)
           log.debug("Processing of batches {} complete in {}ms", batches.size, NANOSECONDS.toMillis(nanos))
       }
 
-      protected def fail(cause: Throwable) {
+      protected def fail(cause: Throwable): Unit = {
         val nanos = ctx.stop()
         self ! ConsumeFailed(batches, cause)
         log.error(cause, "Processing of batches {} failed in {}ms", batches.size, NANOSECONDS.toMillis(nanos))

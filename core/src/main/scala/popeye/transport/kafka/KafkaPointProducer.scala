@@ -11,19 +11,14 @@ import com.codahale.metrics.{Timer, MetricRegistry}
 import kafka.client.ClientUtils
 import kafka.utils.VerifiableProperties
 import popeye.transport.proto.Message.Point
-import scala.collection.mutable
 import scala.concurrent.duration._
 import akka.actor.SupervisorStrategy.Restart
-import java.io.ByteArrayOutputStream
-import popeye.transport.proto.{PointsQueue, PackedPoints, PackedPointsIndex, PackedPointsBuffer}
-import com.google.protobuf.{CodedOutputStream, CodedInputStream}
+import popeye.transport.proto.{PointsQueue, PackedPoints}
 import scala.annotation.tailrec
 import scala.concurrent.Promise
 import akka.actor.Status.Failure
 import scala.Some
-import scala.util.Random
 import akka.actor.OneForOneStrategy
-import java.util
 import kafka.serializer.Encoder
 
 
@@ -176,7 +171,7 @@ class KafkaPointProducer(config: Config,
         val batchId = idGenerator.nextId()
         val (data, promises) = pendingPoints.consume(ignoreMinSize)
         if (!data.isEmpty) {
-          log.debug(s"Sending ${data.foldLeft(0)({(a,b)=> a + b.buffer.length})} bytes, will trigger ${promises.size} promises")
+          log.debug(s"Sending ${data.foldLeft(0)({ (a, b) => a + b.buffer.length })} bytes, will trigger ${promises.size} promises")
           worker ! ProducePack(batchId, metrics.writeTimer.timerContext())(data, promises)
           flushPoints(ignoreMinSize)
         } else {
