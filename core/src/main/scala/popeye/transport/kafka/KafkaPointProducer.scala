@@ -73,11 +73,27 @@ class KafkaPointSender(topic: String, producerConfig: ProducerConfig, metrics: K
       try {
         producer.send(messages: _*)
         metrics.batchCompleteMeter.mark
-        p.promises foreach (_.success(batchId))
+        if (log.isDebugEnabled) {
+          p.promises.foreach {
+            promise =>
+              log.debug(s"${self.path} got promise $promise for SUCCESS batch ${p.batchId}")
+          }
+        }
+        p.promises
+          .filter(!_.isCompleted)  // we should check, that pormise not complete before
+          .foreach(_.success(batchId))
       } catch {
         case e: Exception => sender ! Failure(e)
           metrics.batchFailedMeter.mark
-          p.promises foreach (_.failure(e))
+          if (log.isDebugEnabled) {
+            p.promises.foreach {
+              promise =>
+                log.debug(s"${self.path} got promise for FAILURE $promise for batch ${p.batchId}")
+            }
+          }
+          p.promises
+            .filter(!_.isCompleted)  // we should check, that pormise not complete before
+            .foreach (_.failure(e))
           throw e
       } finally {
         val sended = sendctx.stop.nano
