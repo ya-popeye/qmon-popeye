@@ -74,14 +74,16 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String],
         def run() {p.tryFailure(new AskTimeoutException("Producer timeout"))}
       })
       val cId = Seq(correlationId)
+      val ctx = context
+      val me = self
       p.future onComplete {
         case Success(l) =>
           timer.cancel()
-          self ! ProduceDone(cId, l)
+          me ! ProduceDone(cId, l)
         case Failure(ex) =>
           timer.cancel()
           connection ! init.Command(s"ERR Command processing timeout\n")
-          context.stop(self)
+          ctx.stop(me)
       }
     }
   }
