@@ -43,6 +43,13 @@ class LineDecoderTestSpec extends FlatSpec {
     }
   }
 
+  it should "Whole line, \\n only" in {
+    ld.tryParse(a ++ b ++ ByteString("\n")) match {
+      case (Some(ab), None) => assert(a ++ b == ab, "got: " + ab)
+      case x => fail("wrong " + x)
+    }
+  }
+
   it should "Reminder" in {
     ld.tryParse(a ++ b ++ ByteString("\r\n") ++ a) match {
       case (Some(ab), Some(s)) => assert(a ++ b == ab && s == a)
