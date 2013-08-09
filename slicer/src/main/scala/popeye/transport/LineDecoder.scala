@@ -18,12 +18,14 @@ class LineDecoder(maxSize: Int = 2048) {
   def tryParse(input: ByteString): (Option[ByteString], Option[ByteString]) = {
     if (input.length == 0)
       return (None, None)
-    if (input.length > maxSize)
-      throw new IllegalArgumentException("Line to big")
     val matchPosition = input.indexOf('\n')
     if (matchPosition == -1) {
-      (None, Some(cutSlashR(input)))
+      if (input.length > maxSize)
+        throw new IllegalArgumentException("Line to big")
+      (None, Some(input))
     } else {
+      if (matchPosition > maxSize)
+        throw new IllegalArgumentException("Line to big")
       val remainder = input.drop(matchPosition + 1)
       (Some(
         cutSlashR(input.take(matchPosition))),

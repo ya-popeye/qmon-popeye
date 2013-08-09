@@ -12,6 +12,8 @@ class LineDecoderTestSpec extends FlatSpec {
   val ld = new LineDecoder()
   val a = ByteString("a")
   val b = ByteString("b")
+  val r = ByteString("\r")
+  val rn = ByteString("\r\n")
 
   behavior of "LineDecoder"
 
@@ -30,8 +32,8 @@ class LineDecoderTestSpec extends FlatSpec {
   }
 
   it should "Dangling \\r" in {
-    ld.tryParse(a ++ b ++ ByteString("\r")) match {
-      case (None, Some(s)) =>  assert(s == a ++ b)
+    ld.tryParse(a ++ b ++ r) match {
+      case (None, Some(s)) =>  assert(s == a ++ b ++ r)
       case x => fail("wrong " + x)
     }
   }
@@ -60,6 +62,11 @@ class LineDecoderTestSpec extends FlatSpec {
   "LineDecoder(1)" should "throw" in {
     val ll = new LineDecoder(1)
     intercept[IllegalArgumentException](ll.tryParse(a ++ b))
+  }
+
+  "LineDecoder(3)" should "not throw if eol found" in {
+    val ll = new LineDecoder(3)
+    ll.tryParse(a ++ rn ++ b)
   }
 
 }
