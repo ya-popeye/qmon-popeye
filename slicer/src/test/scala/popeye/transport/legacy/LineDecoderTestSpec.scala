@@ -49,4 +49,10 @@ class LineDecoderTestSpec extends FlatSpec {
       case x => fail("wrong " + x)
     }
   }
+
+  "LineDecoder(1)" should "throw" in {
+    val ll = new LineDecoder(1)
+    intercept[IllegalArgumentException](ll.tryParse(a ++ b))
+  }
+
 }

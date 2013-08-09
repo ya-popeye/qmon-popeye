@@ -6,7 +6,7 @@ import scala.annotation.tailrec
 /**
  * @author Andrey Stepachev
  */
-class LineDecoder(maxSize: Int = 2048, charset: String = "UTF-8") {
+class LineDecoder(maxSize: Int = 2048) {
 
   var buffer: ByteString = ByteString.empty
 
@@ -18,6 +18,8 @@ class LineDecoder(maxSize: Int = 2048, charset: String = "UTF-8") {
   def tryParse(input: ByteString): (Option[ByteString], Option[ByteString]) = {
     if (input.length == 0)
       return (None, None)
+    if (input.length > maxSize)
+      throw new IllegalArgumentException("Line to big")
     val matchPosition = input.indexOf('\n')
     if (matchPosition == -1) {
       (None, Some(cutSlashR(input)))
