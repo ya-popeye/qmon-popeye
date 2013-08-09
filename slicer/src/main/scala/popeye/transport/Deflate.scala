@@ -13,6 +13,11 @@ class Deflate(var limit: Int) {
   val decompress = new Inflater()
   val tmpBuffer = new Array[Byte](2048)
 
+  def decodeAsSeq(rawInput: ByteString): (Seq[ByteString], Option[ByteString]) = {
+    val t = decode(rawInput)
+    (t._1.toSeq, t._2)
+  }
+
   /**
    * Stateful decoding
    * @param rawInput input to process
