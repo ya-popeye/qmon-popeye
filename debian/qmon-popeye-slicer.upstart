@@ -1,4 +1,5 @@
 description "QMon Popeye Slicer Service"
 setuid qmon-popeye-slicer
 limit nofile 150000 150000
+console log
 exec /usr/share/qmon-popeye-slicer/bin/start
