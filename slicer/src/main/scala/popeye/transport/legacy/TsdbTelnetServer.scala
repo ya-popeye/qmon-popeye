@@ -259,9 +259,6 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
   }
 
   def parsePoint(words: Array[String]): Point = {
-    if (log.isDebugEnabled) {
-      log.debug(s"command: ${words.mkString(" ")}")
-    }
     val ev = Point.newBuilder()
     words(0) = null; // Ditch the "put".
     if (words.length < 5) {
@@ -343,7 +340,7 @@ class TsdbTelnetServer(local: InetSocketAddress, kafka: ActorRef, metrics: TsdbT
       val pipeline = context.actorOf(TcpPipelineHandler.props(
         init, connection, handler).withDeploy(Deploy.local))
 
-      connection ! Tcp.Register(pipeline, keepOpenOnPeerClosed = true)
+      connection ! Tcp.Register(pipeline, keepOpenOnPeerClosed = false)
   }
 
   override def preStart() {
