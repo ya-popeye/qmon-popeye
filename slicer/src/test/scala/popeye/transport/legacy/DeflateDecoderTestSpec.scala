@@ -4,26 +4,25 @@ import org.scalatest.FlatSpec
 import akka.util.ByteString
 import java.util.zip.{Deflater, DeflaterOutputStream}
 import java.io.{File, ByteArrayOutputStream}
-import popeye.transport.Deflate
+import popeye.transport.DeflateDecoder
 import com.google.common.io.Files
 import java.util.Random
 
 /**
  * @author Andrey Stepachev
  */
-class DeflaterTestSpec extends FlatSpec {
+class DeflateDecoderTestSpec extends FlatSpec {
 
   "Deflater" should "deflate" in {
     val a = ByteString("a")
     val dataBuf = encode(a)
 
-    new Deflate(100).decode(dataBuf) match {
-      case (t, None) =>
-        t.foreach {
-          buffer =>
-            assert(buffer == a)
-        }
-      case x => fail(x.toString())
+    new DeflateDecoder(100).decode(dataBuf){
+      buffer =>
+        assert(buffer == a)
+    } match {
+      case None =>
+      case x => fail(x.toString)
     }
   }
 
@@ -33,24 +32,21 @@ class DeflaterTestSpec extends FlatSpec {
 
     val p1: ByteString = dataBuf.take(3)
     val p2: ByteString = dataBuf.drop(3)
-    val d = new Deflate(100)
-    d.decode(p1) match {
-      case (t, None) =>
-        var unpacked: Option[ByteString] = None
-        t.foreach {
-          buffer =>
-            unpacked = Some(buffer)
-        }
-        assert(unpacked.isEmpty)
-      case x => fail(x.toString())
+    val d = new DeflateDecoder(100)
+    var unpacked: Option[ByteString] = None
+    d.decode(p1){
+      buffer =>
+        unpacked = Some(buffer)
+    } match {
+      case None => assert(unpacked.isEmpty)
+      case x => fail(x.toString)
     }
-    d.decode(p2) match {
-      case (t, None) =>
-        t.foreach {
-          buffer =>
-            assert(buffer == a)
-        }
-      case x => fail(x.toString())
+    d.decode(p2){
+      buffer =>
+        assert(buffer == a)
+    } match {
+      case None =>
+      case x => fail(x.toString)
     }
   }
 
@@ -61,19 +57,18 @@ class DeflaterTestSpec extends FlatSpec {
     rnd.nextBytes(bytes)
     val original: ByteString = ByteString(bytes)
     val file = encode(original)
-    val decoder = new Deflate(file.length)
+    val decoder = new DeflateDecoder(file.length)
     val groups = file.grouped(file.length / 2).toSeq
     val result = ByteString.newBuilder
 
     groups.foreach {
       buf =>
-        decoder.decode(buf) match {
-          case (t, None) =>
-            t.foreach {
-              buffer =>
-                result.append(buffer)
-            }
-          case (t, Some(x)) => fail(x.toString() + s"${x.length}")
+        decoder.decode(buf){
+          buffer =>
+            result.append(buffer)
+        } match {
+          case None =>
+          case Some(x) => fail(x.toString)
         }
     }
     assert(decoder.isClosed)
@@ -84,31 +79,44 @@ class DeflaterTestSpec extends FlatSpec {
     val a = ByteString("ab")
     val b = ByteString("unencoded")
     val dataBuf = encode(a)
-    val d = new Deflate(dataBuf.length)
+    val d = new DeflateDecoder(dataBuf.length)
 
-    d.decode(dataBuf ++ b) match {
-      case (t, Some(r)) =>
-        t.foreach {
-          buffer =>
-            assert(buffer == a)
-        }
-        assert(r == b)
-      case x => fail(x.toString())
+    d.decode(dataBuf ++ b){
+      buffer =>
+        assert(buffer == a)
+    } match {
+      case Some(r) => assert(r == b, r.utf8String)
+      case x => fail(x.toString)
+    }
+  }
+
+  "Deflater" should "should parse sequence of inputs" in {
+    val a = ByteString("a")
+    val b = ByteString("b")
+    val c = ByteString("unencoded")
+    val dataBuf = Seq(encode(a), encode(b))
+    val d = new DeflateDecoder(dataBuf.foldLeft(0)((s, b) => s+b.length))
+
+    d.decode(dataBuf :+ c){
+      buffer =>
+        assert(buffer == a)
+    } match {
+      case Some(r) => assert(r == c, r.utf8String)
+      case x => fail(x.toString)
     }
   }
 
   "Deflater" should "be able to parse by chunks" in {
     val file = loadFile("gen.bin")
-    val decoder = new Deflate(file.length)
+    val decoder = new DeflateDecoder(file.length)
     val result = ByteString.newBuilder
 
-    decoder.decode(file) match {
-      case (t, None) =>
-        t.foreach {
-          buffer =>
-            result.append(buffer)
-        }
-      case (t, Some(x)) => fail(x.toString() + s"${x.length}")
+    decoder.decode(file){
+      buffer =>
+        result.append(buffer)
+    } match {
+      case None =>
+      case Some(x) => fail(x.toString())
     }
     assert(decoder.isClosed)
     assert(result.result().utf8String.contains("Bart Simpson"))
