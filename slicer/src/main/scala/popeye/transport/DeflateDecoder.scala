@@ -14,8 +14,8 @@ class DeflateDecoder(var limit: Int) extends Closeable {
   private[this] var closed = false
 
   private[this] val inflater = new Inflater()
-  private[this] val inputBuf = new Array[Byte](2048)
-  private[this] val outputBuf = new Array[Byte](2048)
+  private[this] val inputBuf = new Array[Byte](10*1024)
+  private[this] val outputBuf = new Array[Byte](64*1024)
   private[this] var pushedBack: Option[ByteString] = None
 
   /**
@@ -32,32 +32,13 @@ class DeflateDecoder(var limit: Int) extends Closeable {
     }
   }
 
-  @tailrec
   final def decode[U](rawInput: Traversable[ByteString])(f: (ByteString) => U): Option[ByteString] = {
-    rawInput.headOption match {
-      case Some(head) =>
-        val rem = decode(head)(f)
-        if (rem.isDefined) {
-          // if we got remainder, we finished decoding
-          // (due of limit or other causes)
-          // need to return all remaingn input as remainder
-          // thats it, we construct one big ByteString
-          require(isClosed)
-          val b = ByteString.newBuilder
-          b.append(rem.get)
-          rawInput.drop(1).foreach(b.append)
-          Some(b.result())
-        } else if (isClosed) {
-          val b = ByteString.newBuilder
-          rawInput.drop(1).foreach(b.append)
-          Some(b.result())
-        } else {
-          decode(rawInput.drop(1))(f)
-        }
-      case None =>
-        None
-    }
-
+    val b = ByteString.newBuilder
+    rawInput.foreach(b.append)
+    val input = b.result().compact
+    if (input.isEmpty)
+      return None
+    decode(input)(f)
   }
 
   /**
