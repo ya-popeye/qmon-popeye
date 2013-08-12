@@ -34,7 +34,6 @@ class DeflateDecoder(var limit: Int) extends Closeable {
 
   @tailrec
   final def decode[U](rawInput: Traversable[ByteString])(f: (ByteString) => U): Option[ByteString] = {
-    consumePushedBack(f)
     rawInput.headOption match {
       case Some(head) =>
         val rem = decode(head)(f)
@@ -71,7 +70,6 @@ class DeflateDecoder(var limit: Int) extends Closeable {
       throw new IllegalStateException("Decoder closed")
 
     def traverse(input: ByteString): Unit = {
-      consumePushedBack(f)
       decompress(input, f)
       limit -= input.length // calling parent should ensure, that limit is obeyed
       if (limit == 0) {
@@ -89,15 +87,6 @@ class DeflateDecoder(var limit: Int) extends Closeable {
     }
 
   }
-
-  @inline
-  protected def consumePushedBack[U](f: (ByteString) => U) = {
-    if (pushedBack.isDefined) {
-      f(pushedBack.get)
-      pushedBack = None
-    }
-  }
-
 
   protected def decompress[U](input: ByteString, f: (ByteString) => U) = {
     input.asByteBuffers foreach {
@@ -123,7 +112,15 @@ class DeflateDecoder(var limit: Int) extends Closeable {
     if (!inflater.finished()) {
       val len = inflater.inflate(outputBuf)
       if (len > 0) {
-        f(ByteString.fromArray(outputBuf, 0, len))
+        val data = ByteString.fromArray(outputBuf, 0, len)
+        val completeData = if (pushedBack.isDefined) {
+          val pb = pushedBack.get
+          pushedBack = None
+          pb ++ data
+        } else {
+          data
+        }
+        f(completeData)
         drain(f)
       }
     }
