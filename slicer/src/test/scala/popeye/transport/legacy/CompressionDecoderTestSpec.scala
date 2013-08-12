@@ -4,20 +4,20 @@ import org.scalatest.FlatSpec
 import akka.util.ByteString
 import java.util.zip.{Deflater, DeflaterOutputStream}
 import java.io.{File, ByteArrayOutputStream}
-import popeye.transport.DeflateDecoder
+import popeye.transport.CompressionDecoder
 import com.google.common.io.Files
 import java.util.Random
 
 /**
  * @author Andrey Stepachev
  */
-class DeflateDecoderTestSpec extends FlatSpec {
+class CompressionDecoderTestSpec extends FlatSpec {
 
   "Deflater" should "deflate" in {
     val a = ByteString("a")
     val dataBuf = encode(a)
 
-    new DeflateDecoder(100).decode(dataBuf){
+    new CompressionDecoder(100).decode(dataBuf){
       buffer =>
         assert(buffer == a)
     } match {
@@ -32,7 +32,7 @@ class DeflateDecoderTestSpec extends FlatSpec {
 
     val p1: ByteString = dataBuf.take(3)
     val p2: ByteString = dataBuf.drop(3)
-    val d = new DeflateDecoder(100)
+    val d = new CompressionDecoder(100)
     var unpacked: Option[ByteString] = None
     d.decode(p1){
       buffer =>
@@ -57,7 +57,7 @@ class DeflateDecoderTestSpec extends FlatSpec {
     rnd.nextBytes(bytes)
     val original: ByteString = ByteString(bytes)
     val file = encode(original)
-    val decoder = new DeflateDecoder(file.length)
+    val decoder = new CompressionDecoder(file.length)
     val groups = file.grouped(file.length / 2).toSeq
     val result = ByteString.newBuilder
 
@@ -79,7 +79,7 @@ class DeflateDecoderTestSpec extends FlatSpec {
     val a = ByteString("ab")
     val b = ByteString("unencoded")
     val dataBuf = encode(a)
-    val d = new DeflateDecoder(dataBuf.length)
+    val d = new CompressionDecoder(dataBuf.length)
 
     d.decode(dataBuf ++ b){
       buffer =>
@@ -95,7 +95,7 @@ class DeflateDecoderTestSpec extends FlatSpec {
     val b = ByteString("b")
     val c = ByteString("unencoded")
     val dataBuf = Seq(encode(a), encode(b))
-    val d = new DeflateDecoder(dataBuf.foldLeft(0)((s, b) => s+b.length))
+    val d = new CompressionDecoder(dataBuf.foldLeft(0)((s, b) => s+b.length))
 
     d.decode(dataBuf :+ c){
       buffer =>
@@ -108,7 +108,7 @@ class DeflateDecoderTestSpec extends FlatSpec {
 
   "Deflater" should "be able to parse by chunks" in {
     val file = loadFile("gen.bin")
-    val decoder = new DeflateDecoder(file.length)
+    val decoder = new CompressionDecoder(file.length)
     val result = ByteString.newBuilder
 
     decoder.decode(file){

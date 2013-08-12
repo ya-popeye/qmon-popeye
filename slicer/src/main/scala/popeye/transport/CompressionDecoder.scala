@@ -4,11 +4,19 @@ import java.util.zip.{DataFormatException, ZipException, Inflater}
 import akka.util.ByteString
 import scala.annotation.tailrec
 import java.io.Closeable
+import CompressionDecoder._
+
+object CompressionDecoder {
+  sealed trait Codec
+  case class Gzip() extends Codec
+  case class Snappy() extends Codec
+}
 
 /**
  * @author Andrey Stepachev
  */
-class DeflateDecoder(var limit: Int) extends Closeable {
+class CompressionDecoder(var limit: Int, val codec: Codec = Gzip) extends Closeable {
+
 
   def isClosed = closed
   private[this] var closed = false

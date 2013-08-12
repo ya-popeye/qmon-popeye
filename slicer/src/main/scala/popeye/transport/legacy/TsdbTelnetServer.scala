@@ -19,7 +19,7 @@ import scala.concurrent.duration._
 import scala.util.{Success, Failure}
 import akka.pattern.AskTimeoutException
 import scala.annotation.tailrec
-import popeye.transport.{DeflateDecoder, LineDecoder}
+import popeye.transport.{CompressionDecoder, LineDecoder}
 
 class TsdbTelnetMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
   val requestTimer = metrics.timer("request-time")
@@ -63,7 +63,7 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
 
   private val requestTimer = metrics.requestTimer.timerContext()
 
-  private var deflater: Option[DeflateDecoder] = None
+  private var deflater: Option[CompressionDecoder] = None
   private val lineDecoder = new LineDecoder()
   private var bufferedLine: Option[ByteString] = None
 
@@ -85,7 +85,7 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
           case "deflate" =>
             if (deflater.isDefined)
               throw new IllegalArgumentException("Already in deflate mode")
-            deflater = Some(new DeflateDecoder(strings(1).toInt))
+            deflater = Some(new CompressionDecoder(strings(1).toInt))
             log.debug(s"Entering deflate mode, expected ${strings(1)} bytes")
             return remainder // early exit, we need to reenter doCommands
 
