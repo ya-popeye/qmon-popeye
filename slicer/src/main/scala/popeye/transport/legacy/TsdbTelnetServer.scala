@@ -7,17 +7,19 @@ import akka.io.IO
 import akka.io.TcpPipelineHandler.{WithinActorContext, Init}
 import java.net.InetSocketAddress
 import net.opentsdb.core.Tags
-import popeye.transport.kafka.{ProduceFailed, ProduceNeedThrottle, ProduceDone, ProducePending}
+import popeye.transport.kafka.{ProduceNeedThrottle, ProduceDone, ProducePending}
 import popeye.transport.proto.Message.{Attribute, Point}
 import scala.collection.mutable
 import com.codahale.metrics.{Timer, MetricRegistry}
 import com.typesafe.config.Config
 import popeye.Instrumented
 import popeye.transport.proto.PackedPoints
-import scala.concurrent.{Future, Promise}
+import scala.concurrent.Promise
 import scala.concurrent.duration._
 import scala.util.{Success, Failure}
 import akka.pattern.AskTimeoutException
+import scala.annotation.tailrec
+import popeye.transport.{DeflateDecoder, LineDecoder}
 
 class TsdbTelnetMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
   val requestTimer = metrics.timer("request-time")
@@ -26,7 +28,7 @@ class TsdbTelnetMetrics(override val metricRegistry: MetricRegistry) extends Ins
   val pointsCommitMeter = metrics.meter("points-commited")
 }
 
-class TsdbTelnetHandler(init: Init[WithinActorContext, String, String],
+class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
                         connection: ActorRef,
                         kafkaProducer: ActorRef,
                         config: Config,
@@ -50,80 +52,130 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String],
   private var pendingCommits: Seq[CommitReq] = Vector()
   private val pendingCorrelations = mutable.TreeSet[PointId]()
   private var bufferedPoints = PackedPoints()
+  @volatile
   private var pendingExit = false
+  @volatile
   private var lastBatchId: BatchId = 0
+  @volatile
   private var correlationId: PointId = 0
+  @volatile
   private var suspended = false
 
   private val requestTimer = metrics.requestTimer.timerContext()
 
+  private var deflater: Option[DeflateDecoder] = None
+  private val lineDecoder = new LineDecoder()
+  private var bufferedLine: Option[ByteString] = None
+
   override def postStop() {
     super.postStop()
     requestTimer.close()
+    deflater foreach { _.close }
   }
 
-  private def sendPack() {
-    import context.dispatcher
-    if (!bufferedPoints.isEmpty) {
-      correlationId += 1
-      val p = Promise[Long]()
-      kafkaProducer ! ProducePending(Some(p))(bufferedPoints)
-      bufferedPoints = new PackedPoints
-      pendingCorrelations.add(correlationId)
-      val timer = context.system.scheduler.scheduleOnce(askTimeout.duration, new Runnable {
-        def run() {p.tryFailure(new AskTimeoutException("Producer timeout"))}
-      })
-      val cId = Seq(correlationId)
-      val ctx = context
-      val me = self
-      p.future onComplete {
-        case Success(l) =>
-          timer.cancel()
-          me ! ProduceDone(cId, l)
-        case Failure(ex) =>
-          timer.cancel()
-          connection ! init.Command(s"ERR Command processing timeout\n")
-          ctx.stop(me)
-      }
+  @tailrec
+  private def tryParseCommand(input: ByteString): Option[ByteString] = {
+    lineDecoder.tryParse(input) match {
+      case (None, remainder) =>
+        remainder
+      case (Some(line), remainder) =>
+        val strings = Tags.splitString(line.utf8String, ' ')
+        strings(0) match {
+
+          case "deflate" =>
+            if (deflater.isDefined)
+              throw new IllegalArgumentException("Already in deflate mode")
+            deflater = Some(new DeflateDecoder(strings(1).toInt))
+            log.debug(s"Entering deflate mode, expected ${strings(1)} bytes")
+            return remainder // early exit, we need to reenter doCommands
+
+          case "put" =>
+            metrics.pointsRcvMeter.mark()
+            bufferedPoints += parsePoint(strings)
+            if (bufferedPoints.size >= batchSize) {
+              sendPack()
+            }
+
+          case "commit" =>
+            pendingCommits = (pendingCommits :+ CommitReq(sender, correlationId, strings(1).toLong,
+              metrics.commitTimer.timerContext())).sortBy(_.pointId)
+            log.debug(s"Triggered commit for correlationId ${strings(1)}")
+            sendPack()
+
+          case "ver" =>
+            sendPack()
+            sender ! init.Command(ByteString("OK unknown\n"))
+
+          case "exit" =>
+            sendPack()
+            pendingExit = true
+            log.debug(s"Triggered exit")
+
+          case c: String =>
+            sender ! init.Command(ByteString(s"ERR Unknown command $c\n"))
+            log.debug(s"Unknown command ${c.take(50)}")
+            context.stop(self)
+        }
+        remainder match {
+          case Some(l) => tryParseCommand(l)
+          case None =>
+            None
+        }
+    }
+  }
+
+  @tailrec
+  private def doCommands(input: ByteString): Option[ByteString] = {
+
+    deflater match {
+      case Some(decoder) =>
+        val remainder = decoder.decode(input) {
+          buf =>
+            val parserRemainder = tryParseCommand(buf)
+            parserRemainder foreach decoder.pushBack
+        }
+        if (decoder.isClosed) {
+          deflater = None
+          log.debug(s"Leaving deflate mode")
+          if (remainder.isDefined)
+            doCommands(remainder.get)
+          else
+            None
+        } else {
+          None
+        }
+
+      case None =>
+        val parserRemainder = tryParseCommand(input)
+        // we should ensure, that next iteration will no be empty,
+        // otherwise we need to return remainder to calling context
+        // expected to be buffered somewhere and refeed on next call
+        // if decoder activated, reenter doCommands too
+        if (deflater.isDefined && parserRemainder.isDefined) {
+          doCommands(parserRemainder.get)
+        } else {
+          parserRemainder
+        }
     }
   }
 
   final def receive = {
-    case init.Event(data) =>
-      if (data.length > 0) {
-        val input = if (data.charAt(data.length - 1) == '\r') {
-          data.dropRight(1)
+    case init.Event(data: ByteString) if data.length > 0 =>
+      try {
+        val concat = if (bufferedLine.isDefined) {
+          bufferedLine.get ++ data
         } else {
           data
         }
-        try {
-          val strings = Tags.splitString(input, ' ')
-          strings(0) match {
-            case "put" =>
-              metrics.pointsRcvMeter.mark()
-              bufferedPoints += parsePoint(strings)
-              if (bufferedPoints.size > batchSize) {
-                sendPack()
-              }
-            case "commit" =>
-              sendPack()
-              pendingCommits = (pendingCommits :+ CommitReq(sender, correlationId, strings(1).toLong,
-                metrics.commitTimer.timerContext())).sortBy(_.pointId)
-            case "ver" =>
-              sendPack()
-              sender ! init.Command("OK unknown\n")
-            case "exit" =>
-              sendPack()
-              pendingExit = true
-            case c@_ =>
-              sender ! init.Command(s"ERR Unknown command $c\n")
-              context.stop(self)
+        bufferedLine = doCommands(concat)
+      } catch {
+        case ex: Exception =>
+          if (log.isDebugEnabled) {
+            // log errors only if debug enabled
+            log.error(ex, "Command failed")
           }
-        } catch {
-          case ex: Exception =>
-            sender ! init.Command("ERR " + ex.getMessage + "\n")
-            context.stop(self)
-        }
+          sender ! init.Command(ByteString("ERR " + ex.getMessage + "\n"))
+          context.stop(self)
       }
       tryReplyOk()
       checkSuspension()
@@ -146,6 +198,32 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String],
       context.stop(self)
   }
 
+  private def sendPack() {
+    import context.dispatcher
+    if (!bufferedPoints.isEmpty) {
+      correlationId += 1
+      val p = Promise[Long]()
+      kafkaProducer ! ProducePending(Some(p))(bufferedPoints)
+      bufferedPoints = new PackedPoints
+      pendingCorrelations.add(correlationId)
+      val timer = context.system.scheduler.scheduleOnce(askTimeout.duration, new Runnable {
+        def run() { p.tryFailure(new AskTimeoutException("Producer timeout")) }
+      })
+      val cId = Seq(correlationId)
+      val ctx = context
+      val me = self
+      p.future onComplete {
+        case Success(l) =>
+          timer.cancel()
+          me ! ProduceDone(cId, l)
+        case Failure(ex) =>
+          timer.cancel()
+          connection ! init.Command(ByteString("ERR Command processing timeout\n"))
+          ctx.stop(me)
+      }
+    }
+  }
+
   def tryReplyOk() {
 
     if (!pendingCommits.isEmpty) {
@@ -154,7 +232,8 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, String, String],
         case (complete, incomplete) =>
           complete foreach {
             p =>
-              p.sender ! init.Command("OK " + p.correlation + "=" + lastBatchId + "\n")
+              log.debug(s"Commit done: ${p.correlation} = $lastBatchId")
+              p.sender ! init.Command(ByteString(s"OK ${p.correlation} = $lastBatchId\n"))
               p.timerContext.stop()
           }
           pendingCommits = incomplete
@@ -252,9 +331,6 @@ class TsdbTelnetServer(local: InetSocketAddress, kafka: ActorRef, metrics: TsdbT
   def bound(listener: ActorRef): Receive = {
     case Connected(remote, _) ⇒
       val init = TcpPipelineHandler.withLogger(log,
-        new StringByteStringAdapter("utf-8") >>
-        new DelimiterFraming(maxSize = 2048, delimiter = ByteString('\n'),
-          includeDelimiter = false) >>
         new TcpReadWriteAdapter >>
         new BackpressureBuffer(lowBytes = 1 * 1024 * 1024, highBytes = 4 * 1024 * 1024, maxBytes = 10 * 1024 * 1024))
 
@@ -264,7 +340,7 @@ class TsdbTelnetServer(local: InetSocketAddress, kafka: ActorRef, metrics: TsdbT
       val pipeline = context.actorOf(TcpPipelineHandler.props(
         init, connection, handler).withDeploy(Deploy.local))
 
-      connection ! Tcp.Register(pipeline, keepOpenOnPeerClosed = true)
+      connection ! Tcp.Register(pipeline, keepOpenOnPeerClosed = false)
   }
 
   override def preStart() {

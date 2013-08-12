@@ -75,8 +75,6 @@ object PopeyeBuild extends Build {
       "com.typesafe.akka" %% "akka-actor" % Version.Akka,
       "com.typesafe.akka" %% "akka-slf4j" % Version.Akka,
       "nl.grons" %% "metrics-scala" % Version.Metrics,
-      "io.spray" % "spray-can" % Version.Spray,
-      "io.spray" % "spray-io" % Version.Spray,
       "org.codehaus.jackson" % "jackson-core-asl" % Version.Jackson,
       "org.slf4j" % "jcl-over-slf4j" % Version.Slf4j,
       "org.slf4j" % "slf4j-log4j12" % Version.Slf4j,
@@ -101,6 +99,8 @@ object PopeyeBuild extends Build {
       libraryDependencies ++= Seq(
         "org.apache.kafka" %% "kafka" % Version.Kafka % "compile->compile;test->test"
           exclude("org.slf4j", "slf4j-simple"),
+        "io.spray" % "spray-can" % Version.Spray,
+        "io.spray" % "spray-io" % Version.Spray,
         "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
         "org.mockito" % "mockito-core" % Version.Mockito % "test",
         "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"
