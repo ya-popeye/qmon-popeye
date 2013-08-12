@@ -1,3 +1,5 @@
 description "QMon Popeye Pump Service"
 setuid qmon-popeye-pump
+limit nofile 30000 30000
+console log
 exec /usr/share/qmon-popeye-pump/bin/start
