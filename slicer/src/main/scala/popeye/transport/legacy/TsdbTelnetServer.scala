@@ -20,6 +20,7 @@ import scala.util.{Success, Failure}
 import akka.pattern.AskTimeoutException
 import scala.annotation.tailrec
 import popeye.transport.{CompressionDecoder, LineDecoder}
+import popeye.transport.CompressionDecoder.{Snappy, Gzip}
 
 class TsdbTelnetMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
   val requestTimer = metrics.timer("request-time")
@@ -85,8 +86,15 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
           case "deflate" =>
             if (deflater.isDefined)
               throw new IllegalArgumentException("Already in deflate mode")
-            deflater = Some(new CompressionDecoder(strings(1).toInt))
+            deflater = Some(new CompressionDecoder(strings(1).toInt, Gzip()))
             log.debug(s"Entering deflate mode, expected ${strings(1)} bytes")
+            return remainder // early exit, we need to reenter doCommands
+
+          case "snappy" =>
+            if (deflater.isDefined)
+              throw new IllegalArgumentException("Already in deflate mode")
+            deflater = Some(new CompressionDecoder(strings(1).toInt, Snappy()))
+            log.debug(s"Entering snappy mode, expected ${strings(1)} bytes")
             return remainder // early exit, we need to reenter doCommands
 
           case "put" =>
@@ -136,7 +144,7 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
         }
         if (decoder.isClosed) {
           deflater = None
-          log.debug(s"Leaving deflate mode")
+          log.debug(s"Leaving encoded ${decoder.codec} mode")
           if (remainder.isDefined)
             doCommands(remainder.get)
           else
