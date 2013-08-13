@@ -41,6 +41,7 @@ object Version {
   val Metrics = "3.0.0"
   val Slf4j = "1.7.5"
   val Log4j = "1.2.17"
+  val Snappy = "1.0.4.1"
 }
 
 
@@ -101,6 +102,7 @@ object PopeyeBuild extends Build {
           exclude("org.slf4j", "slf4j-simple"),
         "io.spray" % "spray-can" % Version.Spray,
         "io.spray" % "spray-io" % Version.Spray,
+        "org.xerial.snappy" % "snappy-java" % Version.Snappy,
         "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
         "org.mockito" % "mockito-core" % Version.Mockito % "test",
         "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"
