@@ -26,6 +26,7 @@ import akka.event.NoLogging
 import akka.io.Tcp.ConfirmedClose
 import java.io.ByteArrayOutputStream
 import java.util.zip.{Deflater, DeflaterOutputStream}
+import popeye.transport.CompressionDecoder.{Gzip, Snappy, Codec}
 
 /**
  * @author Andrey Stepachev
@@ -60,8 +61,10 @@ class TsdbTelnetHandlerTestSpec extends AkkaTestKitSpec("tsdb-server") with Mock
   }
 
   val plainCmd = ByteString.fromString("put metric.name 1375173810 0 host=localhost\r\n")
-  val encodedCmd = encode(plainCmd)
+  val encodedCmd = encode(plainCmd, Gzip())
+  val snappedCmd = encode(plainCmd, Snappy())
   val deflateCmd = ByteString.fromString(s"deflate ${encodedCmd.length}\r\n")
+  val snappyCmd = ByteString.fromString(s"snappy ${snappedCmd.length}\r\n")
   val commitCmd = ByteString.fromString("commit 1\r\n")
 
   behavior of "TsdbTelnetHandler"
@@ -100,6 +103,16 @@ class TsdbTelnetHandlerTestSpec extends AkkaTestKitSpec("tsdb-server") with Mock
     validate(connection, kafka, actor)
   }
 
+  it should "snappy interaction" in {
+    val (connection, kafka, actor) = initActors(2)
+
+    actor ! init.Event(snappyCmd)
+    actor ! init.Event(snappedCmd.take(10))
+    actor ! init.Event(snappedCmd.drop(10))
+    actor ! init.Event(commitCmd)
+    validate(connection, kafka, actor)
+  }
+
   it should "process very fragmented deflated  buffer" in {
     val (connection, kafka, actor) = initActors(2)
 
@@ -109,10 +122,26 @@ class TsdbTelnetHandlerTestSpec extends AkkaTestKitSpec("tsdb-server") with Mock
     validate(connection, kafka, actor)
   }
 
+  it should "process very fragmented snapped  buffer" in {
+    val (connection, kafka, actor) = initActors(2)
+
+    for (b <- snappyCmd ++ snappedCmd ++ commitCmd) {
+      actor ! init.Event(ByteString.fromArray(Array(b)))
+    }
+    validate(connection, kafka, actor)
+  }
+
   it should "process one big deflated buffer" in {
     val (connection, kafka, actor) = initActors(2)
 
     actor ! init.Event((deflateCmd ++ encodedCmd ++ commitCmd).compact)
+    validate(connection, kafka, actor)
+  }
+
+  it should "process one big snapped buffer" in {
+    val (connection, kafka, actor) = initActors(2)
+
+    actor ! init.Event((snappyCmd ++ snappedCmd ++ commitCmd).compact)
     validate(connection, kafka, actor)
   }
 
@@ -134,13 +163,13 @@ class TsdbTelnetHandlerTestSpec extends AkkaTestKitSpec("tsdb-server") with Mock
     }
   }
 
-  def encode(s: String): ByteString = {
-    encode(ByteString.fromString(s))
+  def encode(s: String, codec: Codec): ByteString = {
+    encode(ByteString.fromString(s), codec)
   }
 
-  def encode(s: ByteString): ByteString = {
+  def encode(s: ByteString, codec: Codec): ByteString = {
     val data: ByteArrayOutputStream = new ByteArrayOutputStream()
-    val deflater = new DeflaterOutputStream(data, new Deflater(Deflater.BEST_COMPRESSION, false))
+    val deflater = codec.makeOutputStream(data)
     deflater.write(s.toArray)
     deflater.close()
     ByteString.fromArray(data.toByteArray)
