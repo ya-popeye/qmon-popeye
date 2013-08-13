@@ -1,5 +1,11 @@
 qmon-popeye (0.2.0) unstable; urgency=low
 
+  * Support for snappy command added
+
+ -- Andrey Stepachev <octo@yandex-team.ru>  Mon, 13 Aug 2013 12:15:00 +0400
+
+qmon-popeye (0.2.0) unstable; urgency=low
+
   * Support for deflate command added
 
  -- Andrey Stepachev <octo@yandex-team.ru>  Mon, 4 Aug 2013 21:44:07 +0400

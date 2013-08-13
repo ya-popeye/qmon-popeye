@@ -1,7 +1,6 @@
 import zlib
 content = ""
 for str in range(1, 10):
-  content += "I'm Bart Simpson\n" 
-#zcontent = zlib.compress(content)[2:-4]
+  content += "I'm Bart Simpson\n"
 zcontent = zlib.compress(content)
 print zcontent
