@@ -112,7 +112,7 @@ class InflaterDecoder extends Decoder {
 
 object SnappyDecoder {
   val streamIdentifier = Array[Byte]('s', 'N', 'a', 'P', 'p', 'Y')
-  val chunkMax = 1 << 15
+  val chunkMax = 1 << 16
   val compressedChunk = 0x00
   val uncompressedChunk = 0x01
   val identifierChunk = 0xff
@@ -154,6 +154,10 @@ class SnappyDecoder extends Decoder {
         if (input.length < 4)
           return input
         val (blockType, len) = blockHeader(input)
+        if (!streamFound && blockType != identifierChunk)
+          throw new ZipException(s"Stream should start with blocktype $identifierChunk, but found $blockType")
+        if (len > chunkMax)
+          throw new ZipException(s"Block (type=$blockType) length $len exceeds $chunkMax")
         block = Some(Block(blockType, len))
         doDecompress(input.drop(4), f)
 
@@ -166,6 +170,8 @@ class SnappyDecoder extends Decoder {
           streamFound = true
         } else {
           if (blockType == compressedChunk || blockType == uncompressedChunk) {
+            val pushed = pushedBack
+            pushedBack = None
             val chunkLen = len - 4
             if (blockType == compressedChunk) {
               val inBuffer = new Array[Byte](len)
@@ -175,9 +181,9 @@ class SnappyDecoder extends Decoder {
               SnappyJava.uncompress(
                 inBuffer, 4, chunkLen,
                 outBuffer, 0)
-              f(ByteString.fromArray(outBuffer))
+              f(pushed.getOrElse(ByteString.empty) ++ ByteString.fromArray(outBuffer))
             } else {
-              f(input.slice(4, len))
+              f(pushed.getOrElse(ByteString.empty) ++ input.slice(4, len))
             }
           } else if (blockType <= reservedSkipable._2 && blockType >= reservedSkipable._1) {
             // ok, skip chunk
