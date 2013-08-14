@@ -233,7 +233,7 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
       pointId += 1
       val p = Promise[Long]()
       kafkaProducer ! ProducePending(Some(p))(bufferedPoints)
-      bufferedPoints = new PackedPoints
+      bufferedPoints = new PackedPoints(messagesPerExtent = batchSize + 1)
       pendingCorrelations.add(pointId)
       val timer = context.system.scheduler.scheduleOnce(askTimeout.duration, new Runnable {
         def run() { p.tryFailure(new AskTimeoutException("Producer timeout")) }
@@ -361,8 +361,7 @@ class TsdbTelnetServer(local: InetSocketAddress, kafka: ActorRef, metrics: TsdbT
   def bound(listener: ActorRef): Receive = {
     case Connected(remote, _) ⇒
       val init = TcpPipelineHandler.withLogger(log,
-        new TcpReadWriteAdapter >>
-        new BackpressureBuffer(lowBytes = 1 * 1024 * 1024, highBytes = 4 * 1024 * 1024, maxBytes = 10 * 1024 * 1024))
+        new TcpReadWriteAdapter)
 
       val connection = sender
       val handler = context.actorOf(Props(new TsdbTelnetHandler(init, connection, kafka, system.settings.config, metrics))
