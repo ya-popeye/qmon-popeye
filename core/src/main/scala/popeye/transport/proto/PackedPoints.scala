@@ -148,6 +148,11 @@ object PackedPoints {
   }
 
   @inline
+  def apply(messagesPerExtent: Int): PackedPoints = {
+    new PackedPoints(messagesPerExtent = messagesPerExtent)
+  }
+
+  @inline
   def apply(points: Seq[Point]): PackedPoints = {
     val pack = new PackedPoints
     points foreach pack.append
