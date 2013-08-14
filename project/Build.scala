@@ -13,7 +13,12 @@ object Compiler {
     resolvers ++= Seq(
       "spray repo" at "http://repo.spray.io",
       "spray repo (nightly)" at "http://nightlies.spray.io"
-    )
+    ),
+    ivyXML :=
+      <dependencies>
+        <exclude org="log4j"/>
+        <exclude org="junit" name="junit"/>
+      </dependencies>
   )
 }
 
@@ -36,7 +41,7 @@ object Version {
   val Kafka = "0.8.0-beta1"
   val Metrics = "3.0.0"
   val Slf4j = "1.7.5"
-  val Log4j = "1.2.17"
+  val Logback = "1.0.7"
   val Snappy = "1.0.4.1"
 }
 
@@ -77,15 +82,14 @@ object PopeyeBuild extends Build {
     libraryDependencies ++= Seq(
       "com.google.protobuf" % "protobuf-java" % "2.4.1",
       "org.apache.kafka" %% "kafka" % Version.Kafka % "compile->compile;test->test"
+        exclude("org.slf4j", "slf4j-log4j")
         exclude("org.slf4j", "slf4j-simple"),
       "nl.grons" %% "metrics-scala" % Version.Metrics,
       "org.codehaus.jackson" % "jackson-core-asl" % Version.Jackson,
       "org.slf4j" % "jcl-over-slf4j" % Version.Slf4j,
-      "org.slf4j" % "slf4j-log4j12" % Version.Slf4j,
-      "log4j" % "log4j" % Version.Log4j,
-      "org.hbase" % "asynchbase" % "1.4.1"  // TODO: move that to pump module
-        exclude("org.slf4j", "log4j-over-slf4j")
-        exclude("org.slf4j", "jcl-over-slf4j"),
+      "org.slf4j" % "log4j-over-slf4j" % Version.Slf4j,
+      "ch.qos.logback" % "logback-classic" % Version.Logback,
+      "org.hbase" % "asynchbase" % "1.4.1",  // TODO: move that to pump module
       "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
       "org.mockito" % "mockito-core" % Version.Mockito % "test"
     )
@@ -143,11 +147,13 @@ object PopeyeBuild extends Build {
       "io.spray" % "spray-io" % Version.Spray,
       "org.codehaus.jackson" % "jackson-core-asl" % Version.Jackson,
       "org.slf4j" % "jcl-over-slf4j" % Version.Slf4j,
-      "org.slf4j" % "slf4j-log4j12" % Version.Slf4j,
+      "org.slf4j" % "log4j-over-slf4j" % Version.Slf4j,
+      "ch.qos.logback" % "logback-classic" % Version.Logback,
       "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
       "org.mockito" % "mockito-core" % Version.Mockito % "test"
     )
 
   )
+
 }
 
