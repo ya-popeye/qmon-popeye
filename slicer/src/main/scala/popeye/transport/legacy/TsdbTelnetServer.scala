@@ -21,12 +21,18 @@ import akka.pattern.AskTimeoutException
 import scala.annotation.tailrec
 import popeye.transport.{CompressionDecoder, LineDecoder}
 import popeye.transport.CompressionDecoder.{Snappy, Gzip}
+import java.util.concurrent.atomic.AtomicInteger
+import org.parboiled.common.Base64
 
 class TsdbTelnetMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
   val requestTimer = metrics.timer("request-time")
   val commitTimer = metrics.timer("commit-time")
   val pointsRcvMeter = metrics.meter("points-received")
   val pointsCommitMeter = metrics.meter("points-commited")
+  val connections = new AtomicInteger(0)
+  val connectionsGauge = metrics.gauge("connections") {
+    connections.get()
+  }
 }
 
 class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
@@ -58,7 +64,7 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
   @volatile
   private var lastBatchId: BatchId = 0
   @volatile
-  private var correlationId: PointId = 0
+  private var pointId: PointId = 0
   @volatile
   private var suspended = false
 
@@ -67,6 +73,8 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
   private var deflater: Option[CompressionDecoder] = None
   private val lineDecoder = new LineDecoder()
   private var bufferedLine: Option[ByteString] = None
+
+  private val debugBuffer = ByteString.newBuilder
 
   override def postStop() {
     super.postStop()
@@ -87,14 +95,16 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
             if (deflater.isDefined)
               throw new IllegalArgumentException("Already in deflate mode")
             deflater = Some(new CompressionDecoder(strings(1).toInt, Gzip()))
-            log.debug(s"Entering deflate mode, expected ${strings(1)} bytes")
+            if (log.isDebugEnabled)
+              log.debug(s"Entering deflate mode, expected ${strings(1)} bytes")
             return remainder // early exit, we need to reenter doCommands
 
           case "snappy" =>
             if (deflater.isDefined)
               throw new IllegalArgumentException("Already in deflate mode")
             deflater = Some(new CompressionDecoder(strings(1).toInt, Snappy()))
-            log.debug(s"Entering snappy mode, expected ${strings(1)} bytes")
+            if (log.isDebugEnabled)
+              log.debug(s"Entering snappy mode, expected ${strings(1)} bytes")
             return remainder // early exit, we need to reenter doCommands
 
           case "put" =>
@@ -105,10 +115,11 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
             }
 
           case "commit" =>
-            pendingCommits = (pendingCommits :+ CommitReq(sender, correlationId, strings(1).toLong,
-              metrics.commitTimer.timerContext())).sortBy(_.pointId)
-            log.debug(s"Triggered commit for correlationId ${strings(1)}")
             sendPack()
+            if (log.isDebugEnabled)
+              log.debug(s"Triggered commit for correlationId ${strings(1)} and pointId $pointId")
+            pendingCommits = (pendingCommits :+ CommitReq(sender, pointId, strings(1).toLong,
+              metrics.commitTimer.timerContext())).sortBy(_.pointId)
 
           case "ver" =>
             sendPack()
@@ -117,11 +128,13 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
           case "exit" =>
             sendPack()
             pendingExit = true
-            log.debug(s"Triggered exit")
+            if (log.isDebugEnabled)
+              log.debug(s"Triggered exit")
 
           case c: String =>
             sender ! init.Command(ByteString(s"ERR Unknown command $c\n"))
-            log.debug(s"Unknown command ${c.take(50)}")
+            if (log.isDebugEnabled)
+              log.debug(s"Unknown command ${c.take(50)}")
             context.stop(self)
         }
         remainder match {
@@ -144,7 +157,8 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
         }
         if (decoder.isClosed) {
           deflater = None
-          log.debug(s"Leaving encoded ${decoder.codec} mode")
+          if (log.isDebugEnabled)
+            log.debug(s"Leaving encoded ${decoder.codec} mode")
           if (remainder.isDefined)
             doCommands(remainder.get)
           else
@@ -169,6 +183,8 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
 
   final def receive = {
     case init.Event(data: ByteString) if data.length > 0 =>
+      if (log.isDebugEnabled)
+        debugBuffer.append(data)
       try {
         val concat = if (bufferedLine.isDefined) {
           bufferedLine.get ++ data
@@ -180,7 +196,7 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
         case ex: Exception =>
           if (log.isDebugEnabled) {
             // log errors only if debug enabled
-            log.error(ex, "Command failed")
+            log.error(ex, "Failed command base64:\n" + Base64.rfc2045().encodeToString(debugBuffer.result().toArray, true))
           }
           sender ! init.Command(ByteString("ERR " + ex.getMessage + "\n"))
           context.stop(self)
@@ -196,6 +212,9 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
       if (lastBatchId < batchId) {
         lastBatchId = batchId
       }
+      if (log.isDebugEnabled)
+        log.debug(s"Produce done: ${completeCorrelationId.size} correlations as batch $batchId (now lastBatchId=$lastBatchId)")
+
       pendingCorrelations --= completeCorrelationId
       val commitedSize: Long = completeCorrelationId.size
       metrics.pointsCommitMeter.mark(commitedSize)
@@ -203,21 +222,23 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
       checkSuspension()
 
     case x: Tcp.ConnectionClosed =>
+      if (log.isDebugEnabled)
+        log.debug("Connection closed {}", x)
       context.stop(self)
   }
 
   private def sendPack() {
     import context.dispatcher
     if (!bufferedPoints.isEmpty) {
-      correlationId += 1
+      pointId += 1
       val p = Promise[Long]()
       kafkaProducer ! ProducePending(Some(p))(bufferedPoints)
       bufferedPoints = new PackedPoints
-      pendingCorrelations.add(correlationId)
+      pendingCorrelations.add(pointId)
       val timer = context.system.scheduler.scheduleOnce(askTimeout.duration, new Runnable {
         def run() { p.tryFailure(new AskTimeoutException("Producer timeout")) }
       })
-      val cId = Seq(correlationId)
+      val cId = Seq(pointId)
       val ctx = context
       val me = self
       p.future onComplete {
@@ -240,7 +261,8 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
         case (complete, incomplete) =>
           complete foreach {
             p =>
-              log.debug(s"Commit done: ${p.correlation} = $lastBatchId")
+              if (log.isDebugEnabled)
+                log.debug(s"Commit done: ${p.correlation} = $lastBatchId")
               p.sender ! init.Command(ByteString(s"OK ${p.correlation} = $lastBatchId\n"))
               p.timerContext.stop()
           }
@@ -249,7 +271,7 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
     }
 
     if (pendingExit && pendingCommits.isEmpty) {
-      connection ! Tcp.ConfirmedClose
+      connection ! Tcp.Close
     }
   }
 
@@ -348,7 +370,10 @@ class TsdbTelnetServer(local: InetSocketAddress, kafka: ActorRef, metrics: TsdbT
       val pipeline = context.actorOf(TcpPipelineHandler.props(
         init, connection, handler).withDeploy(Deploy.local))
 
-      connection ! Tcp.Register(pipeline, keepOpenOnPeerClosed = false)
+      if (log.isDebugEnabled)
+        log.debug("Connection from {}", remote)
+      metrics.connections.incrementAndGet()
+      connection ! Tcp.Register(pipeline, keepOpenOnPeerClosed = true)
   }
 
   override def preStart() {
