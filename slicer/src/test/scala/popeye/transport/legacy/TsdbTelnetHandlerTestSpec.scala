@@ -20,13 +20,15 @@ import popeye.transport.proto.PackedPoints
 import popeye.test.PopeyeTestUtils._
 import akka.actor.{Deploy, Props}
 import akka.io.TcpPipelineHandler.{Init, WithinActorContext}
-import akka.io.{BackpressureBuffer, TcpReadWriteAdapter, TcpPipelineHandler}
+import akka.io.{Tcp, BackpressureBuffer, TcpReadWriteAdapter, TcpPipelineHandler}
 import popeye.transport.kafka.{ProduceDone, ProducePending}
 import akka.event.NoLogging
 import akka.io.Tcp.ConfirmedClose
-import java.io.ByteArrayOutputStream
+import java.io.{File, ByteArrayOutputStream}
 import java.util.zip.{Deflater, DeflaterOutputStream}
 import popeye.transport.CompressionDecoder.{Gzip, Snappy, Codec}
+import org.parboiled.common.Base64
+import com.google.common.io.Files
 
 /**
  * @author Andrey Stepachev
@@ -151,15 +153,14 @@ class TsdbTelnetHandlerTestSpec extends AkkaTestKitSpec("tsdb-server") with Mock
         assert(p.data.size == 1)
         promise.get.success(123)
     }
-    receiveWhile(){
-      case p @ ProduceDone(corrs, batchId) =>
-        assert(corrs.contains(1))
-        assert(batchId == 123)
+    fishForMessage(){
+      case p @ init.Command(bstr) =>
+        bstr.utf8String.contains("1 = 123")
     }
 
     actor ! init.Event(ByteString.fromString("exit\r\n"))
     connection.expectMsgPF(){
-      case ConfirmedClose =>
+      case Tcp.Close =>
     }
   }
 
