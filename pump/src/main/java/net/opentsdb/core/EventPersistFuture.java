@@ -140,6 +140,12 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
         seriesWriter.startSeries(tsdbPuts[i].row);
         for(int j = prevRow; j < i; j++) {
           try {
+            // skip points with the same row and timestamp
+            if (j > prevRow &&
+                    tsdbPuts[j].point.getTimestamp() == tsdbPuts[j-1].point.getTimestamp()) {
+              continue;
+            }
+
             final Deferred<Object> d;
             final Message.Point pointData = tsdbPuts[j].point;
             if (pointData.hasIntValue()) {
