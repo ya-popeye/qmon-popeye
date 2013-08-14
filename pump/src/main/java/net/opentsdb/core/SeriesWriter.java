@@ -27,6 +27,14 @@ class SeriesWriter {
       long anotherVal = o.point.getTimestamp();
       return (thisVal<anotherVal ? -1 : (thisVal==anotherVal ? 0 : 1));
     }
+
+    @Override
+    public String toString() {
+      return "TsdbPut{" +
+              "row=" + Arrays.toString(row) +
+              ", point=" + point +
+              '}';
+    }
   }
 
   private final TSDB tsdb;
@@ -228,4 +236,11 @@ class SeriesWriter {
     }
   }
 
+  @Override
+  public String toString() {
+    return "SeriesWriter{" +
+            "row=" + Arrays.toString(row) +
+            ", size=" + size +
+            '}';
+  }
 }
