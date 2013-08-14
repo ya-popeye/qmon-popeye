@@ -60,7 +60,7 @@ object PopeyeBuild extends Build {
   lazy val akka: Map[String, ProjectRef] = Map(Seq("akka-actor", "akka-slf4j", "akka-testkit", "akka-remote"). map {
     projectId =>
       (projectId, ProjectRef(
-        build = uri("file:///Users/octo/Projects/qmon/akka"),
+        build = uri("git://github.com/octo47/akka.git#wip-3542-no-unsubscribe"),
         project = projectId))
   }: _*)
 
