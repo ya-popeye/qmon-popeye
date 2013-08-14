@@ -1,4 +1,12 @@
-qmon-popeye (0.2.0) unstable; urgency=low
+qmon-popeye (0.4.0) unstable; urgency=low
+
+  * Performance optimisations
+  * logback instead of log4j
+  * akka bug fixed
+
+ -- Andrey Stepachev <octo@yandex-team.ru>  Mon, 15 Aug 2013 03:17:00 +0400
+
+qmon-popeye (0.3.0) unstable; urgency=low
 
   * Support for snappy command added
 
