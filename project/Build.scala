@@ -1,8 +1,4 @@
 import sbt._
-import sbt.ExclusionRule
-import sbt.ExclusionRule
-import sbt.ExclusionRule
-import sbt.ExclusionRule
 import sbt.Keys._
 import QMonDistPlugin._
 import net.virtualvoid.sbt.graph.{Plugin => Dep}
@@ -61,6 +57,13 @@ object PopeyeBuild extends Build {
     build = uri("git://github.com/octo47/kafka.git#0.8-scala2.10"),
     project = "core")
 
+  lazy val akka: Map[String, ProjectRef] = Map(Seq("akka-actor", "akka-slf4j", "akka-testkit", "akka-remote"). map {
+    projectId =>
+      (projectId, ProjectRef(
+        build = uri("git://github.com/octo47/akka.git#wip-3542-no-unsubscribe"),
+        project = projectId))
+  }: _*)
+
   lazy val popeye = Project(
     id = "popeye",
     base = file("."),
@@ -72,24 +75,23 @@ object PopeyeBuild extends Build {
     base = file("core"),
     settings = defaultSettings)
     .dependsOn(kafka % "compile->runtime;test->test")
+    .dependsOn(akka("akka-actor") % "compile->runtime")
+    .dependsOn(akka("akka-slf4j") % "compile->runtime")
+    .dependsOn(akka("akka-testkit") % "test->test")
     .settings(
     libraryDependencies ++= Seq(
       "com.google.protobuf" % "protobuf-java" % "2.4.1",
       "org.apache.kafka" %% "kafka" % Version.Kafka % "compile->compile;test->test"
-        exclude("org.slf4j", "slf4j-simple")
-        exclude("org.slf4j", "slf4j-log4j"),
-      "com.typesafe.akka" %% "akka-actor" % Version.Akka,
-      "com.typesafe.akka" %% "akka-slf4j" % Version.Akka,
+        exclude("org.slf4j", "slf4j-log4j")
+        exclude("org.slf4j", "slf4j-simple"),
       "nl.grons" %% "metrics-scala" % Version.Metrics,
       "org.codehaus.jackson" % "jackson-core-asl" % Version.Jackson,
       "org.slf4j" % "jcl-over-slf4j" % Version.Slf4j,
       "org.slf4j" % "log4j-over-slf4j" % Version.Slf4j,
       "ch.qos.logback" % "logback-classic" % Version.Logback,
-      "org.hbase" % "asynchbase" % "1.4.1"
-        exclude("org.slf4j", "jcl-over-slf4j"),
+      "org.hbase" % "asynchbase" % "1.4.1",  // TODO: move that to pump module
       "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
-      "org.mockito" % "mockito-core" % Version.Mockito % "test",
-      "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"
+      "org.mockito" % "mockito-core" % Version.Mockito % "test"
     )
   )
 
@@ -99,17 +101,18 @@ object PopeyeBuild extends Build {
     settings = defaultSettings ++ QMonDistPlugin.distSettings)
     .dependsOn(popeyeCommon % "compile->compile;test->test")
     .dependsOn(kafka % "test->test")
+    .dependsOn(akka("akka-testkit") % "test->test")
     .settings(
       distMainClass := "popeye.transport.SlicerMain",
+      distJvmOptions := "-Xms4096M -Xmx4096M -Xss1M -XX:MaxPermSize=256M -XX:+UseParallelGC -XX:NewSize=3G",
       libraryDependencies ++= Seq(
         "org.apache.kafka" %% "kafka" % Version.Kafka % "compile->compile;test->test"
           exclude("org.slf4j", "slf4j-simple"),
-        "io.spray" % "spray-can" % Version.Spray,
-        "io.spray" % "spray-io" % Version.Spray,
+        "io.spray" % "spray-can" % Version.Spray exclude("com.typesafe.akka", "akka-actor"),
+        "io.spray" % "spray-io" % Version.Spray exclude("com.typesafe.akka", "akka-actor"),
         "org.xerial.snappy" % "snappy-java" % Version.Snappy,
         "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
-        "org.mockito" % "mockito-core" % Version.Mockito % "test",
-        "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"
+        "org.mockito" % "mockito-core" % Version.Mockito % "test"
       )
     )
 
@@ -119,26 +122,26 @@ object PopeyeBuild extends Build {
     settings = defaultSettings ++ QMonDistPlugin.distSettings)
     .dependsOn(popeyeCommon % "compile->compile;test->test")
     .dependsOn(kafka % "test->test")
+    .dependsOn(akka("akka-testkit") % "test->test")
     .settings(
       distMainClass := "popeye.transport.PumpMain",
       libraryDependencies ++= Seq(
         "org.apache.kafka" %% "kafka" % Version.Kafka % "compile->compile;test->test"
           exclude("org.slf4j", "slf4j-simple"),
         "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
-        "org.mockito" % "mockito-core" % Version.Mockito % "test",
-        "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"
+        "org.mockito" % "mockito-core" % Version.Mockito % "test"
       )
   )
-
   lazy val popeyeBench = Project(
     id = "popeye-bench",
     base = file("bench"),
     settings = defaultSettings ++ QMonDistPlugin.distSettings)
+    .dependsOn(akka("akka-actor") % "compile->runtime")
+    .dependsOn(akka("akka-slf4j") % "compile->runtime")
+    .dependsOn(akka("akka-testkit") % "test->test")
     .settings(
     distMainClass := "popeye.transport.bench.Main",
     libraryDependencies ++= Seq(
-      "com.typesafe.akka" %% "akka-actor" % Version.Akka,
-      "com.typesafe.akka" %% "akka-slf4j" % Version.Akka,
       "nl.grons" %% "metrics-scala" % Version.Metrics,
       "io.spray" % "spray-can" % Version.Spray,
       "io.spray" % "spray-io" % Version.Spray,
@@ -147,8 +150,7 @@ object PopeyeBuild extends Build {
       "org.slf4j" % "log4j-over-slf4j" % Version.Slf4j,
       "ch.qos.logback" % "logback-classic" % Version.Logback,
       "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
-      "org.mockito" % "mockito-core" % Version.Mockito % "test",
-      "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"
+      "org.mockito" % "mockito-core" % Version.Mockito % "test"
     )
 
   )
