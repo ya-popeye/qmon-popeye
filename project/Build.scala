@@ -57,10 +57,10 @@ object PopeyeBuild extends Build {
     build = uri("git://github.com/octo47/kafka.git#0.8-scala2.10"),
     project = "core")
 
-  lazy val akka: Map[String, ProjectRef] = Map(Seq("akka-actor", "akka-slf4j", "akka-testkit", "akka-remote"). map {
+  lazy val akka: Map[String, ProjectRef] = Map(Seq("akka-actor", "akka-slf4j", "akka-testkit"). map {
     projectId =>
       (projectId, ProjectRef(
-        build = uri("git://github.com/octo47/akka.git#wip-3542-no-unsubscribe"),
+        build = uri("git://github.com/octo47/akka.git#wip-3542-no-defensive-unsubscribe"),
         project = projectId))
   }: _*)
 
@@ -68,7 +68,7 @@ object PopeyeBuild extends Build {
     id = "popeye",
     base = file("."),
     settings = defaultSettings)
-    .aggregate(popeyeCommon, popeyeSlicer, popeyePump, popeyeBench)
+    .aggregate(popeyeCommon, popeyeSlicer, popeyePump, popeyeBench, kafka, akka("akka-actor"))
 
   lazy val popeyeCommon = Project(
     id = "popeye-core",
