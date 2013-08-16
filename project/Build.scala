@@ -64,11 +64,19 @@ object PopeyeBuild extends Build {
         project = projectId))
   }: _*)
 
+  lazy val externalDeps = Project(
+    id= "ext-deps",
+    base = file("project/ext"),
+    settings = defaultSettings ++ Seq(
+       aggregate in test := false
+    )
+  ).aggregate(akka("akka-actor"), kafka)
+
   lazy val popeye = Project(
     id = "popeye",
     base = file("."),
-    settings = defaultSettings)
-    .aggregate(popeyeCommon, popeyeSlicer, popeyePump, popeyeBench, kafka, akka("akka-actor"))
+    settings = defaultSettings
+  ).aggregate(popeyeCommon, popeyeSlicer, popeyePump, popeyeBench, externalDeps)
 
   lazy val popeyeCommon = Project(
     id = "popeye-core",
