@@ -121,7 +121,7 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
             pendingCommits = (pendingCommits :+ CommitReq(sender, pointId, strings(1).toLong,
               metrics.commitTimer.timerContext())).sortBy(_.pointId)
 
-          case "ver" =>
+          case "version" =>
             sendPack()
             sender ! init.Command(ByteString("OK unknown\n"))
 
