@@ -113,7 +113,7 @@ object QMonDistPlugin extends Plugin {
       """#!/bin/sh
 
 QMON_HOME="$(cd "$(cd "$(dirname "$0")"; pwd -P)"/..; pwd)"
-QMON_CLASSPATH="${QMON_CONFIG:-$QMON_HOME/config}:$QMON_HOME/lib/*"
+QMON_CLASSPATH="${QMON_CONF:-$QMON_HOME/config}:$QMON_HOME/lib/*"
 JAVA_OPTS="$QMON_OPTS %s"
 
 java $JAVA_OPTS -cp "$QMON_CLASSPATH" -Dqmon.logdir=${QMON_LOGDIR:-$QMON_HOME/logs} -Dqmon.home="$QMON_HOME" %s "$@"
