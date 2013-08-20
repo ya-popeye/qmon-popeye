@@ -330,16 +330,18 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
     val set = mutable.HashSet[String]()
     for (i <- startIdx until tags.length) {
       val tag = tags(i)
-      val kv: Array[String] = Tags.splitString(tag, '=')
-      if (kv.length != 2 || kv(0).length <= 0 || kv(1).length <= 0) {
-        throw new IllegalArgumentException("invalid tag: " + tag)
+      if (!tag.isEmpty) {
+        val kv: Array[String] = Tags.splitString(tag, '=')
+        if (kv.length != 2 || kv(0).length <= 0 || kv(1).length <= 0) {
+          throw new IllegalArgumentException("invalid tag: " + tag)
+        }
+        if (!set.add(kv(0))) {
+          throw new IllegalArgumentException("duplicate tag: " + tag + ", tags=" + tag)
+        }
+        builder.addAttributes(Attribute.newBuilder()
+          .setName(kv(0))
+          .setValue(kv(1)))
       }
-      if (!set.add(kv(0))) {
-        throw new IllegalArgumentException("duplicate tag: " + tag + ", tags=" + tag)
-      }
-      builder.addAttributes(Attribute.newBuilder()
-        .setName(kv(0))
-        .setValue(kv(1)))
     }
   }
 }
