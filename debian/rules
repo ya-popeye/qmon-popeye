@@ -10,13 +10,10 @@ sbt_options=-sbt-dir debian/.sbt/sbtboot -sbt-boot debian/.sbt/boot -ivy debian/
 
 override_dh_auto_install:
 	@set -e;\
-		${sbt} ${sbt_options} update;\
-		${sbt} ${sbt_options} compile;\
-		${sbt} ${sbt_options} dist;
+		${sbt} ${sbt_options} update compile dist
 	dh_auto_install
 
 override_dh_auto_clean:
 	dh_auto_clean
-	rm -rf project/.sbtboot project/.boot
-	${sbt} ${sbt_options} clean
-	${sbt} ${sbt_options} clean-files
+	rm -rf project/.sbtboot pro ject/.boot
+	${sbt} ${sbt_options} clean clean-files
