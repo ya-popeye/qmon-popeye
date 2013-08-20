@@ -18,6 +18,7 @@ object Compiler {
       <dependencies>
         <exclude org="log4j"/>
         <exclude org="junit" name="junit"/>
+        <exclude org="org.slf4j" name="slf4j-log4j12"/>
       </dependencies>
   )
 }

@@ -110,11 +110,14 @@ object QMonDistPlugin extends Plugin {
     private def scripts = Set(DistScript("start", distShScript, true))
 
     private def distShScript =
-      ("#!/bin/sh\n\n" +
-        "QMON_HOME=\"$(cd \"$(cd \"$(dirname \"$0\")\"; pwd -P)\"/..; pwd)\"\n" +
-        "QMON_CLASSPATH=\"$QMON_HOME/config:$QMON_HOME/lib/*\"\n" +
-        "JAVA_OPTS=\"$QMON_OPTS %s\"\n\n" +
-        "java $JAVA_OPTS -cp \"$QMON_CLASSPATH\" -Dqmon.home=\"$QMON_HOME\" %s \"$@\"\n").format(jvmOptions, mainClass)
+      """#!/bin/sh
+
+QMON_HOME="$(cd "$(cd "$(dirname "$0")"; pwd -P)"/..; pwd)"
+QMON_CLASSPATH="${QMON_CONFIG:-$QMON_HOME/config}:$QMON_HOME/lib/*"
+JAVA_OPTS="$QMON_OPTS %s"
+
+java $JAVA_OPTS -cp "$QMON_CLASSPATH" -Dqmon.logdir=${QMON_LOGDIR:-$QMON_HOME/logs} -Dqmon.home="$QMON_HOME" %s "$@"
+      """.format(jvmOptions, mainClass)
 
     private def setExecutable(target: File, executable: Boolean): Option[String] = {
       val success = target.setExecutable(executable, false)
