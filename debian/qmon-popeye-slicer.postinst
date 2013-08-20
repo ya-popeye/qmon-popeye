@@ -21,8 +21,9 @@ set -e
 case "$1" in
     configure)
         if ! getent passwd qmon-popeye-slicer >/dev/null; then
-            adduser --quiet --system --home /var/log/qmon-popeye-slicer --shell /usr/sbin/nologin qmon-popeye-slicer
+            adduser --quiet --system --home /usr/share/qmon-popeye-slicer --shell /usr/sbin/nologin qmon-popeye-slicer
         fi
+        chown -R qmon-popeye-slicer /var/log/qmon-popeye-slicer
     ;;
 
     abort-upgrade|abort-remove|abort-deconfigure)
