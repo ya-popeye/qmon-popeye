@@ -43,7 +43,7 @@ object Main extends App {
   val requestsMeter = metricRegistry.meter("http-requests.total")
   val failedRequestsMeter = metricRegistry.meter("http-requests.failed")
 
-
+  import scala.concurrent.ExecutionContext.Implicits.global
   for (
     HostConnectorInfo(hostConnector, _) <- IO(Http).ask(Http.HostConnectorSetup("localhost", port = 8080))
   ) yield {
@@ -69,7 +69,7 @@ class Worker(metricRegistry: MetricRegistry,
              timer: Timer, totalMeter: Meter, failedMeter: Meter,
              hostConnector: ActorRef) extends Actor with ActorLogging {
 
-
+  import scala.concurrent.ExecutionContext.Implicits.global
   implicit val timeout: Timeout = 10 seconds
   var timeContext: Option[Timer.Context] = None
   val meter = metricRegistry.meter(self.path.toString + "/requests")

@@ -1,3 +1,9 @@
+qmon-popeye (0.5.1) unstable; urgency=low
+
+  * fixing tag parser to be more robust
+
+ -- Andrey Stepachev <octo@yandex-team.ru>  Mon, 24 Aug 2013 16:19:00 +0400
+
 qmon-popeye (0.5.0) unstable; urgency=low
 
   * remastered debian package and startup scripts
