@@ -79,7 +79,9 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
   override def postStop() {
     super.postStop()
     requestTimer.close()
-    deflater foreach { _.close }
+    deflater foreach {
+      _.close
+    }
   }
 
   @tailrec
@@ -88,7 +90,7 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
       case (None, remainder) =>
         remainder
       case (Some(line), remainder) =>
-        val strings = Tags.splitString(line.utf8String, ' ')
+        val strings = LineDecoder.split(line.utf8String, ' ', preserveAllTokens = false)
         strings(0) match {
 
           case "deflate" =>
@@ -236,7 +238,9 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
       bufferedPoints = new PackedPoints(messagesPerExtent = batchSize + 1)
       pendingCorrelations.add(pointId)
       val timer = context.system.scheduler.scheduleOnce(askTimeout.duration, new Runnable {
-        def run() { p.tryFailure(new AskTimeoutException("Producer timeout")) }
+        def run() {
+          p.tryFailure(new AskTimeoutException("Producer timeout"))
+        }
       })
       val cId = Seq(pointId)
       val ctx = context
@@ -295,7 +299,7 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
       // Need at least: metric timestamp value tag
       //               ^ 5 and not 4 because words[0] is "put".
       throw new IllegalArgumentException("not enough arguments"
-                                         + " (need least 4, got " + (words.length - 1) + ')');
+        + " (need least 4, got " + (words.length - 1) + ')');
     }
     ev.setMetric(words(1));
     if (ev.getMetric.isEmpty) {
@@ -331,7 +335,7 @@ class TsdbTelnetHandler(init: Init[WithinActorContext, ByteString, ByteString],
     for (i <- startIdx until tags.length) {
       val tag = tags(i)
       if (!tag.isEmpty) {
-        val kv: Array[String] = Tags.splitString(tag, '=')
+        val kv: Array[String] = LineDecoder.split(tag, '=', preserveAllTokens = true)
         if (kv.length != 2 || kv(0).length <= 0 || kv(1).length <= 0) {
           throw new IllegalArgumentException("invalid tag: " + tag)
         }
