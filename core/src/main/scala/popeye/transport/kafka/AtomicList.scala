@@ -14,7 +14,7 @@ class AtomicList[A] {
   def size: Int = x.get.size
 
   def headOption(): Option[A] = {
-    while(true) {
+    while (true) {
       val oldList = x.get // get old value
       oldList match {
         case head :: tail =>

@@ -87,7 +87,9 @@ class TsdbPointConsumer(config: Config, tsdb: TSDB, val metrics: TsdbPointConsum
   }
 
   override def postStop() {
-    checker foreach { _.cancel() }
+    checker foreach {
+      _.cancel()
+    }
     super.postStop()
     log.debug("Stopping TsdbPointConsumer for group " + group + " and topic " + topic)
     connector.shutdown()

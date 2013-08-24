@@ -2,7 +2,6 @@ package popeye.transport.legacy
 
 import org.scalatest.FlatSpec
 import akka.util.ByteString
-import java.util.zip.{Deflater, DeflaterOutputStream}
 import java.io.{FileInputStream, File, ByteArrayOutputStream}
 import popeye.transport.CompressionDecoder
 import com.google.common.io.{ByteStreams, Files}
@@ -15,7 +14,7 @@ import java.util
  */
 class CompressionDecoderTestSpec extends FlatSpec {
 
-  for(codec <- Seq(Gzip(), Snappy())) {
+  for (codec <- Seq(Gzip(), Snappy())) {
 
     behavior of codec.toString
 
@@ -23,7 +22,7 @@ class CompressionDecoderTestSpec extends FlatSpec {
       val a = ByteString("a")
       val dataBuf = encode(a, codec)
 
-      new CompressionDecoder(100, codec).decode(dataBuf){
+      new CompressionDecoder(100, codec).decode(dataBuf) {
         buffer =>
           assert(buffer == a)
       } match {
@@ -40,14 +39,14 @@ class CompressionDecoderTestSpec extends FlatSpec {
       val p2: ByteString = dataBuf.drop(3)
       val d = new CompressionDecoder(100, codec)
       var unpacked: Option[ByteString] = None
-      d.decode(p1){
+      d.decode(p1) {
         buffer =>
           unpacked = Some(buffer)
       } match {
         case None => assert(unpacked.isEmpty)
         case x => fail(x.toString)
       }
-      d.decode(p2){
+      d.decode(p2) {
         buffer =>
           assert(buffer == a)
       } match {
@@ -56,7 +55,7 @@ class CompressionDecoderTestSpec extends FlatSpec {
       }
     }
 
-    it should  "be able to parse by chunks packed by java version" in {
+    it should "be able to parse by chunks packed by java version" in {
       val rnd = new Random(1234)
       val bytes = new Array[Byte](100000)
       rnd.nextBytes(bytes)
@@ -69,7 +68,7 @@ class CompressionDecoderTestSpec extends FlatSpec {
 
       groups.foreach {
         buf =>
-          decoder.decode(buf){
+          decoder.decode(buf) {
             buffer =>
               result.append(buffer)
           } match {
@@ -81,13 +80,13 @@ class CompressionDecoderTestSpec extends FlatSpec {
       assert(result.result() == original)
     }
 
-    it should  "respect limit" in {
+    it should "respect limit" in {
       val a = ByteString("ab")
       val b = ByteString("unencoded")
       val dataBuf = encode(a, codec)
       val d = new CompressionDecoder(dataBuf.length, codec)
 
-      d.decode(dataBuf ++ b){
+      d.decode(dataBuf ++ b) {
         buffer =>
           assert(buffer === a)
       } match {
@@ -101,7 +100,7 @@ class CompressionDecoderTestSpec extends FlatSpec {
       val decoder = new CompressionDecoder(file.length, codec)
       val resultBuilder = ByteString.newBuilder
 
-      decoder.decode(file){
+      decoder.decode(file) {
         buffer =>
           resultBuilder.append(buffer)
       } match {

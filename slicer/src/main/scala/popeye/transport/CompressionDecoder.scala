@@ -198,11 +198,11 @@ class SnappyDecoder extends Decoder {
 
   private def startsWithHeader(buf: ByteString): Boolean = {
     buf(0) == streamIdentifier(0) &&
-    buf(1) == streamIdentifier(1) &&
-    buf(2) == streamIdentifier(2) &&
-    buf(3) == streamIdentifier(3) &&
-    buf(4) == streamIdentifier(4) &&
-    buf(5) == streamIdentifier(5)
+      buf(1) == streamIdentifier(1) &&
+      buf(2) == streamIdentifier(2) &&
+      buf(3) == streamIdentifier(3) &&
+      buf(4) == streamIdentifier(4) &&
+      buf(5) == streamIdentifier(5)
   }
 
   private def blockHeader(buf: ByteString): (Int, Int) = {

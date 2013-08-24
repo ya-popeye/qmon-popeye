@@ -6,7 +6,6 @@ import scala.concurrent.duration._
 import akka.util.Timeout
 import com.codahale.metrics.{CsvReporter, JmxReporter, MetricRegistry}
 import java.util.concurrent.TimeUnit
-import com.typesafe.config.ConfigFactory
 import java.io.File
 import popeye.ConfigUtil
 
@@ -15,7 +14,7 @@ import popeye.ConfigUtil
  */
 abstract class PopeyeMain(val subsys: String) extends App {
   implicit val timeout: Timeout = 2 seconds
-  implicit val system = ActorSystem(subsys,ConfigUtil.loadSubsysConfig(subsys).resolve())
+  implicit val system = ActorSystem(subsys, ConfigUtil.loadSubsysConfig(subsys).resolve())
   implicit val metricRegistry = new MetricRegistry()
 
   implicit val logSource: LogSource[AnyRef] = new LogSource[AnyRef] {

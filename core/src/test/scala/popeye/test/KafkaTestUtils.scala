@@ -4,7 +4,6 @@ import kafka.server.{KafkaRequestHandler, KafkaServer, KafkaConfig}
 import kafka.common.KafkaException
 import kafka.utils.{Utils, TestUtils}
 import org.apache.log4j.Logger
-import org.apache.log4j.Level
 
 
 /**
@@ -12,10 +11,16 @@ import org.apache.log4j.Level
  */
 trait KafkaServerTestSpec extends ZkTestSpec {
   def numServers(): Int = 1
-  val kafkaBrokerConfigs = TestUtils.createBrokerConfigs(numServers()).map({conf => new KafkaConfig(conf)})
+
+  val kafkaBrokerConfigs = TestUtils.createBrokerConfigs(numServers()).map({
+    conf => new KafkaConfig(conf)
+  })
   val kafkaRequestHandlerLogger = Logger.getLogger(classOf[KafkaRequestHandler])
   var kafkaBrokers: List[KafkaServer] = null
-  def kafkaBrokersList = kafkaBrokers.map({s => s.socketServer.host + ":" + s.socketServer.port}).mkString(",")
+
+  def kafkaBrokersList = kafkaBrokers.map({
+    s => s.socketServer.host + ":" + s.socketServer.port
+  }).mkString(",")
 
   def withKafkaServer()(body: => Unit) {
     withZk() {

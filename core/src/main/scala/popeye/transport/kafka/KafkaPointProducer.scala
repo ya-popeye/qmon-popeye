@@ -80,7 +80,7 @@ class KafkaPointSender(topic: String, producerConfig: ProducerConfig, metrics: K
           }
         }
         p.promises
-          .filter(!_.isCompleted)  // we should check, that pormise not complete before
+          .filter(!_.isCompleted) // we should check, that pormise not complete before
           .foreach(_.success(batchId))
       } catch {
         case e: Exception => sender ! Failure(e)
@@ -92,8 +92,8 @@ class KafkaPointSender(topic: String, producerConfig: ProducerConfig, metrics: K
             }
           }
           p.promises
-            .filter(!_.isCompleted)  // we should check, that pormise not complete before
-            .foreach (_.failure(e))
+            .filter(!_.isCompleted) // we should check, that pormise not complete before
+            .foreach(_.failure(e))
           throw e
       } finally {
         val sended = sendctx.stop.nano
@@ -187,7 +187,9 @@ class KafkaPointProducer(config: Config,
         val batchId = idGenerator.nextId()
         val (data, promises) = pendingPoints.consume(ignoreMinSize)
         if (!data.isEmpty) {
-          log.debug(s"Sending ${data.foldLeft(0)({ (a, b) => a + b.buffer.length })} bytes, will trigger ${promises.size} promises")
+          log.debug(s"Sending ${data.foldLeft(0)({
+            (a, b) => a + b.buffer.length
+          })} bytes, will trigger ${promises.size} promises")
           worker ! ProducePack(batchId, metrics.writeTimer.timerContext())(data, promises)
           flushPoints(ignoreMinSize)
         } else {

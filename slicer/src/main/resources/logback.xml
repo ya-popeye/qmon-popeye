@@ -32,9 +32,9 @@
         <maxHistory>30</maxHistory>
     </appender>
 
-    <logger name="popeye" level="INFO" />
-    <logger name="kafka" level="INFO" />
-    <logger name="org.apache.zookeeper" level="WARN" />
+    <logger name="popeye" level="INFO"/>
+    <logger name="kafka" level="INFO"/>
+    <logger name="org.apache.zookeeper" level="WARN"/>
 
     <root level="INFO">
         <appender-ref ref="stdout"/>

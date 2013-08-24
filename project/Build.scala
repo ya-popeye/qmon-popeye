@@ -58,7 +58,7 @@ object PopeyeBuild extends Build {
     build = uri("git://github.com/octo47/kafka.git#0.8-scala2.10"),
     project = "core")
 
-  lazy val akka: Map[String, ProjectRef] = Map(Seq("akka-actor", "akka-slf4j", "akka-testkit"). map {
+  lazy val akka: Map[String, ProjectRef] = Map(Seq("akka-actor", "akka-slf4j", "akka-testkit").map {
     projectId =>
       (projectId, ProjectRef(
         build = uri("git://github.com/octo47/akka.git#wip-3542-no-defensive-unsubscribe"),
@@ -66,10 +66,10 @@ object PopeyeBuild extends Build {
   }: _*)
 
   lazy val externalDeps = Project(
-    id= "ext-deps",
+    id = "ext-deps",
     base = file("project/ext"),
     settings = defaultSettings ++ Seq(
-       aggregate in test := false
+      aggregate in test := false
     )
   ).aggregate(akka("akka-actor"), kafka)
 
@@ -98,7 +98,7 @@ object PopeyeBuild extends Build {
       "org.slf4j" % "jcl-over-slf4j" % Version.Slf4j,
       "org.slf4j" % "log4j-over-slf4j" % Version.Slf4j,
       "ch.qos.logback" % "logback-classic" % Version.Logback,
-      "org.hbase" % "asynchbase" % "1.4.1",  // TODO: move that to pump module
+      "org.hbase" % "asynchbase" % "1.4.1", // TODO: move that to pump module
       "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
       "org.mockito" % "mockito-core" % Version.Mockito % "test"
     )
@@ -112,18 +112,18 @@ object PopeyeBuild extends Build {
     .dependsOn(kafka % "test->test")
     .dependsOn(akka("akka-testkit") % "test->test")
     .settings(
-      distMainClass := "popeye.transport.SlicerMain",
-      distJvmOptions := "-Xms4096M -Xmx4096M -Xss1M -XX:MaxPermSize=256M -XX:+UseParallelGC -XX:NewSize=3G",
-      libraryDependencies ++= Seq(
-        "org.apache.kafka" %% "kafka" % Version.Kafka % "compile->compile;test->test"
-          exclude("org.slf4j", "slf4j-simple"),
-        "io.spray" % "spray-can" % Version.Spray exclude("com.typesafe.akka", "akka-actor"),
-        "io.spray" % "spray-io" % Version.Spray exclude("com.typesafe.akka", "akka-actor"),
-        "org.xerial.snappy" % "snappy-java" % Version.Snappy,
-        "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
-        "org.mockito" % "mockito-core" % Version.Mockito % "test"
-      )
+    distMainClass := "popeye.transport.SlicerMain",
+    distJvmOptions := "-Xms4096M -Xmx4096M -Xss1M -XX:MaxPermSize=256M -XX:+UseParallelGC -XX:NewSize=3G",
+    libraryDependencies ++= Seq(
+      "org.apache.kafka" %% "kafka" % Version.Kafka % "compile->compile;test->test"
+        exclude("org.slf4j", "slf4j-simple"),
+      "io.spray" % "spray-can" % Version.Spray exclude("com.typesafe.akka", "akka-actor"),
+      "io.spray" % "spray-io" % Version.Spray exclude("com.typesafe.akka", "akka-actor"),
+      "org.xerial.snappy" % "snappy-java" % Version.Snappy,
+      "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
+      "org.mockito" % "mockito-core" % Version.Mockito % "test"
     )
+  )
 
   lazy val popeyePump = Project(
     id = "popeye-pump",
@@ -133,13 +133,13 @@ object PopeyeBuild extends Build {
     .dependsOn(kafka % "test->test")
     .dependsOn(akka("akka-testkit") % "test->test")
     .settings(
-      distMainClass := "popeye.transport.PumpMain",
-      libraryDependencies ++= Seq(
-        "org.apache.kafka" %% "kafka" % Version.Kafka % "compile->compile;test->test"
-          exclude("org.slf4j", "slf4j-simple"),
-        "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
-        "org.mockito" % "mockito-core" % Version.Mockito % "test"
-      )
+    distMainClass := "popeye.transport.PumpMain",
+    libraryDependencies ++= Seq(
+      "org.apache.kafka" %% "kafka" % Version.Kafka % "compile->compile;test->test"
+        exclude("org.slf4j", "slf4j-simple"),
+      "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
+      "org.mockito" % "mockito-core" % Version.Mockito % "test"
+    )
   )
   lazy val popeyeBench = Project(
     id = "popeye-bench",

@@ -6,7 +6,6 @@ import com.google.protobuf.{ByteString => GoogleByteString}
 import akka.actor.{ActorLogging, Actor}
 import akka.actor.Status.Failure
 import popeye.Logging
-import scala.collection.mutable
 
 class ParserActor extends Actor with ActorLogging {
   def receive = {
@@ -40,7 +39,9 @@ case class ParseRequest(data: Array[Byte])
 case class ParseResult(batch: Seq[Point])
 
 object JsonToPointParser {
+
   import JsonParser.Feature
+
   val parserFactory: JsonFactory = new JsonFactory()
     .disable(Feature.CANONICALIZE_FIELD_NAMES)
     .disable(Feature.INTERN_FIELD_NAMES)

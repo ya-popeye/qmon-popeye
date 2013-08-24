@@ -138,11 +138,11 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
     for (int i = 0; i < validEvents; i++) {
       if (Bytes.memcmp(tsdbPuts[prevRow].row, tsdbPuts[i].row) != 0) {
         seriesWriter.startSeries(tsdbPuts[i].row);
-        for(int j = prevRow; j < i; j++) {
+        for (int j = prevRow; j < i; j++) {
           try {
             // skip points with the same row and timestamp
             if (j > prevRow &&
-                    tsdbPuts[j].point.getTimestamp() == tsdbPuts[j-1].point.getTimestamp()) {
+                    tsdbPuts[j].point.getTimestamp() == tsdbPuts[j - 1].point.getTimestamp()) {
               continue;
             }
 
@@ -273,7 +273,7 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
    * The only thing left to fill in is the base timestamp.
    */
   byte[] rowKeyTemplate(final String metric,
-                               final List<Message.Attribute> attributes) {
+                        final List<Message.Attribute> attributes) {
     final short metric_width = tsdb.metrics.width();
     final short attribute_name_width = tsdb.tag_names.width();
     final short attribute_value_width = tsdb.tag_values.width();

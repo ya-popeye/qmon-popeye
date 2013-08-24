@@ -2,9 +2,8 @@ package popeye.transport.proto
 
 import popeye.transport.proto.Message.Point
 import com.google.protobuf.{CodedInputStream, CodedOutputStream}
-import java.io.{OutputStream, InputStream, ByteArrayOutputStream}
+import java.io.OutputStream
 import scala.collection.mutable.ArrayBuffer
-import java.util.Arrays
 import java.util
 
 /**
@@ -92,7 +91,7 @@ class ExpandingBuffer(extent: Int) extends OutputStream {
 
 case class PackedPointsIndex(hash: Int, offset: Int, len: Int, delimitedPoints: Array[Byte])
 
-class PackedPointsBuffer private[proto] (points: ExpandingBuffer, hashes: ExpandingBuffer, pointsCount: Int) extends Traversable[PackedPointsIndex] {
+class PackedPointsBuffer private[proto](points: ExpandingBuffer, hashes: ExpandingBuffer, pointsCount: Int) extends Traversable[PackedPointsIndex] {
 
   override def size: Int = pointsCount
 
@@ -133,7 +132,7 @@ object PackedPoints {
     val cs = CodedInputStream.newInstance(buffer)
     val batchId = cs.readInt64()
     val points = new ArrayBuffer[Point](buffer.length / expectedMessageSize)
-    while(!cs.isAtEnd) {
+    while (!cs.isAtEnd) {
       val size = cs.readRawVarint32()
       val limit = cs.pushLimit(size)
       points += Point.newBuilder().mergeFrom(cs).build

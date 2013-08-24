@@ -1,6 +1,7 @@
 /**
- *  Copyright (C) 2011-2012 Typesafe <http://typesafe.com/>
+ * Copyright (C) 2011-2012 Typesafe <http://typesafe.com/>
  */
+
 import sbt._
 import sbt.Keys._
 import sbt.Load.BuildStructure
@@ -47,61 +48,68 @@ object QMonDistPlugin extends Plugin {
       outputDirectory <<= target / "dist",
       configSourceDirs <<= defaultConfigSourceDirs,
       distJvmOptions := "-Xms1024M -Xmx4096M -Xss1M -XX:MaxPermSize=256M -XX:+UseParallelGC",
-      libFilter := { f ⇒ true },
+      libFilter := {
+        f ⇒ true
+      },
       additionalLibs <<= defaultAdditionalLibs,
       distConfig <<= (outputDirectory, configSourceDirs, distJvmOptions, distMainClass, libFilter, additionalLibs) map DistConfig)) ++
       Seq(dist <<= (dist in Dist), distNeedsPackageBin)
 
   private def distTask: Initialize[Task[File]] =
-    (thisProject, distConfig, sourceDirectory, crossTarget, dependencyClasspath, allDependencies, buildStructure, state) map { (project, conf, src, tgt, cp, allDeps, buildStruct, st) ⇒
+    (thisProject, distConfig, sourceDirectory, crossTarget, dependencyClasspath, allDependencies, buildStructure, state) map {
+      (project, conf, src, tgt, cp, allDeps, buildStruct, st) ⇒
 
-      val log = st.log
-      val distBinPath = conf.outputDirectory / "bin"
-      val distConfigPath = conf.outputDirectory / "config"
-      val distLibPath = conf.outputDirectory / "lib"
+        val log = st.log
+        val distBinPath = conf.outputDirectory / "bin"
+        val distConfigPath = conf.outputDirectory / "config"
+        val distLibPath = conf.outputDirectory / "lib"
 
-      val subProjectDependencies: Set[SubProjectInfo] = allSubProjectDependencies(project, buildStruct, st)
+        val subProjectDependencies: Set[SubProjectInfo] = allSubProjectDependencies(project, buildStruct, st)
 
-      log.info("Creating distribution %s ..." format conf.outputDirectory)
-      IO.createDirectory(conf.outputDirectory)
-      Scripts(conf.distJvmOptions, conf.distMainClass).writeScripts(distBinPath)
-      copyDirectories(conf.configSourceDirs, distConfigPath)
-      copyJars(tgt, distLibPath)
+        log.info("Creating distribution %s ..." format conf.outputDirectory)
+        IO.createDirectory(conf.outputDirectory)
+        Scripts(conf.distJvmOptions, conf.distMainClass).writeScripts(distBinPath)
+        copyDirectories(conf.configSourceDirs, distConfigPath)
+        copyJars(tgt, distLibPath)
 
-      copyFiles(libFiles(cp, conf.libFilter), distLibPath)
-      copyFiles(conf.additionalLibs, distLibPath)
-      for (subProjectDependency ← subProjectDependencies) {
-        val subTarget = subProjectDependency.target
-        EvaluateTask(buildStruct, packageBin in Compile, st, subProjectDependency.projectRef)
-        copyJars(subTarget, distLibPath)
-      }
-      log.info("Distribution created.")
-      conf.outputDirectory
+        copyFiles(libFiles(cp, conf.libFilter), distLibPath)
+        copyFiles(conf.additionalLibs, distLibPath)
+        for (subProjectDependency ← subProjectDependencies) {
+          val subTarget = subProjectDependency.target
+          EvaluateTask(buildStruct, packageBin in Compile, st, subProjectDependency.projectRef)
+          copyJars(subTarget, distLibPath)
+        }
+        log.info("Distribution created.")
+        conf.outputDirectory
     }
 
   private def distCleanTask: Initialize[Task[Unit]] =
-    (outputDirectory, allDependencies, streams) map { (outDir, deps, s) ⇒
+    (outputDirectory, allDependencies, streams) map {
+      (outDir, deps, s) ⇒
 
-      val log = s.log
-      log.info("Cleaning " + outDir)
-      IO.delete(outDir)
+        val log = s.log
+        log.info("Cleaning " + outDir)
+        IO.delete(outDir)
     }
 
-  private def defaultConfigSourceDirs = (sourceDirectory, unmanagedResourceDirectories) map { (src, resources) ⇒
-    Seq(src / "config", src / "main" / "config") ++ resources
+  private def defaultConfigSourceDirs = (sourceDirectory, unmanagedResourceDirectories) map {
+    (src, resources) ⇒
+      Seq(src / "config", src / "main" / "config") ++ resources
   }
 
-  private def defaultAdditionalLibs = (libraryDependencies) map { (libs) ⇒
-    Seq.empty[File]
+  private def defaultAdditionalLibs = (libraryDependencies) map {
+    (libs) ⇒
+      Seq.empty[File]
   }
 
   private case class Scripts(jvmOptions: String, mainClass: String) {
 
     def writeScripts(to: File) = {
-      scripts.map { script ⇒
-        val target = new File(to, script.name)
-        IO.write(target, script.contents)
-        setExecutable(target, script.executable)
+      scripts.map {
+        script ⇒
+          val target = new File(to, script.name)
+          IO.write(target, script.contents)
+          setExecutable(target, script.executable)
       }.foldLeft(None: Option[String])(_ orElse _)
     }
 
@@ -156,7 +164,7 @@ java $JAVA_OPTS -cp "$QMON_CLASSPATH" -Dqmon.logdir=${QMON_LOGDIR:-$QMON_HOME/lo
   private def includeProject(project: ResolvedProject, parent: ResolvedProject): Boolean = {
     parent.uses.exists {
       case ProjectRef(uri, id) ⇒ id == project.id
-      case _                   ⇒ false
+      case _ ⇒ false
     }
   }
 

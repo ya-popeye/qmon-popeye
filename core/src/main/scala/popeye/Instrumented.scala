@@ -1,9 +1,7 @@
 package popeye
 
 import nl.grons.metrics.scala._
-import com.codahale.metrics.{MetricRegistry,Gauge => CHGauge}
-import nl.grons.metrics.scala.Gauge
-import akka.actor.{ActorRef, Actor}
+import com.codahale.metrics.{Gauge => CHGauge}
 
 /**
  * @author Andrey Stepachev

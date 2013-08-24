@@ -12,8 +12,6 @@ import java.util.concurrent.TimeUnit
 import spray.can.Http
 import spray.http.HttpMethods.POST
 import akka.io.IO
-import spray.can.Http.HostConnectorInfo
-import scala.Some
 import spray.http.HttpRequest
 import scala.Some
 import spray.http.HttpResponse
@@ -45,7 +43,7 @@ object Main extends App {
   val requestsMeter = metricRegistry.meter("http-requests.total")
   val failedRequestsMeter = metricRegistry.meter("http-requests.failed")
 
-  import system.dispatcher
+
   for (
     HostConnectorInfo(hostConnector, _) <- IO(Http).ask(Http.HostConnectorSetup("localhost", port = 8080))
   ) yield {
@@ -72,7 +70,6 @@ class Worker(metricRegistry: MetricRegistry,
              hostConnector: ActorRef) extends Actor with ActorLogging {
 
 
-  import context.dispatcher
   implicit val timeout: Timeout = 10 seconds
   var timeContext: Option[Timer.Context] = None
   val meter = metricRegistry.meter(self.path.toString + "/requests")

@@ -25,7 +25,7 @@ class SeriesWriter {
         return c;
       long thisVal = point.getTimestamp();
       long anotherVal = o.point.getTimestamp();
-      return (thisVal<anotherVal ? -1 : (thisVal==anotherVal ? 0 : 1));
+      return (thisVal < anotherVal ? -1 : (thisVal == anotherVal ? 0 : 1));
     }
 
     @Override

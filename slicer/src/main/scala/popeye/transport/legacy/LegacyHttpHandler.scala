@@ -10,10 +10,9 @@ import spray.util._
 import spray.http._
 import HttpMethods._
 import MediaTypes._
-import org.codehaus.jackson.{JsonParseException, JsonFactory}
-import popeye.transport.proto.Message.{Point, Batch}
-import akka.actor.SupervisorStrategy.{Restart, Stop}
-import scala.collection.JavaConversions.asJavaIterable
+import org.codehaus.jackson.JsonParseException
+import popeye.transport.proto.Message.Point
+import akka.actor.SupervisorStrategy.Restart
 import java.net.InetSocketAddress
 import akka.io.IO
 import spray.http.HttpRequest
@@ -27,10 +26,9 @@ import com.typesafe.config.Config
 import popeye.Instrumented
 import com.codahale.metrics.MetricRegistry
 import popeye.transport.proto.PackedPoints
-import scala.concurrent.Promise
 
 
-class LegacyHttpHandlerMetrics (override val metricRegistry: MetricRegistry) extends Instrumented {
+class LegacyHttpHandlerMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
   val writeTimer = metrics.timer("write")
   val readTimer = metrics.timer("read")
   val requestsBatches = metrics.histogram("batches", "size")

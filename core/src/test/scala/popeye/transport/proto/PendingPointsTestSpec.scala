@@ -180,9 +180,13 @@ class PendingPointsTestSpec extends FlatSpec {
     Stat(countBytes(buffers), countPoints(buffers), promises.length)
   }
 
-  def countPoints(buffers: Seq[PartitionBuffer]): Long = buffers.foldLeft(0l) { (a, b) => a + b.points }
+  def countPoints(buffers: Seq[PartitionBuffer]): Long = buffers.foldLeft(0l) {
+    (a, b) => a + b.points
+  }
 
-  def countBytes(buffers: Seq[PartitionBuffer]): Long = buffers.foldLeft(0l) { (a, b) => a + b.buffer.length }
+  def countBytes(buffers: Seq[PartitionBuffer]): Long = buffers.foldLeft(0l) {
+    (a, b) => a + b.buffer.length
+  }
 
   def checkEmptyPP(pp: PointsQueue): Unit = {
     val stat = pp.stat
