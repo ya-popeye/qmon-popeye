@@ -33,7 +33,7 @@ class LineDecoderTestSpec extends FlatSpec {
 
   it should "Dangling \\r" in {
     ld.tryParse(a ++ b ++ r) match {
-      case (None, Some(s)) =>  assert(s == a ++ b ++ r)
+      case (None, Some(s)) => assert(s == a ++ b ++ r)
       case x => fail("wrong " + x)
     }
   }
@@ -67,6 +67,19 @@ class LineDecoderTestSpec extends FlatSpec {
   "LineDecoder(3)" should "not throw if eol found" in {
     val ll = new LineDecoder(3)
     ll.tryParse(a ++ rn ++ b)
+  }
+
+  "LineDecoder" should "split lines" in {
+    val samples = List(
+      " some line",
+      "  some line",
+      "some  line",
+      "some line ",
+      "some line"
+    )
+    val r = samples.map(l => LineDecoder.split(l, ' ', preserveAllTokens = false)
+      .mkString("=")).find(_ != "some=line")
+    assert(r)
   }
 
 }
