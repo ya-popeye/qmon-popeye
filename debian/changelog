@@ -1,3 +1,9 @@
+qmon-popeye (0.5.2) unstable; urgency=low
+
+  * fixing possible GC in case of uncontrolled client writes
+
+ -- Andrey Stepachev <octo@yandex-team.ru>  Mon, 27 Aug 2013 00:57:00 +0400
+
 qmon-popeye (0.5.1) unstable; urgency=low
 
   * fixing tag parser to be more robust
