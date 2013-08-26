@@ -43,10 +43,15 @@ object CompressionDecoder {
 trait Decoder {
   protected var pushedBack: Option[ByteString] = None
 
+  /**
+   * Push back data for reread later.
+   * Buffer will be compacted (to avoid reference to buffer)
+   * @param what
+   */
   def pushBack(what: ByteString) = {
     pushedBack match {
-      case Some(b) => pushedBack = Some(b ++ what)
-      case None => pushedBack = Some(what)
+      case Some(b) => pushedBack = Some((b ++ what).compact)
+      case None => pushedBack = Some(what.compact)
     }
   }
 
