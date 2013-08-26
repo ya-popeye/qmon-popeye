@@ -3,11 +3,11 @@ package popeye.transport.legacy
 import popeye.transport.proto.Message.{Attribute, Point}
 import org.codehaus.jackson.{JsonFactory, JsonToken, JsonParser}
 import com.google.protobuf.{ByteString => GoogleByteString}
-import akka.actor.{ActorLogging, Actor}
+import akka.actor.Actor
 import akka.actor.Status.Failure
 import popeye.Logging
 
-class ParserActor extends Actor with ActorLogging {
+class ParserActor extends Actor with Logging {
   def receive = {
     case ParseRequest(data) => {
       try {

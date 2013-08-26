@@ -30,13 +30,11 @@ class TsdbTelnetHandlerTestSpec extends AkkaTestKitSpec("tsdb-server") with Mock
   implicit val metricRegistry = new MetricRegistry()
   implicit val tsdbMetrics = new TsdbTelnetMetrics(metricRegistry)
 
-  private val init = TcpPipelineHandler.withLogger(NoLogging, new TcpReadWriteAdapter)
-
   private def initActors(batchSize: Int = 1) = {
     val config: Config = ConfigFactory.parseString(
       s"""
-        | legacy.tsdb.high-watermark = 2000
-        | legacy.tsdb.low-watermark = 1000
+        | legacy.tsdb.high-watermark = 1
+        | legacy.tsdb.low-watermark = 0
         | legacy.tsdb.batchSize = $batchSize
       """.stripMargin)
       .withFallback(ConfigUtil.loadSubsysConfig("pump"))
@@ -45,7 +43,7 @@ class TsdbTelnetHandlerTestSpec extends AkkaTestKitSpec("tsdb-server") with Mock
     val kafka = TestProbe()
     val connection = TestProbe()
     val actor: TestActorRef[TsdbTelnetHandler] = TestActorRef(Props(
-      new TsdbTelnetHandler(init, connection.ref, kafka.ref, config, tsdbMetrics))
+      new TsdbTelnetHandler(connection.ref, kafka.ref, config, tsdbMetrics))
       .withDeploy(Deploy.local))
     (connection, kafka, actor)
   }
@@ -61,9 +59,9 @@ class TsdbTelnetHandlerTestSpec extends AkkaTestKitSpec("tsdb-server") with Mock
 
   it should "plain interaction" in {
     val (connection, kafka, actor) = initActors(2)
-    actor ! init.Event(plainCmd.take(10))
-    actor ! init.Event(plainCmd.drop(10))
-    actor ! init.Event(commitCmd)
+    actor ! Tcp.Received(plainCmd.take(10))
+    actor ! Tcp.Received(plainCmd.drop(10))
+    actor ! Tcp.Received(commitCmd)
     validate(connection, kafka, actor)
   }
 
@@ -71,7 +69,7 @@ class TsdbTelnetHandlerTestSpec extends AkkaTestKitSpec("tsdb-server") with Mock
     val (connection, kafka, actor) = initActors(2)
 
     for (b <- plainCmd ++ commitCmd) {
-      actor ! init.Event(ByteString.fromArray(Array(b)))
+      actor ! Tcp.Received(ByteString.fromArray(Array(b)))
     }
     validate(connection, kafka, actor)
   }
@@ -79,27 +77,27 @@ class TsdbTelnetHandlerTestSpec extends AkkaTestKitSpec("tsdb-server") with Mock
   it should "process one big plain buffer" in {
     val (connection, kafka, actor) = initActors(2)
 
-    actor ! init.Event((plainCmd ++ commitCmd).compact)
+    actor ! Tcp.Received((plainCmd ++ commitCmd).compact)
     validate(connection, kafka, actor)
   }
 
   it should "deflated interaction" in {
     val (connection, kafka, actor) = initActors(2)
 
-    actor ! init.Event(deflateCmd)
-    actor ! init.Event(encodedCmd.take(10))
-    actor ! init.Event(encodedCmd.drop(10))
-    actor ! init.Event(commitCmd)
+    actor ! Tcp.Received(deflateCmd)
+    actor ! Tcp.Received(encodedCmd.take(10))
+    actor ! Tcp.Received(encodedCmd.drop(10))
+    actor ! Tcp.Received(commitCmd)
     validate(connection, kafka, actor)
   }
 
   it should "snappy interaction" in {
     val (connection, kafka, actor) = initActors(2)
 
-    actor ! init.Event(snappyCmd)
-    actor ! init.Event(snappedCmd.take(10))
-    actor ! init.Event(snappedCmd.drop(10))
-    actor ! init.Event(commitCmd)
+    actor ! Tcp.Received(snappyCmd)
+    actor ! Tcp.Received(snappedCmd.take(10))
+    actor ! Tcp.Received(snappedCmd.drop(10))
+    actor ! Tcp.Received(commitCmd)
     validate(connection, kafka, actor)
   }
 
@@ -107,7 +105,7 @@ class TsdbTelnetHandlerTestSpec extends AkkaTestKitSpec("tsdb-server") with Mock
     val (connection, kafka, actor) = initActors(2)
 
     for (b <- deflateCmd ++ encodedCmd ++ commitCmd) {
-      actor ! init.Event(ByteString.fromArray(Array(b)))
+      actor ! Tcp.Received(ByteString.fromArray(Array(b)))
     }
     validate(connection, kafka, actor)
   }
@@ -116,7 +114,7 @@ class TsdbTelnetHandlerTestSpec extends AkkaTestKitSpec("tsdb-server") with Mock
     val (connection, kafka, actor) = initActors(2)
 
     for (b <- snappyCmd ++ snappedCmd ++ commitCmd) {
-      actor ! init.Event(ByteString.fromArray(Array(b)))
+      actor ! Tcp.Received(ByteString.fromArray(Array(b)))
     }
     validate(connection, kafka, actor)
   }
@@ -124,14 +122,14 @@ class TsdbTelnetHandlerTestSpec extends AkkaTestKitSpec("tsdb-server") with Mock
   it should "process one big deflated buffer" in {
     val (connection, kafka, actor) = initActors(2)
 
-    actor ! init.Event((deflateCmd ++ encodedCmd ++ commitCmd).compact)
+    actor ! Tcp.Received((deflateCmd ++ encodedCmd ++ commitCmd).compact)
     validate(connection, kafka, actor)
   }
 
   it should "process one big snapped buffer" in {
     val (connection, kafka, actor) = initActors(2)
 
-    actor ! init.Event((snappyCmd ++ snappedCmd ++ commitCmd).compact)
+    actor ! Tcp.Received((snappyCmd ++ snappedCmd ++ commitCmd).compact)
     validate(connection, kafka, actor)
   }
 
@@ -142,11 +140,11 @@ class TsdbTelnetHandlerTestSpec extends AkkaTestKitSpec("tsdb-server") with Mock
         promise.get.success(123)
     }
     fishForMessage() {
-      case p@init.Command(bstr) =>
+      case Tcp.Write(bstr, _) =>
         bstr.utf8String.contains("1 = 123")
     }
 
-    actor ! init.Event(ByteString.fromString("exit\r\n"))
+    actor ! Tcp.Received(ByteString.fromString("exit\r\n"))
     connection.expectMsgPF() {
       case Tcp.Close =>
     }

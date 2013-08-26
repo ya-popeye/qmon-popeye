@@ -23,7 +23,7 @@ import spray.http.HttpResponse
 import scala.util.Success
 import popeye.transport.kafka.ProducePending
 import com.typesafe.config.Config
-import popeye.Instrumented
+import popeye.{Logging, Instrumented}
 import com.codahale.metrics.MetricRegistry
 import popeye.transport.proto.PackedPoints
 
@@ -39,7 +39,7 @@ class LegacyHttpHandlerMetrics(override val metricRegistry: MetricRegistry) exte
 /**
  * @author Andrey Stepachev
  */
-class LegacyHttpHandler(config: Config, kafkaProducer: ActorRef, metrics: LegacyHttpHandlerMetrics) extends Actor with SprayActorLogging {
+class LegacyHttpHandler(config: Config, kafkaProducer: ActorRef, metrics: LegacyHttpHandlerMetrics) extends Actor with Logging {
 
   implicit val timeout: Timeout = 5.second
   // for the actor 'asks'
@@ -85,7 +85,7 @@ class LegacyHttpHandler(config: Config, kafkaProducer: ActorRef, metrics: Legacy
         case Failure(ex: JsonParseException) =>
           client ! HttpResponse(status = StatusCodes.UnprocessableEntity, entity = ex.getMessage)
         case Failure(ex) =>
-          log.error(ex, "Failed")
+          log.error("Failed", ex)
           client ! HttpResponse(status = StatusCodes.InternalServerError, entity = ex.getMessage)
       }
 
