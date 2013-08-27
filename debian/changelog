@@ -1,3 +1,9 @@
+qmon-popeye (0.5.3) unstable; urgency=low
+
+  * fixing possible GC in case of uncontrolled client writes, bis
+
+ -- Andrey Stepachev <octo@yandex-team.ru>  Mon, 27 Aug 2013 20:58:00 +0400
+
 qmon-popeye (0.5.2) unstable; urgency=low
 
   * fixing possible GC in case of uncontrolled client writes
