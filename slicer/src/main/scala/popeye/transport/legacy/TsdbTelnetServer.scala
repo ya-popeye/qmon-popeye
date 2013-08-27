@@ -35,6 +35,9 @@ class TsdbTelnetHandler(connection: ActorRef,
                         metrics: TsdbTelnetMetrics)
   extends Actor with RequiresMessageQueue[UnboundedMessageQueueSemantics] with Logging {
 
+
+  context watch connection
+
   val hwPendingPoints: Int = config.getInt("legacy.tsdb.high-watermark")
   val lwPendingPoints: Int = config.getInt("legacy.tsdb.low-watermark")
   val batchSize: Int = config.getInt("legacy.tsdb.batchSize")
@@ -55,6 +58,7 @@ class TsdbTelnetHandler(connection: ActorRef,
   private val pendingCorrelations = mutable.TreeSet[PointId]()
 
   private val commands = new TsdbCommands(metrics, config) {
+
     override def addPoint(point: Message.Point): Unit = {
       bufferedPoints += point
       if (bufferedPoints.size >= batchSize) {
@@ -122,8 +126,8 @@ class TsdbTelnetHandler(connection: ActorRef,
       tryReplyOk()
       throttle()
 
-    case m: TryReadResumeMessage =>
-      throttle(Some(m))
+    case r: ReceiveTimeout =>
+      throttle(timeout = true)
 
     case x: Tcp.ConnectionClosed =>
       if (log.isDebugEnabled)
@@ -181,45 +185,25 @@ class TsdbTelnetHandler(connection: ActorRef,
     }
   }
 
-  var eoqMarker: Option[TryReadResumeMessage] = None
-
-  def throttle(message: Option[TryReadResumeMessage] = None) {
+  def throttle(timeout: Boolean = false) {
     val size: Int = pendingCorrelations.size
-    if (size > hwPendingPoints && !paused) {
-      connection ! Tcp.SuspendReading
-      paused = true
-      log.info(s"Pausing reads: $size > $hwPendingPoints")
-      if (eoqMarker.isEmpty) {
-        eoqMarker = Some(TryReadResumeMessage())
-        self ! eoqMarker.get
+    if (size > hwPendingPoints) {
+      if (!paused) {
+        paused = true
+        log.info(s"Pausing reads: $size > $hwPendingPoints")
+        context.setReceiveTimeout(1 millisecond)
       }
+      connection ! Tcp.SuspendReading
     }
 
     // resume reading only after recieving 'end-of-queue' marker
-    if (paused) {
-      message match {
-
-        case Some(a @ TryReadResumeMessage(_, false)) =>
-          if (size < lwPendingPoints) {
-            self ! a.copy(resume = true)
-          }
-
-        case Some(TryReadResumeMessage(timestamp, true)) =>
-          if (size < lwPendingPoints) {
-            paused = false
-            connection ! Tcp.ResumeReading
-            eoqMarker = None
-            log.info(s"Reads resumed: $size < $lwPendingPoints after ${System.currentTimeMillis() - timestamp} ms")
-          } else {
-            self ! eoqMarker.get // resend eoq marker
-          }
-
-        case None =>
-      }
+    if (paused && timeout && size < lwPendingPoints) {
+      paused = false
+      connection ! Tcp.ResumeReading
+      context.setReceiveTimeout(Duration.Undefined)
+      log.info(s"Reads resumed: $size < $lwPendingPoints")
     }
   }
-
-
 }
 
 class TsdbTelnetServer(local: InetSocketAddress, kafka: ActorRef, metrics: TsdbTelnetMetrics) extends Actor with Logging {
@@ -239,11 +223,12 @@ class TsdbTelnetServer(local: InetSocketAddress, kafka: ActorRef, metrics: TsdbT
   def bound(listener: ActorRef): Receive = {
     case Connected(remote, _) ⇒
       val connection = sender
+
       val handler = context.actorOf(Props(new TsdbTelnetHandler(connection, kafka, system.settings.config, metrics))
         .withDeploy(Deploy.local))
 
       if (log.isDebugEnabled)
-        log.debug("Connection from {}", remote)
+        log.debug(s"Connection from $remote (connection=${connection.path})")
       metrics.connections.incrementAndGet()
       connection ! Tcp.Register(handler, keepOpenOnPeerClosed = true)
   }
