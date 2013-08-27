@@ -190,7 +190,8 @@ class TsdbTelnetHandler(connection: ActorRef,
     if (size > hwPendingPoints) {
       if (!paused) {
         paused = true
-        log.info(s"Pausing reads: $size > $hwPendingPoints")
+        if (log.isDebugEnabled)
+          log.debug(s"Pausing reads: $size > $hwPendingPoints")
         context.setReceiveTimeout(1 millisecond)
       }
       connection ! Tcp.SuspendReading
@@ -201,7 +202,8 @@ class TsdbTelnetHandler(connection: ActorRef,
       paused = false
       connection ! Tcp.ResumeReading
       context.setReceiveTimeout(Duration.Undefined)
-      log.info(s"Reads resumed: $size < $lwPendingPoints")
+      if (log.isDebugEnabled)
+        log.debug(s"Reads resumed: $size < $lwPendingPoints")
     }
   }
 }
