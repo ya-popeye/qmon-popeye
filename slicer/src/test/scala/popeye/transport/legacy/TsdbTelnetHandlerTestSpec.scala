@@ -35,6 +35,7 @@ class TsdbTelnetHandlerTestSpec extends AkkaTestKitSpec("tsdb-server") with Mock
       s"""
         | legacy.tsdb.high-watermark = 1
         | legacy.tsdb.low-watermark = 0
+        | legacy.tsdb.push-timeout = 10s
         | legacy.tsdb.batchSize = $batchSize
       """.stripMargin)
       .withFallback(ConfigUtil.loadSubsysConfig("pump"))
