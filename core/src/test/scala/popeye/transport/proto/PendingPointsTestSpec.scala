@@ -13,52 +13,7 @@ import PointsQueue._
 class PendingPointsTestSpec extends FlatSpec {
 
 
-  behavior of "PointsQueue with 3 partition"
-
-  it should "partial consume should work" in {
-    val (p1, pr1) = PackedPoints(mkEvents(10)) -> Promise[Long]()
-    val (p2, pr2) = PackedPoints(mkEvents(10)) -> Promise[Long]()
-    val pp = new PointsQueue(3, 100, p1.pointsBuffer.length)
-    checkEmptyPP(pp)
-
-    pp.addPending(p1, pr1)
-    pp.addPending(p2, pr2)
-    val stat1 = pp.stat
-
-    val (buffers, promises) = validPP(pp).consume()
-    assert(buffers.size == 2)
-    assert(promises.size == 0)
-    promises.foreach(_.success(1))
-
-    val stat11 = countStat(buffers, promises)
-    val stat2 = pp.stat
-    assert(stat2 + stat11 === stat1, s"$stat2 + $stat11 === $stat1")
-
-    val (buffers2, promises2) = validPP(pp).consume(ignoreMinAmount = true)
-    assert(buffers2.size == 1)
-    assert(promises2.size == 2)
-    promises2.foreach(_.success(1))
-
-    val stat22 = countStat(buffers2, promises2)
-    val stat3 = pp.stat
-    assert(stat3 + stat22 === stat2, s"$stat3 + $stat22 === $stat2")
-
-    val (buffers3, promises3) = validPP(pp).consume(ignoreMinAmount = true)
-    assert(buffers3.size == 0)
-    assert(promises3.size == 0)
-    promises3.foreach(_.success(1))
-
-    val stat33 = countStat(buffers3, promises3)
-    val stat4 = pp.stat
-    assert(stat4 + stat33 === stat3, s"$stat4 + $stat33 === $stat3")
-
-    checkEmptyPP(pp)
-
-    assert(pr1.isCompleted)
-    assert(pr2.isCompleted)
-  }
-
-  behavior of "PointsQueue with 1 partition"
+  behavior of "PointsQueue"
 
   it should "consume whole buffer" in {
     val pp = new PointsQueue(1, 1, Int.MaxValue)
@@ -67,7 +22,7 @@ class PendingPointsTestSpec extends FlatSpec {
     val (buffer, promises) = validPP(pp).consume()
     promises.foreach(_.success(1))
     assert(buffer.size == 1)
-    assert(buffer(0).buffer.size == points.pointsBuffer.length)
+    assert(buffer.get.buffer.size == points.pointsBuffer.length)
     val r = Await.result(pr.future, 1 seconds)
     assert(r == 1)
     checkEmptyPP(pp)
@@ -90,47 +45,6 @@ class PendingPointsTestSpec extends FlatSpec {
     pp.consume(ignoreMinAmount = true)
     checkEmptyPP(pp)
   }
-
-  it should "partial consume should work" in {
-    val (p1, pr1) = PackedPoints(mkEvents(10)) -> Promise[Long]()
-    val (p2, pr2) = PackedPoints(mkEvents(10)) -> Promise[Long]()
-    val pp = new PointsQueue(1, p1.pointsBuffer.length, p1.pointsBuffer.length)
-    checkEmptyPP(pp)
-
-    pp.addPending(p1, pr1)
-    pp.addPending(p2, pr2)
-    val stat1 = pp.stat
-
-    val (buffers, promises) = validPP(pp).consume()
-    assert(buffers.size == 1)
-    assert(promises.size == 1)
-    promises.foreach(_.success(1))
-
-    val stat11 = countStat(buffers, promises)
-    val stat2 = pp.stat
-    assert(stat2 + stat11 === stat1, s"$stat2 + $stat11 === $stat1")
-
-    val (buffers2, promises2) = validPP(pp).consume(ignoreMinAmount = true)
-    assert(buffers2.size == 1)
-    assert(promises2.size == 0)
-    promises2.foreach(_.success(1))
-
-    val stat22 = countStat(buffers2, promises2)
-    val stat3 = pp.stat
-    assert(stat3 + stat22 === stat2, s"$stat3 + $stat22 === $stat2")
-
-    val (buffers3, promises3) = validPP(pp).consume(ignoreMinAmount = true)
-    assert(buffers3.size == 1)
-    assert(promises3.size == 1)
-    promises3.foreach(_.success(1))
-
-    val stat33 = countStat(buffers3, promises3)
-    val stat4 = pp.stat
-    assert(stat4 + stat33 === stat3, s"$stat4 + $stat33 === $stat3")
-
-    checkEmptyPP(pp)
-  }
-
 
   //  "PendingPoinst" should "has good performance" in {
   //    val rr = new MetricRegistry()
@@ -176,16 +90,11 @@ class PendingPointsTestSpec extends FlatSpec {
 
   val points = PackedPoints(mkEvents(10))
 
-  def countStat(buffers: Seq[PartitionBuffer], promises: Seq[Promise[_]]): Stat = {
-    Stat(countBytes(buffers), countPoints(buffers), promises.length)
-  }
-
-  def countPoints(buffers: Seq[PartitionBuffer]): Long = buffers.foldLeft(0l) {
-    (a, b) => a + b.points
-  }
-
-  def countBytes(buffers: Seq[PartitionBuffer]): Long = buffers.foldLeft(0l) {
-    (a, b) => a + b.buffer.length
+  def countStat(buffer: Option[PartitionBuffer], promises: Seq[Promise[_]]): Stat = {
+    if (buffer.isDefined)
+      Stat(buffer.get.buffer.size, buffer.get.points, promises.length)
+    else
+      Stat(0, 0, promises.length)
   }
 
   def checkEmptyPP(pp: PointsQueue): Unit = {
