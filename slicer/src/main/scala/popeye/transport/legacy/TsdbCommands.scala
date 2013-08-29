@@ -58,16 +58,14 @@ abstract class TsdbCommands(metrics: TsdbTelnetMetrics, config: Config) extends 
             if (deflater.isDefined)
               throw new IllegalArgumentException("Already in deflate mode")
             deflater = Some(new CompressionDecoder(strings(1).toInt, Gzip()))
-            if (log.isDebugEnabled)
-              log.debug(s"Entering deflate mode, expected ${strings(1)} bytes")
+            debug(s"Entering deflate mode, expected ${strings(1)} bytes")
             return remainder // early exit, we need to reenter doCommands
 
           case "snappy" =>
             if (deflater.isDefined)
               throw new IllegalArgumentException("Already in deflate mode")
             deflater = Some(new CompressionDecoder(strings(1).toInt, Snappy()))
-            if (log.isDebugEnabled)
-              log.debug(s"Entering snappy mode, expected ${strings(1)} bytes")
+            debug(s"Entering snappy mode, expected ${strings(1)} bytes")
             return remainder // early exit, we need to reenter doCommands
 
           case "put" =>
@@ -107,8 +105,7 @@ abstract class TsdbCommands(metrics: TsdbTelnetMetrics, config: Config) extends 
         }
         if (decoder.isClosed) {
           deflater = None
-          if (log.isDebugEnabled)
-            log.debug(s"Leaving encoded ${decoder.codec} mode")
+          debug(s"Leaving encoded ${decoder.codec} mode")
           if (remainder.isDefined)
             doCommands(remainder.get)
           else
