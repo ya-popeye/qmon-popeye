@@ -4,7 +4,7 @@ import akka.actor._
 import kafka.producer._
 import java.util.Properties
 import com.typesafe.config.Config
-import popeye.{IdGenerator, ConfigUtil, Instrumented}
+import popeye.{Logging, IdGenerator, ConfigUtil, Instrumented}
 import ConfigUtil._
 import akka.routing.FromConfig
 import com.codahale.metrics.{Timer, MetricRegistry}
@@ -37,25 +37,25 @@ private object KafkaPointProducerProtocol {
   case class CorrelatedPoint(correlationId: Long, sender: ActorRef)(val points: Seq[Point])
 
   case class ProducePack(batchId: Long, started: Timer.Context)
-                        (val batch: Seq[PointsQueue.PartitionBuffer], val promises: Seq[Promise[Long]])
+                        (val buffer: PointsQueue.PartitionBuffer, val promises: Seq[Promise[Long]])
 
 }
 
-class KafkaPointSender(topic: String, producerConfig: ProducerConfig, metrics: KafkaPointProducerMetrics, batcher: KafkaPointProducer) extends Actor with ActorLogging {
+class KafkaPointSender(topic: String, producerConfig: ProducerConfig, metrics: KafkaPointProducerMetrics, batcher: KafkaPointProducer)
+  extends Actor with Logging {
 
   import KafkaPointProducerProtocol._
 
   val producer = new Producer[Int, Array[Byte]](producerConfig)
 
-
   override def preStart() {
     super.preStart()
-    log.debug("Starting sender")
+    debug("Starting sender")
     batcher.addWorker(self)
   }
 
   override def postStop() {
-    log.debug("Stopping sender")
+    debug("Stopping sender")
     super.postStop()
     producer.close()
   }
@@ -64,19 +64,16 @@ class KafkaPointSender(topic: String, producerConfig: ProducerConfig, metrics: K
     case p@ProducePack(batchId, started) =>
       val sendctx = metrics.sendTimer.timerContext()
 
-      val messages: Seq[KeyedMessage[Int, Array[Byte]]] = p.batch.map {
-        pb =>
-          metrics.pointsMeter.mark(pb.points)
-          new KeyedMessage(topic, pb.partitionId, PackedPoints.prependBatchId(batchId, pb.buffer))
-      }
-
       try {
-        producer.send(messages: _*)
-        metrics.batchCompleteMeter.mark
-        if (log.isDebugEnabled) {
+        val message = new KeyedMessage(topic, p.buffer.partitionId, PackedPoints.prependBatchId(batchId, p.buffer.buffer))
+        producer.send(message)
+        debug(s"Sent batch ${p.batchId} to partition ${p.buffer.partitionId}")
+        metrics.pointsMeter.mark(p.buffer.points)
+        metrics.batchCompleteMeter.mark()
+        withDebug {
           p.promises.foreach {
             promise =>
-              log.debug(s"${self.path} got promise $promise for SUCCESS batch ${p.batchId}")
+              debug(s"${self.path} got promise $promise for SUCCESS batch ${p.batchId}")
           }
         }
         p.promises
@@ -84,8 +81,8 @@ class KafkaPointSender(topic: String, producerConfig: ProducerConfig, metrics: K
           .foreach(_.success(batchId))
       } catch {
         case e: Exception => sender ! Failure(e)
-          metrics.batchFailedMeter.mark
-          if (log.isDebugEnabled) {
+          metrics.batchFailedMeter.mark()
+          withDebug {
             p.promises.foreach {
               promise =>
                 log.debug(s"${self.path} got promise for FAILURE $promise for batch ${p.batchId}")
@@ -98,8 +95,7 @@ class KafkaPointSender(topic: String, producerConfig: ProducerConfig, metrics: K
       } finally {
         val sended = sendctx.stop.nano
         val elapsed = started.stop().nano
-        if (log.isDebugEnabled)
-          log.debug("batch {} sent in {}ms at total {}ms", p.batchId, sended.toMillis, elapsed.toMillis)
+        log.debug(s"batch ${p.batchId} sent in ${sended.toMillis}ms at total ${elapsed.toMillis}ms")
         batcher.addWorker(self)
         sender ! WorkDone(batchId)
       }
@@ -111,7 +107,7 @@ class KafkaPointProducer(config: Config,
                          producerConfig: ProducerConfig,
                          idGenerator: IdGenerator,
                          val metrics: KafkaPointProducerMetrics)
-  extends Actor with ActorLogging {
+  extends Actor with Logging {
 
   import KafkaPointProducerProtocol._
 
@@ -187,10 +183,10 @@ class KafkaPointProducer(config: Config,
         val batchId = idGenerator.nextId()
         val (data, promises) = pendingPoints.consume(ignoreMinSize)
         if (!data.isEmpty) {
+          worker ! ProducePack(batchId, metrics.writeTimer.timerContext())(data.get, promises)
           log.debug(s"Sending ${data.foldLeft(0)({
             (a, b) => a + b.buffer.length
           })} bytes, will trigger ${promises.size} promises")
-          worker ! ProducePack(batchId, metrics.writeTimer.timerContext())(data, promises)
           flushPoints(ignoreMinSize)
         } else {
           workQueue.add(worker)

@@ -14,7 +14,8 @@ class PackedPoints(avgMessageSize: Int = 100, messagesPerExtent: Int = 100) {
   private[this] val hashesCoder = CodedOutputStream.newInstance(hashes)
   private[this] val points = new ExpandingBuffer(messagesPerExtent * avgMessageSize)
   private[this] val pointsCoder = CodedOutputStream.newInstance(points)
-  var pointsCount = 0
+  var cumulativeHash: Int = 0
+  var pointsCount: Int = 0
 
   @inline
   def +=(point: Point) = append(point)
@@ -26,6 +27,7 @@ class PackedPoints(avgMessageSize: Int = 100, messagesPerExtent: Int = 100) {
     pointsCoder.writeRawVarint32(size)
     point.writeTo(pointsCoder)
     pointsCount += 1
+    cumulativeHash ^= hash
     this
   }
 
@@ -42,7 +44,7 @@ class PackedPoints(avgMessageSize: Int = 100, messagesPerExtent: Int = 100) {
   def asPacketsBuffer = {
     hashesCoder.flush()
     pointsCoder.flush()
-    new PackedPointsBuffer(points, hashes, pointsCount)
+    new PackedPointsBuffer(points, hashes, pointsCount, cumulativeHash)
   }
 }
 
@@ -89,9 +91,14 @@ class ExpandingBuffer(extent: Int) extends OutputStream {
   }
 }
 
-case class PackedPointsIndex(hash: Int, offset: Int, len: Int, delimitedPoints: Array[Byte])
+case class PackedPointsIndex(hash: Int, offset: Int, len: Int, delimitedPoints: Array[Byte], cumulativeHash: Int)
 
-class PackedPointsBuffer private[proto](points: ExpandingBuffer, hashes: ExpandingBuffer, pointsCount: Int) extends Traversable[PackedPointsIndex] {
+class PackedPointsBuffer private[proto](
+                                         points: ExpandingBuffer,
+                                         hashes: ExpandingBuffer,
+                                         pointsCount: Int,
+                                         val cumulativeHash: Int)
+  extends Traversable[PackedPointsIndex] {
 
   override def size: Int = pointsCount
 
@@ -108,7 +115,7 @@ class PackedPointsBuffer private[proto](points: ExpandingBuffer, hashes: Expandi
       val size = data.readRawVarint32()
       data.skipRawBytes(size) // skip message
       val rawSize = size + CodedOutputStream.computeRawVarint32Size(size)
-      f(PackedPointsIndex(hash, off, rawSize, points.buffer))
+      f(PackedPointsIndex(hash, off, rawSize, points.buffer, cumulativeHash))
       off += rawSize
     }
   }
