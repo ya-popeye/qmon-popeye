@@ -21,16 +21,15 @@ object PointsQueue extends Logging {
     def +(other: Stat) = Stat(bytes + other.bytes, points + other.points, promises + other.promises)
   }
 
-  final class PromiseForOffset(val offset: Int, val promise: Promise[Long], val shares: AtomicInteger)
+  final class PromiseForOffset(val offset: Int, val promise: Promise[Long])
 
   final class PartitionBuffer(val partitionId: Int, val points: Long, val buffer: Array[Byte])
 
-  final class BufferForPartition(
-                                  val partitionId: Int,
-                                  var consumed: Int = 0,
-                                  var points: Long = 0,
-                                  var time: Long = 0,
-                                  val buffer: ByteArrayOutputStream = new ByteArrayOutputStream()) {
+  final class BufferedPoints(
+                              var consumed: Int = 0,
+                              var points: Long = 0,
+                              var time: Long = 0,
+                              val buffer: ByteArrayOutputStream = new ByteArrayOutputStream()) {
 
     def cumulativeOffset = consumed + buffer.size
 
@@ -67,7 +66,7 @@ object PointsQueue extends Logging {
         if (false) {
           val plimit = coded.pushLimit(size)
           val point: Point = Point.newBuilder().mergeFrom(coded).build
-          log.debug(point.toString)
+          debug(point.toString)
           coded.popLimit(plimit)
         } else {
           coded.skipRawBytes(size)
@@ -89,45 +88,16 @@ object PointsQueue extends Logging {
 
 }
 
-class PointsQueue(partitions: Int, minAmount: Int, maxAmount: Int, timeStep: Long = (100 millis).toMillis) {
+class PointsQueue(partitions: Int, minAmount: Int, maxAmount: Int) {
 
   import PointsQueue._
 
-  private[this] val promises: Array[mutable.PriorityQueue[PromiseForOffset]] = Array.fill(partitions) {
-    mutable.PriorityQueue[PromiseForOffset]()(Ordering.by(-_.offset))
-  }
-  private[this] val buffers: Array[BufferForPartition] = {
-    val arr = new Array[BufferForPartition](partitions)
-    var i = 0
-    while (i < partitions) {
-      arr(i) = new BufferForPartition(i)
-      i += 1
-    }
-    arr
-  }
-
-
-  private def mkOrder = {
-    val pq = mutable.PriorityQueue[BufferForPartition]()(Ordering.by({
-      bp =>
-        if (bp.points == 0) {
-          0
-        } else {
-          val now = System.currentTimeMillis()
-          val step = (now - bp.time) % 1000000 / timeStep // take 1000 secs for ordering steps
-          step << 24 | bp.points
-        }
-    }))
-    pq ++= buffers
-    pq
-  }
+  private[this] val promises: mutable.PriorityQueue[PromiseForOffset] = mutable.PriorityQueue[PromiseForOffset]()(Ordering.by(-_.offset))
+  private[this] val points: BufferedPoints = new BufferedPoints()
+  private[this] var roundRobinPartition: Int = partitions - 1
 
   def stat: Stat = {
-    val bufferStat = buffers.foldLeft((0l /* points */ , 0 /* bytes */ )) {
-      (accum, bp) => (accum._1 + bp.points, accum._2 + bp.buffer.size())
-    }
-    val promisesStat = promises.flatMap {a => a}.map {_.promise}.distinct.size
-    Stat(bufferStat._2, bufferStat._1, promisesStat)
+    Stat(points.points, points.buffer.size, promises.size)
   }
 
   @inline
@@ -136,69 +106,52 @@ class PointsQueue(partitions: Int, minAmount: Int, maxAmount: Int, timeStep: Lon
   }
 
   def addPending(buffer: PackedPointsBuffer, maybePromise: Option[Promise[Long]]): Unit = {
-    val promiseOffsets = new Array[Int](partitions)
     buffer.foreach {
       pidx =>
-        val partIdx: Int = Math.abs(pidx.hash) % partitions
-        val pb: PointsQueue.BufferForPartition = buffers(partIdx)
-        pb.append(pidx)
-        promiseOffsets(partIdx) = pb.cumulativeOffset
+        points.append(pidx)
     }
-
-    val shares = new AtomicInteger(0)
     maybePromise foreach (
       promise =>
-        for (partition <- 0 until promiseOffsets.length if promiseOffsets(partition) > 0) {
-          shares.incrementAndGet()
-          promises(partition).enqueue(new PromiseForOffset(promiseOffsets(partition), promise, shares))
-        }
+        promises.enqueue(new PromiseForOffset(points.cumulativeOffset, promise))
       )
   }
 
-  def consume(ignoreMinAmount: Boolean = false): (Seq[PartitionBuffer], Seq[Promise[Long]]) = {
-    (consumeInternal(ignoreMinAmount, mkOrder.toIterator, 0, Seq()), consumePromises())
+  def consume(ignoreMinAmount: Boolean = false): (Option[PartitionBuffer], Seq[Promise[Long]]) = {
+    val buffer = consumeInternal(ignoreMinAmount)
+    if (buffer.isDefined) {
+      (buffer, consumePromises())
+    } else {
+      (buffer, Seq.empty)
+    }
+  }
+
+  private def nextPartitionId = {
+    roundRobinPartition += 1
+    roundRobinPartition % partitions
+  }
+
+  private def consumeInternal(ignoreMinAmount: Boolean): Option[PartitionBuffer] = {
+    if ((ignoreMinAmount && points.buffer.size > 0) || points.buffer.size >= minAmount) {
+      Some(points.consume(nextPartitionId, maxAmount))
+    } else {
+      None
+    }
   }
 
   private def consumePromises(): Seq[Promise[Long]] = {
     var rv = ArrayBuffer[Promise[Long]]()
-    var partition = 0
-    while (partition < promises.length) {
-      def traverseQueue() {
-        val bp = buffers(partition)
-        val queue = promises(partition)
-        while (!queue.isEmpty) {
-          val op = queue.dequeue()
-          if (op.offset <= bp.consumed) {
-            val shares = op.shares.decrementAndGet()
-            require(shares >= 0)
-            if (shares == 0)
-              rv += op.promise
-          } else {
-            queue.enqueue(op)
-            return
-          }
-        }
+    while (!promises.isEmpty) {
+      val op = promises.dequeue()
+      if (op.offset <= points.consumed) {
+        rv += op.promise
+      } else {
+        promises.enqueue(op)
+        return rv // ok, first promise out of cumulative offset, stop iteration for now
       }
-      traverseQueue()
-      partition += 1
     }
     rv
   }
 
-  @tailrec
-  private def consumeInternal(ignoreMinAmount: Boolean, partitions: Iterator[BufferForPartition], total: Int, seq: Seq[PartitionBuffer]): Seq[PartitionBuffer] = {
-    if (total >= maxAmount)
-      return seq
-    if (!partitions.hasNext)
-      return seq
-    val pb = partitions.next()
-    if ((ignoreMinAmount && pb.buffer.size > 0) || pb.buffer.size >= minAmount) {
-      val buffer = pb.consume(pb.partitionId, maxAmount)
-      consumeInternal(ignoreMinAmount, partitions, total + buffer.buffer.length, seq :+ buffer)
-    } else {
-      consumeInternal(ignoreMinAmount, partitions, total, seq)
-    }
-  }
 }
 
 

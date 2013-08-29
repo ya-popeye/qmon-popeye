@@ -131,7 +131,7 @@ object PopeyeBuild extends Build {
     base = file("bench"),
     settings = defaultSettings ++ QMonDistPlugin.distSettings)
     .settings(
-    distMainClass := "popeye.transport.bench.Main",
+    distMainClass := "popeye.transport.bench.GenerateMain",
     libraryDependencies ++= Seq(
       "nl.grons" %% "metrics-scala" % Version.Metrics,
       "com.typesafe.akka" %% "akka-actor" % Version.Akka,

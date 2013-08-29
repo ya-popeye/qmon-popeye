@@ -2,6 +2,7 @@ qmon-popeye (0.5.4) unstable; urgency=low
 
   * moving from ActorLogging to Logging trait, not needed to turn on akka
     loging now to get application debug logs
+  * changing partitioning scheme, now sending to partitions in circular style (RR todo)
 
  -- Andrey Stepachev <octo@yandex-team.ru>  Mon, 29 Aug 2013 20:00:00 +0400
 
