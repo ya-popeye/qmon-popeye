@@ -13,6 +13,11 @@ trait Logging {
 
   private def msgWithLogIdent(msg: String) = logIdent + msg
 
+  def withTrace(body: => Unit) = {
+    if (log.isTraceEnabled)
+      body
+  }
+
   def trace(msg: => String): Unit = {
     if (log.isTraceEnabled())
       log.trace(msgWithLogIdent(msg))
@@ -35,6 +40,11 @@ trait Logging {
 
   def swallowTrace(action: => Unit) {
     Utils.swallow(log.trace, action)
+  }
+
+  def withDebug(body: => Unit) = {
+    if (log.isDebugEnabled)
+      body
   }
 
   def debug(msg: => String): Unit = {

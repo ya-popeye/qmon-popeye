@@ -68,15 +68,13 @@ class TsdbTelnetHandler(connection: ActorRef,
 
     override def startExit(): Unit = {
       pendingExit = true
-      if (log.isDebugEnabled)
-        log.debug(s"Triggered exit")
+      debug(s"Triggered exit")
     }
 
     override def commit(correlationId: Option[Long]): Unit = {
       sendPack()
       if (correlationId.isDefined) {
-        if (log.isDebugEnabled)
-          log.debug(s"Triggered commit for correlationId $correlationId and pointId $pointId")
+        debug(s"Triggered commit for correlationId $correlationId and pointId $pointId")
         pendingCommits = (pendingCommits :+ CommitReq(sender, pointId, correlationId.get,
           metrics.commitTimer.timerContext())).sortBy(_.pointId)
       }
@@ -116,9 +114,8 @@ class TsdbTelnetHandler(connection: ActorRef,
       if (lastBatchId < batchId) {
         lastBatchId = batchId
       }
-      if (log.isDebugEnabled)
-        log.debug(s"Produce done: ${completeCorrelationId.size} correlations " +
-          s"as batch $batchId (now lastBatchId=$lastBatchId)")
+      debug(s"Produce done: ${completeCorrelationId.size} correlations " +
+        s"as batch $batchId (now lastBatchId=$lastBatchId)")
 
       pendingCorrelations --= completeCorrelationId
       val commitedSize: Long = completeCorrelationId.size
@@ -130,8 +127,7 @@ class TsdbTelnetHandler(connection: ActorRef,
       throttle(timeout = true)
 
     case x: Tcp.ConnectionClosed =>
-      if (log.isDebugEnabled)
-        log.debug("Connection closed {}", x)
+      debug(s"Connection closed $x")
       context.stop(self)
   }
 
@@ -171,8 +167,7 @@ class TsdbTelnetHandler(connection: ActorRef,
         case (complete, incomplete) =>
           complete foreach {
             p =>
-              if (log.isDebugEnabled)
-                log.debug(s"Commit done: ${p.correlation} = $lastBatchId")
+              debug(s"Commit done: ${p.correlation} = $lastBatchId")
               p.sender ! Tcp.Write(ByteString(s"OK ${p.correlation} = $lastBatchId\n"))
               p.timerContext.stop()
           }
@@ -190,8 +185,7 @@ class TsdbTelnetHandler(connection: ActorRef,
     if (size > hwPendingPoints) {
       if (!paused) {
         paused = true
-        if (log.isDebugEnabled)
-          log.debug(s"Pausing reads: $size > $hwPendingPoints")
+        debug(s"Pausing reads: $size > $hwPendingPoints")
         context.setReceiveTimeout(1 millisecond)
       }
       connection ! Tcp.SuspendReading
@@ -202,8 +196,7 @@ class TsdbTelnetHandler(connection: ActorRef,
       paused = false
       connection ! Tcp.ResumeReading
       context.setReceiveTimeout(Duration.Undefined)
-      if (log.isDebugEnabled)
-        log.debug(s"Reads resumed: $size < $lwPendingPoints")
+      debug(s"Reads resumed: $size < $lwPendingPoints")
     }
   }
 }
@@ -218,7 +211,7 @@ class TsdbTelnetServer(local: InetSocketAddress, kafka: ActorRef, metrics: TsdbT
 
   def receive: Receive = {
     case _: Bound ⇒
-      log.info("Bound to {}", sender)
+      info("Bound to $sender")
       context.become(bound(sender))
   }
 
@@ -229,20 +222,19 @@ class TsdbTelnetServer(local: InetSocketAddress, kafka: ActorRef, metrics: TsdbT
       val handler = context.actorOf(Props(new TsdbTelnetHandler(connection, kafka, system.settings.config, metrics))
         .withDeploy(Deploy.local))
 
-      if (log.isDebugEnabled)
-        log.debug(s"Connection from $remote (connection=${connection.path})")
+      debug(s"Connection from $remote (connection=${connection.path})")
       metrics.connections.incrementAndGet()
       connection ! Tcp.Register(handler, keepOpenOnPeerClosed = true)
   }
 
   override def preStart() {
     super.preStart()
-    log.info("Started Tsdb Telnet server")
+    info("Started Tsdb Telnet server")
   }
 
   override def postStop() {
     super.postStop()
-    log.info("Stoped Tsdb Telnet server")
+    info("Stoped Tsdb Telnet server")
   }
 }
 

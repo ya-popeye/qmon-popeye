@@ -55,7 +55,7 @@ object TsdbPointConsumerProtocol {
 }
 
 class TsdbPointConsumer(config: Config, tsdb: TSDB, val metrics: TsdbPointConsumerMetrics)
-  extends Actor with ActorLogging {
+  extends Actor with Logging {
 
   import TsdbPointConsumer._
 
@@ -81,7 +81,7 @@ class TsdbPointConsumer(config: Config, tsdb: TSDB, val metrics: TsdbPointConsum
     super.preStart()
     // jitter to prevent rebalance deadlock
     //context.system.scheduler.scheduleOnce(Random.nextInt(10) seconds, self, ConsumeDone(Nil))
-    log.debug("Starting TsdbPointConsumer for group " + group + " and topic " + topic)
+    debug("Starting TsdbPointConsumer for group " + group + " and topic " + topic)
     import context.dispatcher
     checker = Some(context.system.scheduler.schedule(checkTick, checkTick, self, CheckAvailable))
   }
@@ -91,7 +91,7 @@ class TsdbPointConsumer(config: Config, tsdb: TSDB, val metrics: TsdbPointConsum
       _.cancel()
     }
     super.postStop()
-    log.debug("Stopping TsdbPointConsumer for group " + group + " and topic " + topic)
+    debug("Stopping TsdbPointConsumer for group " + group + " and topic " + topic)
     connector.shutdown()
   }
 
@@ -105,7 +105,7 @@ class TsdbPointConsumer(config: Config, tsdb: TSDB, val metrics: TsdbPointConsum
       doNext()
 
     case ConsumeFailed(batches, ex) =>
-      log.error(ex, "Batches {} failed", batches.size)
+      error("Batches ${batches.size} failed", ex)
       metrics.batchFailedHist.mark()
       throw new BatchProcessingFailedException
   }
@@ -131,7 +131,7 @@ class TsdbPointConsumer(config: Config, tsdb: TSDB, val metrics: TsdbPointConsum
     } catch {
       case ex: ConsumerTimeoutException => // ok
       case ex: Throwable =>
-        log.error("Failed to consume", ex)
+        error("Failed to consume", ex)
         throw ex
     }
     if (batchIds.size > 0) {
@@ -148,14 +148,13 @@ class TsdbPointConsumer(config: Config, tsdb: TSDB, val metrics: TsdbPointConsum
       protected def complete(): Unit = {
         val nanos = ctx.stop()
         self ! ConsumeDone(batches)
-        if (log.isDebugEnabled)
-          log.debug("Processing of batches {} complete in {}ms", batches.size, NANOSECONDS.toMillis(nanos))
+        debug(s"Processing of batches ${batches.size} complete in ${NANOSECONDS.toMillis(nanos)}ms")
       }
 
       protected def fail(cause: Throwable): Unit = {
         val nanos = ctx.stop()
         self ! ConsumeFailed(batches, cause)
-        log.error(cause, "Processing of batches {} failed in {}ms", batches.size, NANOSECONDS.toMillis(nanos))
+        error(s"Processing of batches ${batches.size} failed in ${NANOSECONDS.toMillis(nanos)}ms", cause)
       }
     }
   }
@@ -168,7 +167,7 @@ object TsdbPointConsumer extends Logging {
     val hbc = hbaseClient getOrElse {
       val cluster: String = config.getString("tsdb.zk.cluster")
       val zkPath: String = config.getString("tsdb.zk.path")
-      log.info(s"Creating HBaseClient: ${cluster}/${zkPath}")
+      info(s"Creating HBaseClient: ${cluster}/${zkPath}")
       new HBaseClient(cluster, zkPath)
     }
     val tsdb: TSDB = new TSDB(hbc,
@@ -217,11 +216,11 @@ object TsdbPointConsumer extends Logging {
     val stream = streams match {
       case Some(List(s)) => Some(s)
       case _ => {
-        log.error("Did not get a valid stream from topic " + topic)
+        error("Did not get a valid stream from topic " + topic)
         None
       }
     }
-    log.info(s"Consumer created")
+    info(s"Consumer created")
     new ConsumerPair(consumerConnector, stream)
   }
 }

@@ -1,3 +1,10 @@
+qmon-popeye (0.5.4) unstable; urgency=low
+
+  * moving from ActorLogging to Logging trait, not needed to turn on akka
+    loging now to get application debug logs
+
+ -- Andrey Stepachev <octo@yandex-team.ru>  Mon, 29 Aug 2013 20:00:00 +0400
+
 qmon-popeye (0.5.3) unstable; urgency=low
 
   * fixing possible GC in case of uncontrolled client writes, bis
