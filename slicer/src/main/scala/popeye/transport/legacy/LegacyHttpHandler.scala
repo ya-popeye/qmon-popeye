@@ -85,7 +85,7 @@ class LegacyHttpHandler(config: Config, kafkaProducer: ActorRef, metrics: Legacy
         case Failure(ex: JsonParseException) =>
           client ! HttpResponse(status = StatusCodes.UnprocessableEntity, entity = ex.getMessage)
         case Failure(ex) =>
-          log.error("Failed", ex)
+          error("Failed", ex)
           client ! HttpResponse(status = StatusCodes.InternalServerError, entity = ex.getMessage)
       }
 
