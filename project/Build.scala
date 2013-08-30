@@ -1,9 +1,19 @@
 import sbt._
+import sbt.ExclusionRule
+import sbt.ExclusionRule
 import sbt.Keys._
 import QMonDistPlugin._
 import net.virtualvoid.sbt.graph.{Plugin => Dep}
 import scala._
 
+object Util {
+  implicit def dependencyFilterer(deps: Seq[ModuleID]) = new Object {
+    def excluding(group: String, artifactId: String) =
+      deps.map(_.exclude(group, artifactId))
+    def excluding(rules: ExclusionRule*) =
+      deps.map(_.excludeAll(rules :_*))
+  }
+}
 
 object Compiler {
   val defaultSettings = Seq(
@@ -39,8 +49,6 @@ object Version {
   val Scala = "2.10.1"
   val Akka = "2.2-SNAPSHOT"
   val Spray = "1.2-20130710"
-  val Hadoop = "1.2.0"
-  val HBase = "0.94.6"
   val ScalaTest = "1.9.1"
   val Mockito = "1.9.0"
   val Jackson = "1.8.8"
@@ -49,9 +57,60 @@ object Version {
   val Slf4j = "1.7.5"
   val Logback = "1.0.7"
   val Snappy = "1.0.4.1"
+
+  val slf4jDependencies: Seq[ModuleID] = Seq(
+    "org.slf4j" % "jcl-over-slf4j" % Version.Slf4j,
+    "org.slf4j" % "log4j-over-slf4j" % Version.Slf4j,
+    "ch.qos.logback" % "logback-classic" % Version.Logback
+  )
+
+  val commonExclusions = Seq(
+    ExclusionRule(name = "jline"),
+    ExclusionRule(name = "junit")
+  )
+
+  val slf4jExclusions = Seq(
+    ExclusionRule(name = "slf4j-log4j12"),
+    ExclusionRule(name = "slf4j-simple")
+  )
+}
+
+object HBase {
+
+  import Util._
+
+  val Hadoop = "2.0.0-cdh4.3.1"
+  val HBase = "0.94.6-cdh4.3.1"
+
+  val settings = Seq(
+    resolvers ++= Seq(
+      "cdh4.3.1" at "https://repository.cloudera.com/artifactory/cloudera-repos"
+    ),
+    libraryDependencies ++= Seq(
+      "org.apache.hadoop" % "hadoop-common" % Hadoop,
+      "org.apache.hbase" % "hbase" % HBase
+    ).excluding(
+      ExclusionRule(name = "commons-daemon"),
+      ExclusionRule(name = "commons-cli"),
+      ExclusionRule(name = "commons-logging"),
+      ExclusionRule(name = "jsp-api"),
+      ExclusionRule(name = "servlet-api"),
+      ExclusionRule(name = "kfs"),
+      ExclusionRule(name = "avro"),
+      ExclusionRule(organization = "org.jruby"),
+      ExclusionRule(organization = "tomcat"),
+      ExclusionRule(organization = "org.apache.thrift"),
+      ExclusionRule(organization = "com.jcraft"),
+      ExclusionRule(organization = "org.mortbay.jetty"),
+      ExclusionRule(organization = "com.sun.jersey")
+    ).excluding(Version.slf4jExclusions :_*)
+     .excluding(Version.commonExclusions :_*)
+  )
 }
 
 object PopeyeBuild extends Build {
+
+  import Util._
 
   lazy val defaultSettings =
     Defaults.defaultSettings ++
@@ -70,23 +129,18 @@ object PopeyeBuild extends Build {
     base = file("core"),
     settings = defaultSettings)
     .settings(
-    libraryDependencies ++= Seq(
+    libraryDependencies ++= Version.slf4jDependencies ++ Seq(
       "com.google.protobuf" % "protobuf-java" % "2.4.1",
-      "org.apache.kafka" %% "kafka" % Version.Kafka % "compile->compile;test->test"
-        exclude("org.slf4j", "slf4j-log4j")
-        exclude("org.slf4j", "slf4j-simple"),
+      "org.apache.kafka" %% "kafka" % Version.Kafka % "compile->compile;test->test",
       "nl.grons" %% "metrics-scala" % Version.Metrics,
       "org.codehaus.jackson" % "jackson-core-asl" % Version.Jackson,
-      "org.slf4j" % "jcl-over-slf4j" % Version.Slf4j,
-      "org.slf4j" % "log4j-over-slf4j" % Version.Slf4j,
       "com.typesafe.akka" %% "akka-actor" % Version.Akka,
       "com.typesafe.akka" %% "akka-slf4j" % Version.Akka,
-      "ch.qos.logback" % "logback-classic" % Version.Logback,
-      "org.hbase" % "asynchbase" % "1.4.1", // TODO: move that to pump module
       "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
       "org.mockito" % "mockito-core" % Version.Mockito % "test",
       "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"
-    )
+    ).excluding(Version.slf4jExclusions :_*)
+     .excluding(Version.commonExclusions :_*)
   )
 
   lazy val popeyeSlicer = Project(
@@ -98,33 +152,29 @@ object PopeyeBuild extends Build {
     distMainClass := "popeye.transport.SlicerMain",
     distJvmOptions := "-Xms4096M -Xmx4096M -Xss1M -XX:MaxPermSize=256M -XX:+UseParallelGC -XX:NewSize=3G",
     libraryDependencies ++= Seq(
-      "org.apache.kafka" %% "kafka" % Version.Kafka % "compile->compile;test->test"
-        exclude("org.slf4j", "slf4j-simple"),
-      "io.spray" % "spray-can" % Version.Spray exclude("com.typesafe.akka", "akka-actor"),
-      "io.spray" % "spray-io" % Version.Spray exclude("com.typesafe.akka", "akka-actor"),
-      "com.typesafe.akka" %% "akka-actor" % Version.Akka,
-      "com.typesafe.akka" %% "akka-slf4j" % Version.Akka,
+      "io.spray" % "spray-can" % Version.Spray,
+      "io.spray" % "spray-io" % Version.Spray,
       "org.xerial.snappy" % "snappy-java" % Version.Snappy,
       "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
       "org.mockito" % "mockito-core" % Version.Mockito % "test",
       "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"
-    )
+    ).excluding(Version.slf4jExclusions :_*)
+     .excluding(Version.commonExclusions :_*)
   )
 
   lazy val popeyePump = Project(
     id = "popeye-pump",
     base = file("pump"),
-    settings = defaultSettings ++ QMonDistPlugin.distSettings)
+    settings = defaultSettings ++ QMonDistPlugin.distSettings ++ HBase.settings)
     .dependsOn(popeyeCommon % "compile->compile;test->test")
     .settings(
     distMainClass := "popeye.transport.PumpMain",
     libraryDependencies ++= Seq(
-      "org.apache.kafka" %% "kafka" % Version.Kafka % "compile->compile;test->test"
-        exclude("org.slf4j", "slf4j-simple"),
       "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
       "org.mockito" % "mockito-core" % Version.Mockito % "test",
       "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"
-    )
+    ).excluding(Version.slf4jExclusions :_*)
+     .excluding(Version.commonExclusions :_*)
   )
   lazy val popeyeBench = Project(
     id = "popeye-bench",
@@ -132,21 +182,17 @@ object PopeyeBuild extends Build {
     settings = defaultSettings ++ QMonDistPlugin.distSettings)
     .settings(
     distMainClass := "popeye.transport.bench.GenerateMain",
-    libraryDependencies ++= Seq(
+    libraryDependencies ++= Version.slf4jDependencies ++ Seq(
       "nl.grons" %% "metrics-scala" % Version.Metrics,
       "com.typesafe.akka" %% "akka-actor" % Version.Akka,
       "com.typesafe.akka" %% "akka-slf4j" % Version.Akka,
-      "io.spray" % "spray-can" % Version.Spray exclude("com.typesafe.akka", "akka-actor"),
-      "io.spray" % "spray-io" % Version.Spray exclude("com.typesafe.akka", "akka-actor"),
-      "org.codehaus.jackson" % "jackson-core-asl" % Version.Jackson,
-      "org.slf4j" % "jcl-over-slf4j" % Version.Slf4j,
-      "org.slf4j" % "log4j-over-slf4j" % Version.Slf4j,
-      "ch.qos.logback" % "logback-classic" % Version.Logback,
+      "io.spray" % "spray-can" % Version.Spray,
+      "io.spray" % "spray-io" % Version.Spray,
       "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
       "org.mockito" % "mockito-core" % Version.Mockito % "test",
       "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"
-    )
-
+    ).excluding(Version.commonExclusions :_*)
+     .excluding(Version.slf4jExclusions :_*)
   )
 
 }
