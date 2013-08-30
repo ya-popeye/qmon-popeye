@@ -58,8 +58,6 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
 
   private TSDB tsdb;
   private HBaseClient client;
-  private long startMillis;
-  private long finishMillis;
   private AtomicBoolean canceled = new AtomicBoolean(false);
   private AtomicBoolean batched = new AtomicBoolean(false);
   private volatile boolean throttle = false;
@@ -93,14 +91,6 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
     return true;
   }
 
-  public long getStartMillis() {
-    return startMillis;
-  }
-
-  public long getFinishMillis() {
-    return finishMillis;
-  }
-
   @Override
   public Object get() throws InterruptedException, ExecutionException {
     return null;
@@ -112,59 +102,20 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
   }
 
   private void writeDataPoints(Message.Point[] data) throws Exception {
-    startMillis = System.currentTimeMillis();
     if (data.length == 0) {
       batched.set(true);
       tryComplete();
       return;
     }
-    final SeriesWriter.TsdbPut[] tsdbPuts = new SeriesWriter.TsdbPut[data.length];
     final HashSet<String> errors = new HashSet<String>();
-    int validEvents = 0;
+    int cnt = 0;
     for (Message.Point point : data) {
       try {
         checkEvent(point);
-        final byte[] row = rowKeyTemplate(point.getMetric(), point.getAttributesList());
-        tsdbPuts[validEvents++] = new SeriesWriter.TsdbPut(row, point);
+        sendEvent(point);
+        cnt++;
       } catch (IllegalArgumentException ie) {
         errors.add(ie.getMessage());
-      }
-    }
-    Arrays.sort(tsdbPuts, 0, validEvents);
-
-    final SeriesWriter seriesWriter = new SeriesWriter(tsdb);
-    int prevRow = 0;
-    int cnt = 0;
-    for (int i = 0; i < validEvents; i++) {
-      if (Bytes.memcmp(tsdbPuts[prevRow].row, tsdbPuts[i].row) != 0) {
-        seriesWriter.startSeries(tsdbPuts[i].row);
-        for (int j = prevRow; j < i; j++) {
-          try {
-            // skip points with the same row and timestamp
-            if (j > prevRow &&
-                    tsdbPuts[j].point.getTimestamp() == tsdbPuts[j - 1].point.getTimestamp()) {
-              continue;
-            }
-
-            final Deferred<Object> d;
-            final Message.Point pointData = tsdbPuts[j].point;
-            if (pointData.hasIntValue()) {
-              d = seriesWriter.addPoint(pointData.getTimestamp(), pointData.getIntValue());
-            } else if (pointData.hasFloatValue()) {  // floating point value
-              d = seriesWriter.addPoint(pointData.getTimestamp(), pointData.getFloatValue());
-            } else {
-              throw new IllegalArgumentException("Metric doesn't have neither int nor float value");
-            }
-            batchedEvents.incrementAndGet();
-            d.addBoth(this);
-            cnt++;
-            if (throttle)
-              throttle(d);
-          } catch (IllegalArgumentException ie) {
-            errors.add(ie.getMessage());
-          }
-        }
-        prevRow = i;
       }
     }
     batched.set(true);
@@ -173,6 +124,72 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
       logger.error("Points " + cnt + " of " + data.length
               + " imported with " + errors.toString() + " IllegalArgumentExceptions");
     }
+  }
+
+  private void sendEvent(Message.Point point) {
+    final Deferred<Object> d;
+    if (point.hasIntValue()) {
+      d = addPoint(point.getMetric(), point.getAttributesList(), point.getTimestamp(), point.getIntValue());
+    } else if (point.hasFloatValue()) {  // floating point value
+      d = addPoint(point.getMetric(), point.getAttributesList(), point.getTimestamp(), point.getFloatValue());
+    } else {
+      throw new IllegalArgumentException("Metric doesn't have neither int nor float value");
+    }
+    batchedEvents.incrementAndGet();
+    d.addBoth(this);
+    if (throttle)
+      throttle(d);
+  }
+
+  Deferred<Object> addPoint(final String metric, final List<Message.Attribute> attributes,
+                            final long timestamp, final long value) {
+    final short flags = 0x7;  // An int stored on 8 bytes.
+    return addPointInternal(metric, attributes, timestamp, Bytes.fromLong(value), flags);
+  }
+
+  Deferred<Object> addPoint(final String metric, final List<Message.Attribute> attributes,
+                            final long timestamp, final float value) {
+    final short flags = Const.FLAG_FLOAT | 0x3;  // A float stored on 4 bytes.
+    return addPointInternal(metric, attributes, timestamp,
+            Bytes.fromInt(Float.floatToRawIntBits(value)),
+            flags);
+  }
+
+  /**
+   * Implements {@link #addPoint} by storing a value with a specific flag.
+   *
+   * @param timestamp The timestamp to associate with the value.
+   * @param value     The value to store.
+   * @param flags     Flags to store in the qualifier (size and type of the data
+   *                  point).
+   * @return A deferred object that indicates the completion of the request.
+   */
+  private Deferred<Object> addPointInternal(final String metric,
+                                            final List<Message.Attribute> attributes,
+                                            final long timestamp, final byte[] value,
+                                            final short flags) {
+    // This particular code path only expects integers on 8 bytes or floating
+    // point values on 4 bytes.
+    assert value.length == 8 || value.length == 4 : Bytes.pretty(value);
+    final long base_time = timestamp - (timestamp % Const.MAX_TIMESPAN);
+    byte[] row = rowKey(metric, base_time, attributes);
+    if ((timestamp & 0xFFFFFFFF00000000L) != 0) {
+      // => timestamp < 0 || timestamp > Integer.MAX_VALUE
+      throw new IllegalArgumentException((timestamp < 0 ? "negative " : "bad")
+              + " timestamp=" + timestamp
+              + " when trying to add value=" + Arrays.toString(value) + " to " + this);
+    }
+
+    // Java is so stupid with its auto-promotion of int to float.
+    final short qualifier = (short) ((timestamp - base_time) << Const.FLAG_BITS
+            | flags);
+
+    final PutRequest point = new PutRequest(tsdb.table,
+            Arrays.copyOf(row, row.length), TSDB.FAMILY,
+            Bytes.fromShort(qualifier),
+            value);
+    point.setDurable(true);
+    return tsdb.client.put(point)/*.addBoth(cb)*/;
   }
 
   public Object call(final Object arg) {
@@ -202,7 +219,6 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
   private void tryComplete() {
     int awaits = batchedEvents.get();
     if (awaits == 0 && batched.get()) {
-      finishMillis = System.currentTimeMillis();
       complete();
     }
   }
@@ -272,8 +288,8 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
    * Returns a partially initialized row key for this metric and these attributes.
    * The only thing left to fill in is the base timestamp.
    */
-  byte[] rowKeyTemplate(final String metric,
-                        final List<Message.Attribute> attributes) {
+  byte[] rowKey(final String metric, final long base_time,
+                final List<Message.Attribute> attributes) {
     final short metric_width = tsdb.metrics.width();
     final short attribute_name_width = tsdb.tag_names.width();
     final short attribute_value_width = tsdb.tag_values.width();
@@ -289,6 +305,7 @@ public abstract class EventPersistFuture implements Callback<Object, Object>, Fu
     copyInRowKey(row, pos, tsdb.metrics.getOrCreateId(metric));
     pos += metric_width;
 
+    Bytes.setInt(row, (int)base_time, pos);
     pos += Const.TIMESTAMP_BYTES;
 
     copyAttributes(row, pos, attributes);
