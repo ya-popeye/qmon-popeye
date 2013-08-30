@@ -137,6 +137,9 @@ class TsdbPointConsumer(config: Config, tsdb: TSDB, val metrics: TsdbPointConsum
     if (batchIds.size > 0) {
       metrics.pointsMeter.mark(batch.size)
       tctx.close()
+      withDebug {
+        batch.filter(_.getMetric.startsWith("test")).foreach(p => debug(s"Point: ${p.toString}"))
+      }
       sendBatch(batchIds, batch)
     }
   }
@@ -148,13 +151,13 @@ class TsdbPointConsumer(config: Config, tsdb: TSDB, val metrics: TsdbPointConsum
       protected def complete(): Unit = {
         val nanos = ctx.stop()
         self ! ConsumeDone(batches)
-        debug(s"Processing of batches ${batches.size} complete in ${NANOSECONDS.toMillis(nanos)}ms")
+        debug(s"${batches.size} batches sent in ${NANOSECONDS.toMillis(nanos)}ms")
       }
 
       protected def fail(cause: Throwable): Unit = {
         val nanos = ctx.stop()
         self ! ConsumeFailed(batches, cause)
-        error(s"Processing of batches ${batches.size} failed in ${NANOSECONDS.toMillis(nanos)}ms", cause)
+        error(s"${batches.size} batches failed to send (after ${NANOSECONDS.toMillis(nanos)}ms)", cause)
       }
     }
   }
