@@ -1,16 +1,19 @@
 package popeye.storage.hbase
 
-import scala.concurrent._
 import akka.actor.ActorRef
 import akka.pattern.ask
+import akka.util.Timeout
 import com.googlecode.concurrentlinkedhashmap.ConcurrentLinkedHashMap
 import org.apache.hadoop.hbase.util.Bytes
+import popeye.Logging
 import popeye.storage.hbase.UniqueId._
-import popeye.storage.hbase.UniqueIdProtocol.{FindId, Resolved, FindName}
-import akka.util.Timeout
-import scala.concurrent.duration._
-import scala.util.{Success, Failure}
+import popeye.storage.hbase.UniqueIdProtocol._
 import scala.Byte
+import scala.Some
+import scala.concurrent._
+import scala.concurrent.duration._
+import scala.util.Failure
+import scala.util.Success
 
 object UniqueId {
 
@@ -52,7 +55,7 @@ class UniqueId(val width: Short,
                initialCapacity: Int = 1000,
                maxCapacity: Int = 100000,
                timeout: FiniteDuration = 30 seconds)
-               (implicit eCtx: ExecutionContext) {
+              (implicit eCtx: ExecutionContext) extends Logging {
 
   /** Cache for forward mappings (name to ID). */
   private final val nameCache = new ConcurrentLinkedHashMap.Builder[String, Future[Array[Byte]]]
@@ -107,22 +110,42 @@ class UniqueId(val width: Short,
    * @param create create if not found
    * @return future with id
    */
-  def resolveIdByName(name: String, create: Boolean)(implicit timeout: Duration): Future[Array[Byte]] = {
+  def resolveIdByName(name: String, create: Boolean, retries: Int = 3)(implicit timeout: Duration): Future[Array[Byte]] = {
     val promise = Promise[Array[Byte]]()
     nameCache.putIfAbsent(name, promise.future) match {
       case null =>
 
-        val future = resolver.ask(FindName(QualifiedName(kind, name), create))(new Timeout(timeout.toMillis)).mapTo[Resolved]
-        future.onComplete {
-          case Success(r: Resolved) =>
-            addToCache(r)
-          case Failure(x) =>
+        val future = resolver.ask(FindName(QualifiedName(kind, name), create))(new Timeout(timeout.toMillis))
+        future.onFailure {
+          case x: Throwable =>
             nameCache.remove(name)
         }
-        promise.completeWith(future.map {
-          resolved =>
-            resolved.name.id
-        })
+        future.onSuccess {
+          case r: Resolved =>
+            addToCache(r)
+            promise.success(r.name.id)
+          case r: Race =>
+            if (retries == 0) {
+              nameCache.remove(name)
+              promise.failure(new UniqueIdRaceException(s"Can't battle race creating $name"))
+            } else {
+              info(s"Got $r, $retries retries left")
+              nameCache.remove(name) match {
+                case null =>
+                  promise.completeWith(resolveIdByName(name, create, retries - 1)) // retry
+                case removed => removed.value match {
+                  case Some(Success(x)) =>
+                    promise.success(x)
+                  case _ =>
+                    promise.completeWith(resolveIdByName(name, create, retries - 1)) // retry
+                }
+              }
+
+            }
+          case f: ResolutionFailed =>
+            nameCache.remove(name)
+            promise.failure(f.t)
+        }
         promise.future
       case idFuture => idFuture
     }

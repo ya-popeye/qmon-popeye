@@ -32,12 +32,12 @@ object HBaseStorage {
    */
   final val HEX: Array[Byte] = Array[Byte]('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F')
 
-  final val MetricsKind: String = "metrics"
+  final val MetricKind: String = "metric"
   final val AttrNameKind: String = "tagk"
   final val AttrValueKind: String = "tagv"
 
   final val UniqueIdMapping = Map[String, Short](
-    MetricsKind -> 3.toShort,
+    MetricKind -> 3.toShort,
     AttrNameKind -> 3.toShort,
     AttrValueKind -> 3.toShort
   )
@@ -49,6 +49,12 @@ sealed case class ResolvedName(kind: String, name:String, id:Array[Byte]) {
   def toQualifiedName = QualifiedName(kind, name)
   def toQualifiedId = QualifiedId(kind, id)
 }
+
+object ResolvedName {
+  def apply(qname: QualifiedName, id: Array[Byte]) = new ResolvedName(qname.kind, qname.name, id)
+  def apply(qid: QualifiedId, name: String) = new ResolvedName(qid.kind, name, qid.id)
+}
+
 sealed case class QualifiedName(kind: String, name:String)
 sealed case class QualifiedId(kind: String, id:Array[Byte])
 
