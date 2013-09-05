@@ -44,6 +44,10 @@ class UniqueIdActor(storage: UniqueIdStorage,
   private var lookupRequests = Map[QualifiedName, List[ActorRef]]()
   private var createRequests = Map[QualifiedName, List[ActorRef]]()
 
+  override def supervisorStrategy: SupervisorStrategy = OneForOneStrategy() {
+    case _ => Restart
+  }
+
   def receive: Actor.Receive = {
 
     case Terminated(watched) =>
