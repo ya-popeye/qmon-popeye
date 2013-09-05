@@ -1,12 +1,12 @@
-package popeye.storage.opentsdb.hbase
+package popeye.storage.hbase
 
 import scala.concurrent._
 import akka.actor.ActorRef
 import akka.pattern.ask
 import com.googlecode.concurrentlinkedhashmap.ConcurrentLinkedHashMap
 import org.apache.hadoop.hbase.util.Bytes
-import popeye.storage.opentsdb.hbase.UniqueId._
-import popeye.storage.opentsdb.hbase.UniqueIdProtocol.{FindId, Resolved, FindName}
+import popeye.storage.hbase.UniqueId._
+import popeye.storage.hbase.UniqueIdProtocol.{FindId, Resolved, FindName}
 import akka.util.Timeout
 import scala.concurrent.duration._
 import scala.util.{Success, Failure}

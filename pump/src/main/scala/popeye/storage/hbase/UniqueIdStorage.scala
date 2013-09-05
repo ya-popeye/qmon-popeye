@@ -1,11 +1,11 @@
-package popeye.storage.opentsdb.hbase
+package popeye.storage.hbase
 
 import org.apache.hadoop.hbase.client.{HTablePool, Get, Put, HTableInterface}
 import org.apache.hadoop.hbase.util.Bytes
 import scala.collection.JavaConversions._
 import popeye.Logging
-import popeye.storage.opentsdb.hbase.HBaseStorage._
-import popeye.storage.opentsdb.hbase.UniqueIdStorage._
+import popeye.storage.hbase.HBaseStorage._
+import popeye.storage.hbase.UniqueIdStorage._
 import akka.actor.{ActorRef, Props}
 
 object UniqueIdStorage {

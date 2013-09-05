@@ -1,8 +1,8 @@
-package popeye.storage.opentsdb.hbase
+package popeye.storage.hbase
 
 import popeye.transport.proto.Message
 import org.apache.hadoop.hbase.client.{Put, HTablePool}
-import popeye.storage.opentsdb.hbase.HBaseStorage._
+import popeye.storage.hbase.HBaseStorage._
 import org.apache.hadoop.hbase.KeyValue
 import org.apache.hadoop.hbase.util.Bytes
 import scala.collection.JavaConversions._

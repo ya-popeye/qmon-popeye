@@ -1,4 +1,4 @@
-package popeye.storage.opentsdb.hbase
+package popeye.storage.hbase
 
 import java.nio.charset.Charset
 

@@ -1,14 +1,14 @@
-package popeye.storage.opentsdb.hbase
+package popeye.storage.hbase
 
 import akka.actor.{ActorRef, Actor}
 import popeye.Logging
-import popeye.storage.opentsdb.hbase.UniqueIdProtocol._
-import popeye.storage.opentsdb.hbase.UniqueId._
-import popeye.storage.opentsdb.hbase.UniqueIdProtocol.NotFoundName
-import popeye.storage.opentsdb.hbase.UniqueIdProtocol.FindName
-import popeye.storage.opentsdb.hbase.UniqueIdProtocol.Resolved
+import popeye.storage.hbase.UniqueIdProtocol._
+import popeye.storage.hbase.UniqueId._
+import popeye.storage.hbase.UniqueIdProtocol.NotFoundName
+import popeye.storage.hbase.UniqueIdProtocol.FindName
+import popeye.storage.hbase.UniqueIdProtocol.Resolved
 import scala.Some
-import popeye.storage.opentsdb.hbase.UniqueIdProtocol.FindId
+import popeye.storage.hbase.UniqueIdProtocol.FindId
 import akka.actor.Terminated
 
 object UniqueIdProtocol {
