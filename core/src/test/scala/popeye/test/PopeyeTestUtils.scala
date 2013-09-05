@@ -3,12 +3,13 @@ package popeye.test
 import popeye.transport.proto.Message.{Attribute, Point}
 import java.util.concurrent.atomic.AtomicLong
 import java.util.Random
+import java.text.SimpleDateFormat
 
 /**
  * @author Andrey Stepachev
  */
 object PopeyeTestUtils {
-  val ts = new AtomicLong(1375452320874l)
+  val ts = new AtomicLong(new SimpleDateFormat("yyyy/MM/dd").parse("2011/11/11").getTime/1000)
 
   def names: List[String] = List("my.metric1", "proc.net.bytes", "proc.fs.descriptors")
 
