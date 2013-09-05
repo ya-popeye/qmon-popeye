@@ -16,7 +16,7 @@ class PendingPointsTestSpec extends FlatSpec {
   behavior of "PointsQueue"
 
   it should "consume whole buffer" in {
-    val pp = new PointsQueue(1, 1, Int.MaxValue)
+    val pp = new PointsQueue(1, Int.MaxValue)
     val pr = Promise[Long]()
     pp.addPending(points, pr)
     val (buffer, promises) = validPP(pp).consume()
@@ -29,7 +29,7 @@ class PendingPointsTestSpec extends FlatSpec {
   }
 
   it should "none should be consumed if less them minimum available" in {
-    val pp = new PointsQueue(1, points.pointsBuffer.length + 1, Int.MaxValue)
+    val pp = new PointsQueue(points.pointsBuffer.length + 1, Int.MaxValue)
     val pr = Promise[Long]()
     pp.addPending(points, pr)
 

@@ -42,14 +42,14 @@ private object KafkaPointProducerProtocol {
 }
 
 class KafkaPointSender(topic: String,
-                       producerConfig: ProducerConfig,
+                       kafkaClient: PopeyeKafkaClient,
                        metrics: KafkaPointProducerMetrics,
                        batcher: KafkaPointProducer)
   extends Actor with Logging {
 
   import KafkaPointProducerProtocol._
 
-  val producer = new Producer[Int, Array[Byte]](producerConfig)
+  val producer = kafkaClient.newProducer()
 
   override def preStart() {
     super.preStart()
@@ -68,9 +68,9 @@ class KafkaPointSender(topic: String,
       val sendctx = metrics.sendTimer.timerContext()
 
       try {
-        val message = new KeyedMessage(topic, p.buffer.partitionId, PackedPoints.prependBatchId(batchId, p.buffer.buffer))
+        val message = new KeyedMessage(topic, batchId, PackedPoints.prependBatchId(batchId, p.buffer.buffer))
         producer.send(message)
-        debug(s"Sent batch ${p.batchId} to partition ${p.buffer.partitionId}")
+        debug(s"Sent batch ${p.batchId}")
         metrics.pointsMeter.mark(p.buffer.points)
         metrics.batchCompleteMeter.mark()
         withDebug {
@@ -107,29 +107,21 @@ class KafkaPointSender(topic: String,
 
 
 class KafkaPointProducer(config: Config,
-                         producerConfig: ProducerConfig,
                          idGenerator: IdGenerator,
-                         producerFactory: KafkaPointProducer.ProducerFactory,
+                         kafkaClient: PopeyeKafkaClient,
                          val metrics: KafkaPointProducerMetrics)
   extends Actor with Logging {
 
   import KafkaPointProducerProtocol._
 
   val topic = config.getString("kafka.points.topic")
-  val partitions = ClientUtils
-    .fetchTopicMetadata(
-    Set(topic),
-    ClientUtils.parseBrokerList(producerConfig.brokerList), producerConfig, 1
-  ).topicsMetadata
-    .filter(_.topic == topic)
-    .head.partitionsMetadata.size
 
   val batchWaitTimeout: FiniteDuration = toFiniteDuration(config.getMilliseconds("kafka.produce.batch-timeout"))
   val maxQueued = config.getInt("kafka.produce.max-queued")
   val senders = config.getInt("kafka.produce.senders")
   val minMessageBytes = config.getInt("kafka.produce.message.min-bytes")
   val maxMessageBytes = config.getInt("kafka.produce.message.max-bytes")
-  val pendingPoints = new PointsQueue(partitions, minMessageBytes, maxMessageBytes)
+  val pendingPoints = new PointsQueue(minMessageBytes, maxMessageBytes)
 
   var flusher: Option[Cancellable] = None
 
@@ -150,7 +142,7 @@ class KafkaPointProducer(config: Config,
 
     for (i <- 0 until senders) {
       context.actorOf(
-        Props(new KafkaPointSender(topic, producerConfig, metrics, this)).withDeploy(Deploy.local),
+        Props.apply(new KafkaPointSender(topic, kafkaClient, metrics, this)).withDeploy(Deploy.local),
         "points-sender-" + i)
     }
 
@@ -206,8 +198,10 @@ object KafkaPointProducer {
 
   type ProducerFactory = (ProducerConfig) => Producer[Int, Array[Byte]]
 
-  def start(config: Config, idGenerator: IdGenerator)(implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
-    system.actorOf(KafkaPointProducer.props(config, idGenerator)
+  def start(config: Config, idGenerator: IdGenerator)
+           (implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
+    val kafkaClient = new PopeyeKafkaClientImpl(producerConfig(config))
+    system.actorOf(KafkaPointProducer.props(config, idGenerator, kafkaClient)
       .withRouter(FromConfig())
       .withDispatcher("kafka.produce.dispatcher"), "kafka-producer")
   }
@@ -221,15 +215,13 @@ object KafkaPointProducer {
     new ProducerConfig(producerProps)
   }
 
-  def props(config: Config, idGenerator: IdGenerator,
-            producerFactory: ProducerFactory = defaultProducerFactory)
+  def props(config: Config, idGenerator: IdGenerator, kafkaClient: PopeyeKafkaClient)
            (implicit metricRegistry: MetricRegistry) = {
     val metrics = KafkaPointProducerMetrics(metricRegistry)
-    Props(new KafkaPointProducer(
+    Props.apply(new KafkaPointProducer(
       config,
-      producerConfig(config),
       idGenerator,
-      producerFactory,
+      kafkaClient,
       metrics))
   }
 
@@ -252,8 +244,8 @@ class KeySerialiser(props: VerifiableProperties = null) extends Encoder[Int] {
 
 }
 
-class KeyPartitioner(props: VerifiableProperties = null) extends Partitioner[Int] {
-  def partition(data: Int, numPartitions: Int): Int = data % numPartitions
+class KeyPartitioner(props: VerifiableProperties = null) extends Partitioner[Long] {
+  def partition(data: Long, numPartitions: Int): Int = (data % numPartitions).toInt
 }
 
 
