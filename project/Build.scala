@@ -23,7 +23,7 @@ object Compiler {
     resolvers ++= Seq(
       "spray repo" at "http://repo.spray.io",
       "spray repo (nightly)" at "http://nightlies.spray.io",
-      "akka repo (nightly)" at "http://repo.akka.io/snapshots",
+//      "akka repo (nightly)" at "http://repo.akka.io/snapshots",
       Resolver.url("octo47 repo", url("http://octo47.github.com/repo/"))({
         val patt = Resolver.mavenStylePatterns.artifactPatterns
         new Patterns(patt, patt, true)
@@ -47,7 +47,7 @@ object Tests {
 
 object Version {
   val Scala = "2.10.1"
-  val Akka = "2.2-SNAPSHOT"
+  val Akka = "2.2.1"
   val Spray = "1.2-20130710"
   val ScalaTest = "1.9.1"
   val Mockito = "1.9.0"
@@ -131,7 +131,7 @@ object PopeyeBuild extends Build {
     .settings(
     libraryDependencies ++= Version.slf4jDependencies ++ Seq(
       "com.google.protobuf" % "protobuf-java" % "2.4.1",
-      "org.apache.kafka" %% "kafka" % Version.Kafka % "compile->compile;test->test",
+      "org.apache.kafka" %% "kafka" % Version.Kafka,
       "nl.grons" %% "metrics-scala" % Version.Metrics,
       "org.codehaus.jackson" % "jackson-core-asl" % Version.Jackson,
       "com.typesafe.akka" %% "akka-actor" % Version.Akka,
@@ -170,6 +170,7 @@ object PopeyeBuild extends Build {
     .settings(
     distMainClass := "popeye.transport.PumpMain",
     libraryDependencies ++= Seq(
+      "com.googlecode.concurrentlinkedhashmap" % "concurrentlinkedhashmap-lru" % "1.4",
       "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
       "org.mockito" % "mockito-core" % Version.Mockito % "test",
       "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"

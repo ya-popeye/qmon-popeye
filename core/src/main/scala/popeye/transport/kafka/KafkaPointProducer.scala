@@ -41,7 +41,10 @@ private object KafkaPointProducerProtocol {
 
 }
 
-class KafkaPointSender(topic: String, producerConfig: ProducerConfig, metrics: KafkaPointProducerMetrics, batcher: KafkaPointProducer)
+class KafkaPointSender(topic: String,
+                       producerConfig: ProducerConfig,
+                       metrics: KafkaPointProducerMetrics,
+                       batcher: KafkaPointProducer)
   extends Actor with Logging {
 
   import KafkaPointProducerProtocol._
@@ -106,6 +109,7 @@ class KafkaPointSender(topic: String, producerConfig: ProducerConfig, metrics: K
 class KafkaPointProducer(config: Config,
                          producerConfig: ProducerConfig,
                          idGenerator: IdGenerator,
+                         producerFactory: KafkaPointProducer.ProducerFactory,
                          val metrics: KafkaPointProducerMetrics)
   extends Actor with Logging {
 
@@ -200,6 +204,8 @@ class KafkaPointProducer(config: Config,
 
 object KafkaPointProducer {
 
+  type ProducerFactory = (ProducerConfig) => Producer[Int, Array[Byte]]
+
   def start(config: Config, idGenerator: IdGenerator)(implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
     system.actorOf(KafkaPointProducer.props(config, idGenerator)
       .withRouter(FromConfig())
@@ -215,14 +221,19 @@ object KafkaPointProducer {
     new ProducerConfig(producerProps)
   }
 
-  def props(config: Config, idGenerator: IdGenerator)(implicit metricRegistry: MetricRegistry) = {
+  def props(config: Config, idGenerator: IdGenerator,
+            producerFactory: ProducerFactory = defaultProducerFactory)
+           (implicit metricRegistry: MetricRegistry) = {
     val metrics = KafkaPointProducerMetrics(metricRegistry)
     Props(new KafkaPointProducer(
       config,
       producerConfig(config),
       idGenerator,
+      producerFactory,
       metrics))
   }
+
+  def defaultProducerFactory(config: ProducerConfig) = new Producer[Int, Array[Byte]](config)
 }
 
 class KeySerialiser(props: VerifiableProperties = null) extends Encoder[Int] {

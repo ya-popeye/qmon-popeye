@@ -8,7 +8,6 @@ import org.xerial.snappy.{Snappy => SnappyJava}
 import CompressionDecoder._
 import popeye.transport.CompressionDecoder.Gzip
 import scala.Some
-import com.google.common.io.ByteStreams
 import popeye.transport.snappy.Crc32C
 
 object CompressionDecoder {
@@ -33,9 +32,9 @@ object CompressionDecoder {
   case class Snappy() extends Codec {
     def makeDecoder: Decoder = new SnappyDecoder
 
-    def makeOutputStream(inner: OutputStream): OutputStream = new SnappyStreamOutputStream(inner)
+    def makeOutputStream(inner: OutputStream): OutputStream = new SnappyStreamOutputStream(new DataOutputStream(inner))
 
-    def makeInputStream(inner: InputStream): InputStream = new SnappyStreamInputStream(inner)
+    def makeInputStream(inner: InputStream): InputStream = new SnappyStreamInputStream(new DataInputStream(inner))
   }
 
 }
@@ -217,7 +216,7 @@ class SnappyDecoder extends Decoder {
 
 }
 
-class SnappyStreamInputStream(inner: InputStream) extends InputStream {
+class SnappyStreamInputStream(inner: DataInputStream) extends InputStream {
 
   import SnappyDecoder._
 
@@ -230,7 +229,7 @@ class SnappyStreamInputStream(inner: InputStream) extends InputStream {
     if (inner.available() == 0)
       return -1
     val headerSize = decoder.headerSize
-    ByteStreams.readFully(inner, buffer, 0, headerSize)
+    inner.readFully(buffer, 0, headerSize)
     val chunkSize = inner.read(buffer, headerSize, buffer.length - headerSize)
     consumed = 0
     decoder.decompress(ByteString.fromArray(buffer, 0, chunkSize + headerSize), {
@@ -258,7 +257,7 @@ class SnappyStreamInputStream(inner: InputStream) extends InputStream {
   }
 }
 
-class SnappyStreamOutputStream(inner: OutputStream) extends OutputStream {
+class SnappyStreamOutputStream(inner: DataOutputStream) extends OutputStream {
 
   import SnappyDecoder._
 
