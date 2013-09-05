@@ -57,6 +57,7 @@ object Version {
   val Slf4j = "1.7.5"
   val Logback = "1.0.7"
   val Snappy = "1.0.4.1"
+  val Guava = "11.0.2"
 
   val slf4jDependencies: Seq[ModuleID] = Seq(
     "org.slf4j" % "jcl-over-slf4j" % Version.Slf4j,
@@ -155,6 +156,7 @@ object PopeyeBuild extends Build {
       "io.spray" % "spray-can" % Version.Spray,
       "io.spray" % "spray-io" % Version.Spray,
       "org.xerial.snappy" % "snappy-java" % Version.Snappy,
+      "com.google.guava" % "guava" % Version.Guava % "test",
       "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
       "org.mockito" % "mockito-core" % Version.Mockito % "test",
       "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"

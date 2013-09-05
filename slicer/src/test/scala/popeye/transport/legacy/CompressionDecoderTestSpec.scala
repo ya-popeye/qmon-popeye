@@ -1,13 +1,13 @@
 package popeye.transport.legacy
 
-import org.scalatest.FlatSpec
 import akka.util.ByteString
 import java.io.{FileInputStream, File, ByteArrayOutputStream}
-import popeye.transport.CompressionDecoder
-import java.util.Random
-import popeye.transport.CompressionDecoder.{Codec, Gzip, Snappy}
 import java.util
-import scala.io.{BufferedSource, Source}
+import java.util.Random
+import org.scalatest.FlatSpec
+import popeye.transport.CompressionDecoder
+import popeye.transport.CompressionDecoder.{Codec, Gzip, Snappy}
+import com.google.common.io.{Files, ByteStreams}
 
 /**
  * @author Andrey Stepachev
@@ -130,17 +130,12 @@ class CompressionDecoderTestSpec extends FlatSpec {
   def loadFile(name: String, codec: Codec): (ByteString, ByteString) = {
     val file = new File(this.getClass.getResource(name).toURI)
 
-    val codedSource: BufferedSource = Source.fromInputStream(
-      codec.makeInputStream(new FileInputStream(file)))
     val decoded = ByteString.fromArray(
-      codedSource.map(_.toByte).toArray
-    )
-    codedSource.close()
+      ByteStreams.toByteArray(
+        codec.makeInputStream(new FileInputStream(file))))
 
     val builder = ByteString.newBuilder
-    val fileSource: BufferedSource = Source.fromFile(file)
-    builder.asOutputStream.write(fileSource.map(_.toByte).toArray)
-    fileSource.close
+    Files.copy(file, builder.asOutputStream)
     val fileContent = builder.result()
     (fileContent, decoded)
   }
