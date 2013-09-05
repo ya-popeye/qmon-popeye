@@ -1,26 +1,26 @@
 package popeye.storage.hbase
 
-import popeye.{Instrumented, Logging}
-import popeye.ConfigUtil._
-import akka.actor._
-import com.typesafe.config.Config
-import kafka.consumer._
-import java.util.Properties
-import scala.concurrent.duration._
+import HBasePointConsumerProtocol._
+import akka.actor.OneForOneStrategy
 import akka.actor.SupervisorStrategy.Restart
+import akka.actor._
+import akka.routing.FromConfig
+import com.codahale.metrics.MetricRegistry
+import com.google.protobuf.InvalidProtocolBufferException
+import com.typesafe.config.Config
+import java.util.Properties
+import kafka.consumer._
+import kafka.message.MessageAndMetadata
+import popeye.ConfigUtil._
+import popeye.transport.proto.Message.Point
+import popeye.transport.proto.{PackedPoints, Message}
+import popeye.{Instrumented, Logging}
 import scala.Option
 import scala.Some
-import akka.actor.OneForOneStrategy
-import com.codahale.metrics.MetricRegistry
 import scala.collection.mutable.ArrayBuffer
-import popeye.transport.proto.{PackedPoints, Message}
-import popeye.transport.proto.Message.Point
-import HBasePointConsumerProtocol._
-import akka.routing.FromConfig
-import kafka.message.MessageAndMetadata
-import com.google.protobuf.InvalidProtocolBufferException
-import scala.util.{Success, Failure}
+import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Await, Future}
+import scala.util.{Success, Failure}
 
 /**
  * @author Andrey Stepachev
@@ -57,6 +57,7 @@ object HBasePointConsumerProtocol {
 class HBasePointConsumer(config: Config, storage: PointsStorage, val metrics: HBasePointConsumerMetrics)
   extends Actor with Logging {
 
+  import ExecutionContext.Implicits.global
   import HBasePointConsumer._
 
   val topic = config.getString("kafka.points.topic")
@@ -145,7 +146,6 @@ class HBasePointConsumer(config: Config, storage: PointsStorage, val metrics: HB
     }
   }
 
-  import ExecutionContext.Implicits.global
 
   def sendBatch(batches: Seq[Long], events: Seq[Point]): Int = {
     val ctx = metrics.writeTimer.timerContext()

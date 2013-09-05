@@ -2,11 +2,9 @@ package popeye.storage.hbase
 
 import org.apache.hadoop.hbase.client.{HTablePool, Get, Put, HTableInterface}
 import org.apache.hadoop.hbase.util.Bytes
-import scala.collection.JavaConversions._
 import popeye.Logging
 import popeye.storage.hbase.HBaseStorage._
-import popeye.storage.hbase.UniqueIdStorage._
-import akka.actor.{ActorRef, Props}
+import scala.collection.JavaConversions._
 
 object UniqueIdStorage {
   final val IdFamily = "id".getBytes
@@ -50,7 +48,7 @@ class UniqueIdStorage(tableName: String, hTablePool: HTablePool, kindWidths: Map
   }
 
   def findByName(qname: QualifiedName): Option[ResolvedName] = {
-    withHTable{ hTable =>
+    withHTable { hTable =>
       val r = hTable.get(new Get(qname.name.getBytes(Encoding)).addColumn(NameFamily, Bytes.toBytes(qname.kind)))
       if (r.isEmpty)
         None
@@ -67,7 +65,7 @@ class UniqueIdStorage(tableName: String, hTablePool: HTablePool, kindWidths: Map
       id => new Get(id.id).addColumn(IdFamily, Bytes.toBytes(id.kind))
     }
 
-    withHTable{ hTable =>
+    withHTable { hTable =>
       val r = for (
         r <- hTable.get(gets);
         k <- r.raw
@@ -85,7 +83,7 @@ class UniqueIdStorage(tableName: String, hTablePool: HTablePool, kindWidths: Map
     val idWidth = kindWidths.getOrElse(qname.kind, throw new IllegalArgumentException(s"Unknwon kind for $qname"))
     val kindQual = Bytes.toBytes(qname.kind)
     val nameBytes = qname.name.getBytes(Encoding)
-    withHTable{ hTable =>
+    withHTable { hTable =>
       val id = hTable.incrementColumnValue(MaxIdRow, NameFamily, kindQual, 1)
       val idBytes = Bytes.toBytes(id)
       // check, that produced id is not larger, then required id width

@@ -43,20 +43,25 @@ object HBaseStorage {
   )
 }
 
-sealed case class ResolvedName(kind: String, name:String, id:Array[Byte]) {
+sealed case class ResolvedName(kind: String, name: String, id: Array[Byte]) {
   def this(qname: QualifiedName, id: Array[Byte]) = this(qname.kind, qname.name, id)
+
   def this(qid: QualifiedId, name: String) = this(qid.kind, name, qid.id)
+
   def toQualifiedName = QualifiedName(kind, name)
+
   def toQualifiedId = QualifiedId(kind, id)
 }
 
 object ResolvedName {
   def apply(qname: QualifiedName, id: Array[Byte]) = new ResolvedName(qname.kind, qname.name, id)
+
   def apply(qid: QualifiedId, name: String) = new ResolvedName(qid.kind, name, qid.id)
 }
 
-sealed case class QualifiedName(kind: String, name:String)
-sealed case class QualifiedId(kind: String, id:Array[Byte])
+sealed case class QualifiedName(kind: String, name: String)
+
+sealed case class QualifiedId(kind: String, id: Array[Byte])
 
 
 

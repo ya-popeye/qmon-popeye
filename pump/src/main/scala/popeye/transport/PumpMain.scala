@@ -1,17 +1,15 @@
 package popeye.transport
 
-import popeye.storage.hbase.HBasePointConsumer
-import popeye.storage.hbase._
-import org.apache.hadoop.hbase.client.HTablePool
-import org.apache.hadoop.hbase.HBaseConfiguration
-import com.typesafe.config.Config
-import org.apache.hadoop.conf.Configuration
-import scala.collection.JavaConversions._
 import akka.actor.{ActorRef, Props}
-import scala.concurrent.duration.{FiniteDuration, Duration}
+import com.typesafe.config.Config
 import java.util.concurrent.TimeUnit
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.hbase.HBaseConfiguration
+import org.apache.hadoop.hbase.client.HTablePool
+import popeye.storage.hbase._
+import scala.collection.JavaConversions._
+import scala.concurrent.duration.FiniteDuration
 
-import HBaseStorage._
 
 /**
  * @author Andrey Stepachev
@@ -29,9 +27,9 @@ object PumpMain extends PopeyeMain("pump") {
   val uniqueIdStorage = new UniqueIdStorage(config.getString("hbase.uids-table"), hTablePool, HBaseStorage.UniqueIdMapping)
   val uniqIdResolved = system.actorOf(Props(classOf[UniqueIdActor], uniqueIdStorage))
   val uidsConfig = config.getConfig("hbase.uid")
-  val metrics = makeUniqueIdCache(uidsConfig, MetricKind, uniqIdResolved, uniqueIdStorage, resolveTimeout)
-  val attrNames = makeUniqueIdCache(uidsConfig, AttrNameKind, uniqIdResolved, uniqueIdStorage, resolveTimeout)
-  val attrValues = makeUniqueIdCache(uidsConfig, AttrValueKind, uniqIdResolved, uniqueIdStorage, resolveTimeout)
+  val metrics = makeUniqueIdCache(uidsConfig, HBaseStorage.MetricKind, uniqIdResolved, uniqueIdStorage, resolveTimeout)
+  val attrNames = makeUniqueIdCache(uidsConfig, HBaseStorage.AttrNameKind, uniqIdResolved, uniqueIdStorage, resolveTimeout)
+  val attrValues = makeUniqueIdCache(uidsConfig, HBaseStorage.AttrValueKind, uniqIdResolved, uniqueIdStorage, resolveTimeout)
   val storage = new PointsStorage(config.getString("hbase.points-table"), hTablePool, metrics, attrNames, attrValues, resolveTimeout)
   val consumer = HBasePointConsumer.start(config, storage)
 

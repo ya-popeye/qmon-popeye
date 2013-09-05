@@ -1,15 +1,14 @@
 package popeye.storage.hbase
 
-import popeye.transport.proto.Message
-import org.apache.hadoop.hbase.client.{Put, HTablePool}
-import popeye.storage.hbase.HBaseStorage._
-import org.apache.hadoop.hbase.KeyValue
-import org.apache.hadoop.hbase.util.Bytes
-import scala.collection.JavaConversions._
-import scala.concurrent.{ExecutionContext, Future}
-import scala.concurrent.duration._
 import java.util
-import scala.concurrent.duration.Duration
+import org.apache.hadoop.hbase.KeyValue
+import org.apache.hadoop.hbase.client.{Put, HTablePool}
+import org.apache.hadoop.hbase.util.Bytes
+import popeye.storage.hbase.HBaseStorage._
+import popeye.transport.proto.Message
+import scala.collection.JavaConversions._
+import scala.concurrent.duration._
+import scala.concurrent.{ExecutionContext, Future}
 
 
 /**
