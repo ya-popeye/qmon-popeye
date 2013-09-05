@@ -9,7 +9,6 @@ import popeye.transport.proto.Message
 import scala.annotation.tailrec
 import popeye.transport.CompressionDecoder.{Snappy, Gzip}
 import popeye.transport.proto.Message.{Attribute, Point}
-import net.opentsdb.core.Tags
 import scala.collection.mutable
 
 /**
@@ -128,6 +127,78 @@ abstract class TsdbCommands(metrics: TsdbTelnetMetrics, config: Config) extends 
     }
   }
 
+  /**
+   * Parses an integer value as a long from the given character sequence.
+   * <p>
+   * This is equivalent to {@link Long#parseLong(String)} except it's up to
+   * 100% faster on {@link String} and always works in O(1) space even with
+   * {@link StringBuilder} buffers (where it's 2x to 5x faster).
+   * @param s The character sequence containing the integer value to parse.
+   * @return The value parsed.
+   * @throws NumberFormatException if the value is malformed or overflows.
+   */
+  def parseLong(s: CharSequence): Long = {
+    val n: Int = s.length
+    if (n == 0) {
+      throw new NumberFormatException("Empty string")
+    }
+    var c: Char = s.charAt(0)
+    var i: Int = 1
+    if (c < '0' && (c == '+' || c == '-')) {
+      if (n == 1) {
+        throw new NumberFormatException("Just a sign, no value: " + s)
+      } else if (n > 20) {
+        throw new NumberFormatException("Value too long: " + s)
+      }
+      c = s.charAt(1)
+      i = 2
+    }
+    else if (n > 19) {
+      throw new NumberFormatException("Value too long: " + s)
+    }
+    var v: Long = 0
+    do {
+      if ('0' <= c && c <= '9') {
+        v -= c - '0'
+      } else {
+        throw new NumberFormatException("Invalid character '" + c + "' in " + s)
+      }
+      v *= 10
+      c = s.charAt(i)
+      i += 1
+    } while (i < n)
+    if (v > 0) {
+      throw new NumberFormatException("Overflow in " + s)
+    } else if (s.charAt(0) == '-') {
+      v
+    } else if (v == Long.MinValue) {
+      throw new NumberFormatException("Overflow in " + s)
+    } else {
+      -v
+    }
+  }
+
+  /**
+   * Returns true if the given string looks like an integer.
+   * <p>
+   * This function doesn't do any checking on the string other than looking
+   * for some characters that are generally found in floating point values
+   * such as '.' or 'e'.
+   * @since 1.1
+   */
+  def looksLikeInteger(value: String): Boolean = {
+    val n: Int = value.length
+    var i: Int = 0
+    while (i < n) {
+      val c: Char = value.charAt(i)
+      if (c == '.' || c == 'e' || c == 'E') {
+        return false
+      }
+      i += 1
+    }
+    true
+  }
+
   def parsePoint(words: Array[String]): Point = {
     val ev = Point.newBuilder()
     words(0) = null; // Ditch the "put".
@@ -141,7 +212,7 @@ abstract class TsdbCommands(metrics: TsdbTelnetMetrics, config: Config) extends 
     if (ev.getMetric.isEmpty) {
       throw new IllegalArgumentException("empty metric name");
     }
-    ev.setTimestamp(Tags.parseLong(words(2)));
+    ev.setTimestamp(parseLong(words(2)));
     if (ev.getTimestamp <= 0) {
       throw new IllegalArgumentException("invalid timestamp: " + ev.getTimestamp);
     }
@@ -149,8 +220,8 @@ abstract class TsdbCommands(metrics: TsdbTelnetMetrics, config: Config) extends 
     if (value.length() <= 0) {
       throw new IllegalArgumentException("empty value");
     }
-    if (Tags.looksLikeInteger(value)) {
-      ev.setIntValue(Tags.parseLong(value));
+    if (looksLikeInteger(value)) {
+      ev.setIntValue(parseLong(value));
     } else {
       // floating point value
       ev.setFloatValue(java.lang.Float.parseFloat(value));

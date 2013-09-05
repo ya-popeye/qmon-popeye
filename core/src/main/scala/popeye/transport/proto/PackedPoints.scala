@@ -21,6 +21,7 @@ class PackedPoints(avgMessageSize: Int = 100, messagesPerExtent: Int = 100) {
   def +=(point: Point) = append(point)
 
   def append(point: Point) = {
+    MessageUtil.validatePoint(point)
     val hash: Int = point.getMetric.hashCode
     hashesCoder.writeInt32NoTag(hash)
     val size = point.getSerializedSize

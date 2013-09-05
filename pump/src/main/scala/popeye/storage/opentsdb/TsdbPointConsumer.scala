@@ -15,12 +15,13 @@ import com.codahale.metrics.MetricRegistry
 import scala.collection.mutable.ArrayBuffer
 import popeye.transport.proto.{PackedPoints, Message}
 import popeye.transport.proto.Message.Point
-import net.opentsdb.core.{TSDB, EventPersistFuture}
-import org.hbase.async.HBaseClient
 import TsdbPointConsumerProtocol._
 import akka.routing.FromConfig
 import kafka.message.MessageAndMetadata
 import com.google.protobuf.InvalidProtocolBufferException
+import popeye.storage.opentsdb.hbase.PointsStorage
+import scala.util.{Success, Failure}
+import scala.concurrent.{ExecutionContext, Await, Future}
 
 /**
  * @author Andrey Stepachev
@@ -54,7 +55,7 @@ object TsdbPointConsumerProtocol {
 
 }
 
-class TsdbPointConsumer(config: Config, tsdb: TSDB, val metrics: TsdbPointConsumerMetrics)
+class TsdbPointConsumer(config: Config, storage: PointsStorage, val metrics: TsdbPointConsumerMetrics)
   extends Actor with Logging {
 
   import TsdbPointConsumer._
@@ -69,6 +70,7 @@ class TsdbPointConsumer(config: Config, tsdb: TSDB, val metrics: TsdbPointConsum
   val connector = pair.connector
   lazy val maxBatchSize = config.getLong("tsdb.consume.batch-size")
   lazy val checkTick = toFiniteDuration(config.getMilliseconds("tsdb.consume.check-tick"))
+  lazy val writeTimeout = toFiniteDuration(config.getMilliseconds("tsdb.consume.write-timeout"))
 
   var checker: Option[Cancellable] = None
 
@@ -144,52 +146,36 @@ class TsdbPointConsumer(config: Config, tsdb: TSDB, val metrics: TsdbPointConsum
     }
   }
 
-  def sendBatch(batches: Seq[Long], events: Seq[Point]) = {
+  import ExecutionContext.Implicits.global
+
+  def sendBatch(batches: Seq[Long], events: Seq[Point]): Int = {
     val ctx = metrics.writeTimer.timerContext()
     metrics.writeBatchSizeHist.update(events.size)
-    new EventPersistFuture(tsdb, events.toArray) {
-      protected def complete(): Unit = {
+    val future: Future[Int] = storage.writePoints(events)
+    future.onComplete {
+      case Success(x) =>
         val nanos = ctx.stop()
         self ! ConsumeDone(batches)
         debug(s"${batches.size} batches sent in ${NANOSECONDS.toMillis(nanos)}ms")
-      }
-
-      protected def fail(cause: Throwable): Unit = {
+      case Failure(cause: Throwable) =>
         val nanos = ctx.stop()
         self ! ConsumeFailed(batches, cause)
         error(s"${batches.size} batches failed to send (after ${NANOSECONDS.toMillis(nanos)}ms)", cause)
-      }
+
     }
+    Await.result(future, writeTimeout)
   }
 
 }
 
 object TsdbPointConsumer extends Logging {
 
-  def props(config: Config, hbaseClient: Option[HBaseClient] = None)(implicit system: ActorSystem, metricRegistry: MetricRegistry) = {
-    val hbc = hbaseClient getOrElse {
-      val cluster: String = config.getString("tsdb.zk.cluster")
-      val zkPath: String = config.getString("tsdb.zk.path")
-      info(s"Creating HBaseClient: ${cluster}/${zkPath}")
-      new HBaseClient(cluster, zkPath)
-    }
-    val tsdb: TSDB = new TSDB(hbc,
-      config.getString("tsdb.table.series"),
-      config.getString("tsdb.table.uids"))
-    system.registerOnTermination(tsdb.shutdown())
-    system.registerOnTermination(hbc.shutdown())
-
-    val metrics = TsdbPointConsumerMetrics(metricRegistry)
-    Props(
-      new TsdbPointConsumer(
-        config,
-        tsdb,
-        metrics)
-    )
+  def props(config: Config, storage: PointsStorage)(implicit system: ActorSystem, metricRegistry: MetricRegistry) = {
+    Props(new TsdbPointConsumer(config, storage, TsdbPointConsumerMetrics(metricRegistry)))
   }
 
-  def start(config: Config, hbaseClient: Option[HBaseClient] = None)(implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
-    system.actorOf(props(config, hbaseClient)
+  def start(config: Config, storage: PointsStorage)(implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
+    system.actorOf(props(config, storage)
       .withRouter(FromConfig())
       .withDispatcher("tsdb.consume.dispatcher"), "tsdb-writer")
   }
