@@ -1,11 +1,18 @@
 package popeye.storage.hbase
 
-import akka.actor.Terminated
-import akka.actor.{ActorRef, Actor}
+import akka.actor._
 import popeye.Logging
 import popeye.storage.hbase.UniqueId._
-import popeye.storage.hbase.UniqueIdProtocol._
+import popeye.storage.hbase.UniqueIdProtocol.NotFoundName
+import popeye.storage.hbase.UniqueIdProtocol.FindName
+import popeye.storage.hbase.UniqueIdProtocol.NotFoundId
+import popeye.storage.hbase.UniqueIdProtocol.Resolved
 import scala.Some
+import popeye.storage.hbase.UniqueIdProtocol.FindId
+import popeye.storage.hbase.UniqueIdProtocol.Race
+import akka.actor.Terminated
+import popeye.storage.hbase.UniqueIdProtocol.ResolutionFailed
+import akka.actor.SupervisorStrategy.Restart
 
 object UniqueIdProtocol {
 
