@@ -1,4 +1,4 @@
-package popeye.transport.legacy
+package popeye.transport.server
 
 import akka.util.ByteString
 import java.io.{FileInputStream, File, ByteArrayOutputStream}

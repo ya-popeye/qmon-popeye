@@ -1,4 +1,4 @@
-package popeye.transport.legacy
+package popeye.transport.server
 
 import org.scalatest.FlatSpec
 import popeye.transport.LineDecoder

@@ -4,6 +4,8 @@ import popeye.transport.proto.Message.{Attribute, Point}
 import java.util.concurrent.atomic.AtomicLong
 import java.util.Random
 import java.text.SimpleDateFormat
+import popeye.transport.proto.Message
+import scala.collection.JavaConversions.iterableAsScalaIterable
 
 /**
  * @author Andrey Stepachev
@@ -14,6 +16,13 @@ object PopeyeTestUtils {
   def names: List[String] = List("my.metric1", "proc.net.bytes", "proc.fs.descriptors")
 
   def hosts: List[String] = List("test.yandex.ru", "localhost", "other.com")
+
+  def telnetCommand(point: Message.Point) = {
+    s"put ${point.getMetric} ${point.getTimestamp} ${point.getIntValue} " +
+      point.getAttributesList.map { attr =>
+        attr.getName + "=" + attr.getValue
+      }.mkString(" ")
+  }
 
   def makeBatch(msgs: Int = 2,
                 names: List[String] = names,

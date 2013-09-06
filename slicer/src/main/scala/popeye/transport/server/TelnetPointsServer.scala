@@ -1,4 +1,4 @@
-package popeye.transport.legacy
+package popeye.transport.server
 
 import akka.actor._
 import akka.io._
@@ -33,15 +33,15 @@ class TsdbTelnetHandler(connection: ActorRef,
                         kafkaProducer: ActorRef,
                         config: Config,
                         metrics: TsdbTelnetMetrics)
-  extends Actor with RequiresMessageQueue[UnboundedMessageQueueSemantics] with Logging {
+  extends Actor with Logging {
 
 
   context watch connection
 
-  val hwPendingPoints: Int = config.getInt("legacy.tsdb.high-watermark")
-  val lwPendingPoints: Int = config.getInt("legacy.tsdb.low-watermark")
-  val batchSize: Int = config.getInt("legacy.tsdb.batchSize")
-  implicit val askTimeout: Timeout = new Timeout(config.getMilliseconds("legacy.tsdb.push-timeout"), MILLISECONDS)
+  val hwPendingPoints: Int = config.getInt("server.telnet.high-watermark")
+  val lwPendingPoints: Int = config.getInt("server.telnet.low-watermark")
+  val batchSize: Int = config.getInt("server.telnet.batchSize")
+  implicit val askTimeout: Timeout = new Timeout(config.getMilliseconds("server.telnet.push-timeout"), MILLISECONDS)
 
   require(hwPendingPoints > lwPendingPoints, "High watermark should be greater then low watermark")
 
@@ -219,7 +219,7 @@ class TsdbTelnetServer(local: InetSocketAddress, kafka: ActorRef, metrics: TsdbT
     case Connected(remote, _) ⇒
       val connection = sender
 
-      val handler = context.actorOf(Props(new TsdbTelnetHandler(connection, kafka, system.settings.config, metrics))
+      val handler = context.actorOf(Props.apply(new TsdbTelnetHandler(connection, kafka, system.settings.config, metrics))
         .withDeploy(Deploy.local))
 
       debug(s"Connection from $remote (connection=${connection.path})")
@@ -241,8 +241,8 @@ class TsdbTelnetServer(local: InetSocketAddress, kafka: ActorRef, metrics: TsdbT
 object TsdbTelnetServer {
 
   def start(config: Config, kafkaProducer: ActorRef)(implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
-    val hostport = config.getString("legacy.tsdb.listen").split(":")
+    val hostport = config.getString("server.telnet.listen").split(":")
     val addr = new InetSocketAddress(hostport(0), hostport(1).toInt)
-    system.actorOf(Props(new TsdbTelnetServer(addr, kafkaProducer, new TsdbTelnetMetrics(metricRegistry))))
+    system.actorOf(Props.apply(new TsdbTelnetServer(addr, kafkaProducer, new TsdbTelnetMetrics(metricRegistry))))
   }
 }

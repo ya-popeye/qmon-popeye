@@ -1,4 +1,4 @@
-package popeye.transport.legacy
+package popeye.transport.server
 
 import scala.concurrent.duration._
 import akka.pattern.ask
@@ -28,7 +28,7 @@ import com.codahale.metrics.MetricRegistry
 import popeye.transport.proto.PackedPoints
 
 
-class LegacyHttpHandlerMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
+class HttpPointsServerMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
   val writeTimer = metrics.timer("write")
   val readTimer = metrics.timer("read")
   val requestsBatches = metrics.histogram("batches", "size")
@@ -39,11 +39,11 @@ class LegacyHttpHandlerMetrics(override val metricRegistry: MetricRegistry) exte
 /**
  * @author Andrey Stepachev
  */
-class LegacyHttpHandler(config: Config, kafkaProducer: ActorRef, metrics: LegacyHttpHandlerMetrics) extends Actor with Logging {
+class HttpPointsServer(config: Config, kafkaProducer: ActorRef, metrics: HttpPointsServerMetrics) extends Actor with Logging {
 
   implicit val timeout: Timeout = 5.second
   // for the actor 'asks'
-  val kafkaTimeout: Timeout = new Timeout(config.getDuration("legacy.http.produce.timeout").asInstanceOf[FiniteDuration])
+  val kafkaTimeout: Timeout = new Timeout(config.getDuration("server.http.produce.timeout").asInstanceOf[FiniteDuration])
 
   import context.dispatcher
 
@@ -132,19 +132,19 @@ class LegacyHttpHandler(config: Config, kafkaProducer: ActorRef, metrics: Legacy
   )
 }
 
-object LegacyHttpHandler {
+object HttpPointsServer {
   implicit val timeout: Timeout = 5 seconds
 
   def start(config: Config, kafkaProducer: ActorRef)(implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
     val handler = system.actorOf(
-      Props(new LegacyHttpHandler(config, kafkaProducer, new LegacyHttpHandlerMetrics(metricRegistry))),
-      name = "legacy-http")
-    val hostport = config.getString("legacy.http.listen").split(":")
+      Props.apply(new HttpPointsServer(config, kafkaProducer, new HttpPointsServerMetrics(metricRegistry))),
+      name = "server-http")
+    val hostport = config.getString("server.http.listen").split(":")
     val addr = new InetSocketAddress(hostport(0), hostport(1).toInt)
     IO(Http) ? Http.Bind(
       listener = handler,
       endpoint = addr,
-      backlog = config.getInt("legacy.http.backlog"),
+      backlog = config.getInt("server.http.backlog"),
       options = Nil,
       settings = None)
     handler

@@ -1,4 +1,4 @@
-package popeye.transport.legacy
+package popeye.transport.server
 
 import com.typesafe.config.Config
 import java.io.Closeable

@@ -1,4 +1,4 @@
-package popeye.transport.legacy
+package popeye.transport.server
 
 import org.scalatest.mock.MockitoSugar
 import popeye.transport.test.AkkaTestKitSpec
@@ -17,11 +17,12 @@ import popeye.transport.kafka.ProducePending
 import akka.event.NoLogging
 import java.io.ByteArrayOutputStream
 import popeye.transport.CompressionDecoder.{Gzip, Snappy, Codec}
+import popeye.test.PopeyeTestUtils
 
 /**
  * @author Andrey Stepachev
  */
-class TsdbTelnetHandlerTestSpec extends AkkaTestKitSpec("tsdb-server") with MockitoSugar {
+class TelnetPointsServerSpec extends AkkaTestKitSpec("tsdb-server") with MockitoSugar {
 
   val mockSettings = withSettings()
   //.verboseLogging()
@@ -33,23 +34,28 @@ class TsdbTelnetHandlerTestSpec extends AkkaTestKitSpec("tsdb-server") with Mock
   private def initActors(batchSize: Int = 1) = {
     val config: Config = ConfigFactory.parseString(
       s"""
-        | legacy.tsdb.high-watermark = 1
-        | legacy.tsdb.low-watermark = 0
-        | legacy.tsdb.push-timeout = 10s
-        | legacy.tsdb.batchSize = $batchSize
+        | zk.cluster = "localhost:2181"
+        | server.telnet.high-watermark = 1
+        | server.telnet.low-watermark = 0
+        | server.telnet.push-timeout = 10s
+        | server.telnet.batchSize = $batchSize
       """.stripMargin)
-      .withFallback(ConfigUtil.loadSubsysConfig("pump"))
+      .withFallback(ConfigUtil.loadSubsysConfig("slicer"))
       .resolve()
 
     val kafka = TestProbe()
     val connection = TestProbe()
-    val actor: TestActorRef[TsdbTelnetHandler] = TestActorRef(Props(
-      new TsdbTelnetHandler(connection.ref, kafka.ref, config, tsdbMetrics))
+    val actor: TestActorRef[TsdbTelnetHandler] = TestActorRef(
+      Props.apply(new TsdbTelnetHandler(connection.ref, kafka.ref, config, tsdbMetrics))
       .withDeploy(Deploy.local))
     (connection, kafka, actor)
   }
 
-  val plainCmd = ByteString.fromString("put metric.name 1375173810 0 host=localhost\r\n")
+
+  val plainCmd = ByteString.fromString(PopeyeTestUtils.telnetCommand(
+    PopeyeTestUtils.mkEvent(List("metric.name"), List("localhost"))
+  ) + "\r\n")
+
   val encodedCmd = encode(plainCmd, Gzip())
   val snappedCmd = encode(plainCmd, Snappy())
   val deflateCmd = ByteString.fromString(s"deflate ${encodedCmd.length}\r\n")
@@ -62,6 +68,7 @@ class TsdbTelnetHandlerTestSpec extends AkkaTestKitSpec("tsdb-server") with Mock
     val (connection, kafka, actor) = initActors(2)
     actor ! Tcp.Received(plainCmd.take(10))
     actor ! Tcp.Received(plainCmd.drop(10))
+    expectNoMsg()
     actor ! Tcp.Received(commitCmd)
     validate(connection, kafka, actor)
   }
@@ -88,6 +95,7 @@ class TsdbTelnetHandlerTestSpec extends AkkaTestKitSpec("tsdb-server") with Mock
     actor ! Tcp.Received(deflateCmd)
     actor ! Tcp.Received(encodedCmd.take(10))
     actor ! Tcp.Received(encodedCmd.drop(10))
+    expectNoMsg()
     actor ! Tcp.Received(commitCmd)
     validate(connection, kafka, actor)
   }
@@ -98,6 +106,7 @@ class TsdbTelnetHandlerTestSpec extends AkkaTestKitSpec("tsdb-server") with Mock
     actor ! Tcp.Received(snappyCmd)
     actor ! Tcp.Received(snappedCmd.take(10))
     actor ! Tcp.Received(snappedCmd.drop(10))
+    expectNoMsg()
     actor ! Tcp.Received(commitCmd)
     validate(connection, kafka, actor)
   }

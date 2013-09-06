@@ -1,4 +1,4 @@
-package popeye.transport.legacy
+package popeye.transport.server
 
 import popeye.transport.proto.Message.{Attribute, Point}
 import org.codehaus.jackson.{JsonFactory, JsonToken, JsonParser}
