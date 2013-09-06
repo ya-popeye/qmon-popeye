@@ -1,7 +1,7 @@
 package popeye.transport.kafka
 
 import org.scalatest.mock.MockitoSugar
-import popeye.transport.test.{AkkaTestKitSpec, KafkaServerTestSpec}
+import popeye.transport.test.{AkkaTestKitSpec}
 import akka.testkit.TestActorRef
 import java.util.Random
 import org.mockito.Mockito._
@@ -40,8 +40,8 @@ class KafkaPointProducerTestSpec extends AkkaTestKitSpec("tsdb-writer") with Moc
       s"""
         |   zk.cluster="localhost:2181"
         |   kafka.metadata.broker.list="localhost:9092"
-        |   kafka.produce.message.min-bytes = 1
-        |   kafka.produce.senders = 1
+        |   kafka.producer.message.min-bytes = 1
+        |   kafka.producer.senders = 1
         |   kafka.points.topic="$topic"
       """.stripMargin)
       .withFallback(ConfigFactory.parseResources("dynamic.conf"))

@@ -23,11 +23,11 @@ import kafka.serializer.Encoder
 
 
 case class KafkaPointProducerMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
-  val writeTimer = metrics.timer("kafka.produce.time")
-  val sendTimer = metrics.timer("kafka.send.time")
-  val pointsMeter = metrics.meter("kafka.produce.points")
-  val batchFailedMeter = metrics.meter("kafka.produce.batch.failed")
-  val batchCompleteMeter = metrics.meter("kafka.produce.batch.complete")
+  val writeTimer = metrics.timer("kafka.producer.wall-time")
+  val sendTimer = metrics.timer("kafka.producer.send-time")
+  val pointsMeter = metrics.meter("kafka.producer.points")
+  val batchFailedMeter = metrics.meter("kafka.producer.batch-failed")
+  val batchCompleteMeter = metrics.meter("kafka.producer.batch-complete")
 }
 
 private object KafkaPointProducerProtocol {
@@ -116,11 +116,11 @@ class KafkaPointProducer(config: Config,
 
   val topic = config.getString("kafka.points.topic")
 
-  val batchWaitTimeout: FiniteDuration = toFiniteDuration(config.getMilliseconds("kafka.produce.batch-timeout"))
-  val maxQueued = config.getInt("kafka.produce.max-queued")
-  val senders = config.getInt("kafka.produce.senders")
-  val minMessageBytes = config.getInt("kafka.produce.message.min-bytes")
-  val maxMessageBytes = config.getInt("kafka.produce.message.max-bytes")
+  val batchWaitTimeout: FiniteDuration = toFiniteDuration(config.getMilliseconds("kafka.producer.batch-timeout"))
+  val maxQueued = config.getInt("kafka.producer.max-queued")
+  val senders = config.getInt("kafka.producer.senders")
+  val minMessageBytes = config.getInt("kafka.producer.message.min-bytes")
+  val maxMessageBytes = config.getInt("kafka.producer.message.max-bytes")
   val pendingPoints = new PointsQueue(minMessageBytes, maxMessageBytes)
 
   var flusher: Option[Cancellable] = None
@@ -203,11 +203,11 @@ object KafkaPointProducer {
     val kafkaClient = new PopeyeKafkaClientImpl(producerConfig(config))
     system.actorOf(KafkaPointProducer.props(config, idGenerator, kafkaClient)
       .withRouter(FromConfig())
-      .withDispatcher("kafka.produce.dispatcher"), "kafka-producer")
+      .withDispatcher("kafka.producer.dispatcher"), "kafka-producer")
   }
 
   def producerConfig(globalConfig: Config): ProducerConfig = {
-    val config: Config = globalConfig.getConfig("kafka.producer")
+    val config: Config = globalConfig.getConfig("kafka.producer.config")
     val producerProps: Properties = config
     producerProps.setProperty("producer.type", "sync")
     producerProps.setProperty("key.serializer.class", classOf[KeySerialiser].getName)
