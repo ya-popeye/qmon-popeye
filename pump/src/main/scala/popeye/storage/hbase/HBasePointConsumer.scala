@@ -61,16 +61,16 @@ class HBasePointConsumer(config: Config, storage: PointsStorage, val metrics: HB
   import HBasePointConsumer._
 
   val topic = config.getString("kafka.points.topic")
-  val group = config.getString("hbase.group")
+  val group = config.getString("hbase.kafka.consumer.group")
 
   val pair: ConsumerPair = HBasePointConsumer.createConsumer(topic, consumerConfig(config))
   if (pair.consumer.isEmpty)
     throw new ConsumerInitializationException
   val consumer = pair.consumer
   val connector = pair.connector
-  lazy val maxBatchSize = config.getLong("hbase.batch-size")
-  lazy val checkTick = toFiniteDuration(config.getMilliseconds("hbase.check-tick"))
-  lazy val writeTimeout = toFiniteDuration(config.getMilliseconds("hbase.write-timeout"))
+  lazy val maxBatchSize = config.getLong("hbase.kafka.consumer.batch-size")
+  lazy val checkTick = toFiniteDuration(config.getMilliseconds("hbase.kafka.consumer.check-tick"))
+  lazy val writeTimeout = toFiniteDuration(config.getMilliseconds("hbase.kafka.consumer.write-timeout"))
 
   var checker: Option[Cancellable] = None
 
@@ -180,11 +180,11 @@ object HBasePointConsumer extends Logging {
   }
 
   def consumerConfig(globalConfig: Config): ConsumerConfig = {
-    val config: Config = globalConfig.getConfig("hbase.consumer")
+    val config: Config = globalConfig.getConfig("hbase.kafka.consumer.config")
     val consumerProps: Properties = config
-    val timeout = globalConfig.getMilliseconds("hbase.consumer.timeout")
+    val timeout = globalConfig.getMilliseconds("hbase.kafka.consumer.timeout")
     consumerProps.put("consumer.timeout.ms", timeout.toString)
-    consumerProps.put("group.id", globalConfig.getString("hbase.group"))
+    consumerProps.put("group.id", globalConfig.getString("hbase.kafka.consumer.group"))
     new ConsumerConfig(consumerProps)
   }
 
