@@ -98,6 +98,7 @@ object HBase {
       ExclusionRule(name = "servlet-api"),
       ExclusionRule(name = "kfs"),
       ExclusionRule(name = "avro"),
+      ExclusionRule(name = "mockito-all"),
       ExclusionRule(organization = "org.jruby"),
       ExclusionRule(organization = "tomcat"),
       ExclusionRule(organization = "org.apache.thrift"),
