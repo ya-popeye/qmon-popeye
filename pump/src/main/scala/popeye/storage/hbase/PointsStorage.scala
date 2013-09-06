@@ -29,9 +29,9 @@ class PointsStorage(tableName: String,
    */
   def writePoints(points: Seq[Message.Point])(implicit eCtx: ExecutionContext): Future[Int] = {
     Future.traverse(points)(mkKeyValueFuture).map { kvList =>
-      val puts = new util.ArrayList[Put]()
+      val puts = new util.ArrayList[Put](kvList.length)
       kvList.foreach { k =>
-        puts.add(new Put().add(k))
+        puts.add(new Put(k.getRow).add(k))
       }
       val hTable = hTablePool.getTable(tableName)
       try {
