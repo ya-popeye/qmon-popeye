@@ -42,7 +42,7 @@ private object KafkaPointProducerProtocol {
 }
 
 class KafkaPointSender(topic: String,
-                       kafkaClient: PopeyeKafkaClient,
+                       kafkaClient: PopeyeKafkaProducerFactory,
                        metrics: KafkaPointProducerMetrics,
                        batcher: KafkaPointProducer)
   extends Actor with Logging {
@@ -108,7 +108,7 @@ class KafkaPointSender(topic: String,
 
 class KafkaPointProducer(config: Config,
                          idGenerator: IdGenerator,
-                         kafkaClient: PopeyeKafkaClient,
+                         kafkaClient: PopeyeKafkaProducerFactory,
                          val metrics: KafkaPointProducerMetrics)
   extends Actor with Logging {
 
@@ -200,7 +200,7 @@ object KafkaPointProducer {
 
   def start(config: Config, idGenerator: IdGenerator)
            (implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
-    val kafkaClient = new PopeyeKafkaClientImpl(producerConfig(config))
+    val kafkaClient = new PopeyeKafkaProducerFactoryImpl(producerConfig(config))
     system.actorOf(KafkaPointProducer.props(config, idGenerator, kafkaClient)
       .withRouter(FromConfig())
       .withDispatcher("kafka.producer.dispatcher"), "kafka-producer")
@@ -215,7 +215,7 @@ object KafkaPointProducer {
     new ProducerConfig(producerProps)
   }
 
-  def props(config: Config, idGenerator: IdGenerator, kafkaClient: PopeyeKafkaClient)
+  def props(config: Config, idGenerator: IdGenerator, kafkaClient: PopeyeKafkaProducerFactory)
            (implicit metricRegistry: MetricRegistry) = {
     val metrics = KafkaPointProducerMetrics(metricRegistry)
     Props.apply(new KafkaPointProducer(

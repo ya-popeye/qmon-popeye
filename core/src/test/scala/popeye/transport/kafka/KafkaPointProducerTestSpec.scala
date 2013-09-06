@@ -49,7 +49,7 @@ class KafkaPointProducerTestSpec extends AkkaTestKitSpec("tsdb-writer") with Moc
       .resolve()
     val producer = mock[Producer[Long, Array[Byte]]]
     val actor: TestActorRef[KafkaPointProducer] = TestActorRef(
-      KafkaPointProducer.props(config, generator, new PopeyeKafkaClient {
+      KafkaPointProducer.props(config, generator, new PopeyeKafkaProducerFactory {
         def newProducer(): Producer[Long, Array[Byte]] = producer
       }))
     val p = Promise[Long]()

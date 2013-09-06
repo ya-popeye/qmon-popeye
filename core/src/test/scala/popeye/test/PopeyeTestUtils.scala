@@ -6,6 +6,9 @@ import java.util.Random
 import java.text.SimpleDateFormat
 import popeye.transport.proto.Message
 import scala.collection.JavaConversions.iterableAsScalaIterable
+import popeye.transport.kafka.{PopeyeKafkaConsumer, PopeyeKafkaConsumerFactory}
+import org.mockito.invocation.InvocationOnMock
+import org.mockito.stubbing.Answer
 
 /**
  * @author Andrey Stepachev
@@ -56,5 +59,60 @@ object PopeyeTestUtils {
     ).build()
   }
 
+  class MockPopeyeConsumerFacotory extends PopeyeKafkaConsumerFactory {
 
+    val consumer = new MockPopeyeConsumer
+
+    def newConsumer(): PopeyeKafkaConsumer = consumer
+  }
+
+  class MockPopeyeConsumer extends PopeyeKafkaConsumer {
+
+    var list = List[Option[(Long, Seq[Point])]]()
+    var isCommit = false
+    var isShutdown = false
+
+    def addMessages(batchId: Long, points: Seq[Point]) = {
+      list = list :+ Some(batchId -> points)
+    }
+
+    def iterateTopic(topic: String): Iterator[Option[(Long, Seq[Point])]] = {
+      list.iterator
+    }
+
+    def commitOffsets() {
+      isCommit = true
+    }
+
+    def shutdown() {
+      isShutdown = true
+    }
+  }
+
+  class MockAnswer[T](function: Any => T) extends Answer[T] {
+    def answer(invocation: InvocationOnMock): T = {
+      val args = invocation.getArguments
+      val mock = invocation.getMock
+      if (args.size == 0) {
+        function match {
+          case f: Function0[_] => return f()
+          case f: Function1[_,_] => return f(mock)
+        }
+      } else if (args.size == 1) {
+        function match {
+          case f: Function1[_, _] => return f(args(0))
+        }
+        function match {
+          case f2: Function2[_, _, _] => return f2(args(0), mock)
+        }
+      } else {
+        function match {
+          case f: Function1[_, _] => return f(args)
+        }
+        function match {
+          case f2: Function2[_, _, _] => return f2(args, mock)
+        }
+      }
+    }
+  }
 }

@@ -21,6 +21,7 @@ import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Await, Future}
 import scala.util.{Success, Failure}
+import popeye.transport.kafka.{PopeyeKafkaConsumerFactoryImpl, PopeyeKafkaConsumerFactory}
 
 /**
  * @author Andrey Stepachev
@@ -54,20 +55,17 @@ object HBasePointConsumerProtocol {
 
 }
 
-class HBasePointConsumer(config: Config, storage: PointsStorage, val metrics: HBasePointConsumerMetrics)
+class HBasePointConsumer(config: Config, storage: PointsStorage, factory: PopeyeKafkaConsumerFactory,
+                         val metrics: HBasePointConsumerMetrics)
   extends Actor with Logging {
 
   import ExecutionContext.Implicits.global
   import HBasePointConsumer._
 
   val topic = config.getString("kafka.points.topic")
-  val group = config.getString("hbase.kafka.consumer.group")
 
-  val pair: ConsumerPair = HBasePointConsumer.createConsumer(topic, consumerConfig(config))
-  if (pair.consumer.isEmpty)
-    throw new ConsumerInitializationException
-  val consumer = pair.consumer
-  val connector = pair.connector
+  val consumer = factory.newConsumer()
+
   lazy val maxBatchSize = config.getLong("hbase.kafka.consumer.batch-size")
   lazy val checkTick = toFiniteDuration(config.getMilliseconds("hbase.kafka.consumer.check-tick"))
   lazy val writeTimeout = toFiniteDuration(config.getMilliseconds("hbase.kafka.consumer.write-timeout"))
@@ -83,8 +81,7 @@ class HBasePointConsumer(config: Config, storage: PointsStorage, val metrics: HB
     super.preStart()
     // jitter to prevent rebalance deadlock
     //context.system.scheduler.scheduleOnce(Random.nextInt(10) seconds, self, ConsumeDone(Nil))
-    debug("Starting HBasePointConsumer for group " + group + " and topic " + topic)
-    import context.dispatcher
+    debug(s"Starting HBasePointConsumer topic $topic")
     checker = Some(context.system.scheduler.schedule(checkTick, checkTick, self, CheckAvailable))
   }
 
@@ -93,8 +90,7 @@ class HBasePointConsumer(config: Config, storage: PointsStorage, val metrics: HB
       _.cancel()
     }
     super.postStop()
-    debug("Stopping HBasePointConsumer for group " + group + " and topic " + topic)
-    connector.shutdown()
+    debug(s"Stoping HBasePointConsumer topic $topic")
   }
 
   def receive = {
@@ -102,7 +98,7 @@ class HBasePointConsumer(config: Config, storage: PointsStorage, val metrics: HB
       doNext()
 
     case ConsumeDone(batches) =>
-      connector.commitOffsets
+      consumer.commitOffsets()
       metrics.batchCompleteHist.mark()
       doNext()
 
@@ -116,25 +112,22 @@ class HBasePointConsumer(config: Config, storage: PointsStorage, val metrics: HB
     val batchIds = new ArrayBuffer[Long]
     val batch = new ArrayBuffer[Message.Point]
     val tctx = metrics.consumeTimer.timerContext()
-    val iterator = consumer.get.iterator()
-    try {
-      while (iterator.hasNext && batch.size < maxBatchSize) {
-        val msg: MessageAndMetadata[Array[Byte], Array[Byte]] = iterator.next()
-        try {
-          val (batchId, points) = PackedPoints.decodeWithBatchId(msg.message)
-          metrics.batchSizeHist.update(points.size)
-          batchIds += batchId
-          batch ++= points
-        } catch {
-          case e: InvalidProtocolBufferException =>
-            metrics.batchDecodeFailuresMeter.mark()
+
+    val iterator = consumer.iterateTopic(topic)
+    while (iterator.hasNext && batch.size < maxBatchSize) {
+      try {
+        iterator.next() match {
+          case Some((batchId, points)) =>
+            metrics.batchSizeHist.update(points.size)
+            batchIds += batchId
+            batch ++= points
+          case None =>
+            // timeout, we should break on hasNext == false
         }
+      } catch {
+        case e: InvalidProtocolBufferException =>
+          metrics.batchDecodeFailuresMeter.mark()
       }
-    } catch {
-      case ex: ConsumerTimeoutException => // ok
-      case ex: Throwable =>
-        error("Failed to consume", ex)
-        throw ex
     }
     if (batchIds.size > 0) {
       metrics.pointsMeter.mark(batch.size)
@@ -169,12 +162,13 @@ class HBasePointConsumer(config: Config, storage: PointsStorage, val metrics: HB
 
 object HBasePointConsumer extends Logging {
 
-  def props(config: Config, storage: PointsStorage)(implicit system: ActorSystem, metricRegistry: MetricRegistry) = {
-    Props(classOf[HBasePointConsumer], config, storage, HBasePointConsumerMetrics(metricRegistry))
+  def props(config: Config, storage: PointsStorage, factory: PopeyeKafkaConsumerFactory)(implicit system: ActorSystem, metricRegistry: MetricRegistry) = {
+    Props.apply(new HBasePointConsumer(config, storage, factory, HBasePointConsumerMetrics(metricRegistry)))
   }
 
   def start(config: Config, storage: PointsStorage)(implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
-    system.actorOf(props(config, storage)
+    val factory = new PopeyeKafkaConsumerFactoryImpl(consumerConfig(config))
+    system.actorOf(props(config, storage, factory)
       .withRouter(FromConfig())
       .withDispatcher("hbase.dispatcher"), "hbase-writer")
   }
@@ -186,30 +180,6 @@ object HBasePointConsumer extends Logging {
     consumerProps.put("consumer.timeout.ms", timeout.toString)
     consumerProps.put("group.id", globalConfig.getString("hbase.kafka.consumer.group"))
     new ConsumerConfig(consumerProps)
-  }
-
-  class ConsumerPair(val connector: ConsumerConnector, val consumer: Option[KafkaStream[Array[Byte], Array[Byte]]]) {
-    def shutdown = {
-      connector.shutdown()
-    }
-  }
-
-  def createConsumer(topic: String, config: ConsumerConfig): ConsumerPair = {
-    val consumerConnector: ConsumerConnector = Consumer.create(config)
-
-    val topicThreadCount = Map((topic, 1))
-    val topicMessageStreams = consumerConnector.createMessageStreams(topicThreadCount)
-    val streams = topicMessageStreams.get(topic)
-
-    val stream = streams match {
-      case Some(List(s)) => Some(s)
-      case _ => {
-        error("Did not get a valid stream from topic " + topic)
-        None
-      }
-    }
-    info(s"Consumer created")
-    new ConsumerPair(consumerConnector, stream)
   }
 }
 
