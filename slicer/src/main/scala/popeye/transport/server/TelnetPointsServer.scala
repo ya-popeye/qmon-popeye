@@ -104,6 +104,7 @@ class TsdbTelnetHandler(connection: ActorRef,
         commands.process(data)
       } catch {
         case ex: Exception =>
+          debug(s"Err: ${ex.getMessage}", ex)
           sender ! Tcp.Write(ByteString("ERR " + ex.getMessage + "\n"))
           context.stop(self)
       }
