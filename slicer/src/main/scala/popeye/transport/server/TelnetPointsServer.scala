@@ -41,7 +41,7 @@ class TsdbTelnetHandler(connection: ActorRef,
   val hwPendingPoints: Int = config.getInt("server.telnet.high-watermark")
   val lwPendingPoints: Int = config.getInt("server.telnet.low-watermark")
   val batchSize: Int = config.getInt("server.telnet.batchSize")
-  implicit val askTimeout: Timeout = new Timeout(config.getMilliseconds("server.telnet.push-timeout"), MILLISECONDS)
+  implicit val askTimeout: Timeout = new Timeout(config.getMilliseconds("server.telnet.produce.timeout"), MILLISECONDS)
 
   require(hwPendingPoints > lwPendingPoints, "High watermark should be greater then low watermark")
 

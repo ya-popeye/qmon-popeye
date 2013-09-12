@@ -36,7 +36,7 @@ class TelnetPointsServerSpec extends AkkaTestKitSpec("tsdb-server") with Mockito
       s"""
         | server.telnet.high-watermark = 1
         | server.telnet.low-watermark = 0
-        | server.telnet.push-timeout = 10s
+        | server.telnet.produce-timeout = 10s
         | server.telnet.batchSize = $batchSize
       """.stripMargin)
       .withFallback(ConfigUtil.loadSubsysConfig("slicer"))
