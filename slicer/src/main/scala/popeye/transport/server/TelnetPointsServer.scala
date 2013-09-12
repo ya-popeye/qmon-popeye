@@ -57,7 +57,7 @@ class TsdbTelnetHandler(connection: ActorRef,
   private var pendingCommits: Seq[CommitReq] = Vector()
   private val pendingCorrelations = mutable.TreeSet[PointId]()
 
-  private val commands = new TsdbCommands(metrics, config) {
+  private val commands = new TelnetCommands(metrics, config) {
 
     override def addPoint(point: Message.Point): Unit = {
       bufferedPoints += point

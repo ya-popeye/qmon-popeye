@@ -10,11 +10,13 @@ import scala.annotation.tailrec
 import popeye.transport.CompressionDecoder.{Snappy, Gzip}
 import popeye.transport.proto.Message.{Attribute, Point}
 import scala.collection.mutable
+import java.util
 
 /**
  * @author Andrey Stepachev
  */
-abstract class TsdbCommands(metrics: TsdbTelnetMetrics, config: Config) extends Closeable with Logging {
+abstract class TelnetCommands(metrics: TsdbTelnetMetrics, config: Config) extends Closeable with Logging {
+  import TelnetCommands._
 
   private var deflater: Option[CompressionDecoder] = None
   private val lineDecoder = new LineDecoder()
@@ -69,7 +71,14 @@ abstract class TsdbCommands(metrics: TsdbTelnetMetrics, config: Config) extends 
 
           case "put" =>
             metrics.pointsRcvMeter.mark()
-            addPoint(parsePoint(strings))
+            try {
+              addPoint(parsePoint(strings))
+            } catch {
+              case iae @ (_: IllegalArgumentException| _: IndexOutOfBoundsException) =>
+                debug(s"Illegal point: ${strings.mkString(",")}", iae)
+              case x: Throwable =>
+                throw x
+            }
 
           case "commit" =>
             commit(Some(strings(1).toLong))
@@ -127,6 +136,10 @@ abstract class TsdbCommands(metrics: TsdbTelnetMetrics, config: Config) extends 
     }
   }
 
+
+}
+
+object TelnetCommands {
   /**
    * Parses an integer value as a long from the given character sequence.
    * <p>
@@ -157,16 +170,19 @@ abstract class TsdbCommands(metrics: TsdbTelnetMetrics, config: Config) extends 
       throw new NumberFormatException("Value too long: " + s)
     }
     var v: Long = 0
-    do {
-      if ('0' <= c && c <= '9') {
-        v -= c - '0'
-      } else {
-        throw new NumberFormatException("Invalid character '" + c + "' in " + s)
-      }
-      v *= 10
-      c = s.charAt(i)
-      i += 1
-    } while (i < n)
+    if (i < s.length()) {
+      do {
+        if ('0' <= c && c <= '9') {
+          v -= c - '0'
+        } else {
+          throw new NumberFormatException("Invalid character '" + c + "' in " + s)
+        }
+        v *= 10
+        c = s.charAt(i)
+        i += 1
+      } while (i < s.length())
+    }
+    v -= c - '0'
     if (v > 0) {
       throw new NumberFormatException("Overflow in " + s)
     } else if (s.charAt(0) == '-') {
