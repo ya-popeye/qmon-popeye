@@ -208,12 +208,7 @@ object KafkaPointProducer {
   }
 
   def producerConfig(globalConfig: Config): ProducerConfig = {
-    val producerProps: Properties = globalConfig.getStringList("kafka.producer.config")
-      .map{ conf =>
-      val props = new Properties
-      props.load(this.getClass.getClassLoader.getResourceAsStream(conf))
-      props
-    }.reduce{ (l, r) =>  l.putAll(r); l}
+    val producerProps = ConfigUtil.mergeProperties(globalConfig, "kafka.producer.config")
     producerProps.setProperty("metadata.broker.list", globalConfig.getString("kafka.broker.list"))
     producerProps.setProperty("key.serializer.class", classOf[KeySerialiser].getName)
     producerProps.setProperty("partitioner.class", classOf[KeyPartitioner].getName)

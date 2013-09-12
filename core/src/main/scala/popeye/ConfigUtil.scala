@@ -12,6 +12,16 @@ import java.util.concurrent.TimeUnit
  */
 object ConfigUtil {
 
+  def mergeProperties(globalConfig: Config, path: String): Properties = {
+    val mergedProperties: Properties = globalConfig.getStringList("kafka.producer.config")
+      .map{ conf =>
+      val props = new Properties
+      props.load(this.getClass.getClassLoader.getResourceAsStream(conf))
+      props
+    }.reduce{ (l, r) =>  l.putAll(r); l}
+    mergedProperties
+  }
+
   def loadSubsysConfig(subsys: String): Config = {
     ConfigFactory.parseResources(s"$subsys.conf")
       .withFallback(ConfigFactory.parseResources("popeye.conf"))
