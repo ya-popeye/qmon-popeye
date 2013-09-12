@@ -34,7 +34,6 @@ class TelnetPointsServerSpec extends AkkaTestKitSpec("tsdb-server") with Mockito
   private def initActors(batchSize: Int = 1) = {
     val config: Config = ConfigFactory.parseString(
       s"""
-        | zk.cluster = "localhost:2181"
         | server.telnet.high-watermark = 1
         | server.telnet.low-watermark = 0
         | server.telnet.push-timeout = 10s
