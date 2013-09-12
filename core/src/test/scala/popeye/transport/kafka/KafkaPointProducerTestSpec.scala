@@ -38,14 +38,12 @@ class KafkaPointProducerTestSpec extends AkkaTestKitSpec("tsdb-writer") with Moc
 
     val config: Config = ConfigFactory.parseString(
       s"""
-        |   zk.cluster="localhost:2181"
-        |   kafka.metadata.broker.list="localhost:9092"
-        |   kafka.producer.message.min-bytes = 1
+        |   kafka.broker.list="localhost:9092"
+        |   kafka.producer.config += "popeye/transport/kafka/KafkaPointProducerTestSpec.properties"
         |   kafka.producer.senders = 1
         |   kafka.points.topic="$topic"
       """.stripMargin)
-      .withFallback(ConfigFactory.parseResources("dynamic.conf"))
-      .withFallback(ConfigFactory.parseResources("reference.conf"))
+      .withFallback(ConfigFactory.parseResources("popeye.conf"))
       .resolve()
     val producer = mock[Producer[Long, Array[Byte]]]
     val actor: TestActorRef[KafkaPointProducer] = TestActorRef(

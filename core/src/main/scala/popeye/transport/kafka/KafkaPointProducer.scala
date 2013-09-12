@@ -10,6 +10,7 @@ import akka.routing.FromConfig
 import com.codahale.metrics.{Timer, MetricRegistry}
 import kafka.client.ClientUtils
 import kafka.utils.VerifiableProperties
+import scala.collection.JavaConversions.iterableAsScalaIterable
 import popeye.transport.proto.Message.Point
 import scala.concurrent.duration._
 import akka.actor.SupervisorStrategy.Restart
@@ -207,9 +208,13 @@ object KafkaPointProducer {
   }
 
   def producerConfig(globalConfig: Config): ProducerConfig = {
-    val config: Config = globalConfig.getConfig("kafka.producer.config")
-    val producerProps: Properties = config
-    producerProps.setProperty("producer.type", "sync")
+    val producerProps: Properties = globalConfig.getStringList("kafka.producer.config")
+      .map{ conf =>
+      val props = new Properties
+      props.load(this.getClass.getClassLoader.getResourceAsStream(conf))
+      props
+    }.reduce{ (l, r) =>  l.putAll(r); l}
+    producerProps.setProperty("metadata.broker.list", globalConfig.getString("kafka.broker.list"))
     producerProps.setProperty("key.serializer.class", classOf[KeySerialiser].getName)
     producerProps.setProperty("partitioner.class", classOf[KeyPartitioner].getName)
     new ProducerConfig(producerProps)
@@ -228,17 +233,25 @@ object KafkaPointProducer {
   def defaultProducerFactory(config: ProducerConfig) = new Producer[Int, Array[Byte]](config)
 }
 
-class KeySerialiser(props: VerifiableProperties = null) extends Encoder[Int] {
-  def toBytes(p1: Int): Array[Byte] = {
-    val conv = new Array[Byte](4)
+class KeySerialiser(props: VerifiableProperties = null) extends Encoder[Long] {
+  def toBytes(p1: Long): Array[Byte] = {
+    val conv = new Array[Byte](8)
     var input = p1
-    conv(3) = (input & 0xff).toByte;
-    input >>= 8;
-    conv(2) = (input & 0xff).toByte;
-    input >>= 8;
-    conv(1) = (input & 0xff).toByte;
-    input >>= 8;
-    conv(0) = input.toByte;
+    conv(7) = (input & 0xff).toByte
+    input >>= 8
+    conv(6) = (input & 0xff).toByte
+    input >>= 8
+    conv(5) = (input & 0xff).toByte
+    input >>= 8
+    conv(4) = (input & 0xff).toByte
+    input >>= 8
+    conv(3) = (input & 0xff).toByte
+    input >>= 8
+    conv(2) = (input & 0xff).toByte
+    input >>= 8
+    conv(1) = (input & 0xff).toByte
+    input >>= 8
+    conv(0) = input.toByte
     conv
   }
 

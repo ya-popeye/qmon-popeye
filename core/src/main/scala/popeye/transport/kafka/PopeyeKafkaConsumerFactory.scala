@@ -55,7 +55,12 @@ class PopeyeKafkaConsumerImpl(consumerConnector: ConsumerConnector) extends Pope
     new Iterator[Option[(Long, Seq[Message.Point])]] {
       val iterator = stream.iterator()
 
-      def hasNext: Boolean = iterator.hasNext()
+      def hasNext: Boolean = try {
+        iterator.hasNext()
+      } catch {
+        case ex: ConsumerTimeoutException =>
+          false
+      }
 
       def next(): Option[(Long, Seq[Point])] = {
         try {

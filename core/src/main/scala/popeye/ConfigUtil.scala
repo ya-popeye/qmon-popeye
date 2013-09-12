@@ -15,9 +15,6 @@ object ConfigUtil {
   def loadSubsysConfig(subsys: String): Config = {
     ConfigFactory.parseResources(s"$subsys.conf")
       .withFallback(ConfigFactory.parseResources("popeye.conf"))
-      .withFallback(ConfigFactory.parseResources(s"$subsys-dynamic.conf"))
-      .withFallback(ConfigFactory.parseResources("dynamic.conf"))
-      .withFallback(ConfigFactory.parseResources(s"$subsys-reference.conf"))
       .withFallback(ConfigFactory.load())
   }
 
