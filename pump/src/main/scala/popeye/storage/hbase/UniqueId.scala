@@ -119,6 +119,7 @@ class UniqueId(val width: Short,
         future.onFailure {
           case x: Throwable =>
             nameCache.remove(name)
+            promise.failure(x)
         }
         future.onSuccess {
           case r: Resolved =>
@@ -160,17 +161,20 @@ class UniqueId(val width: Short,
     val promise = Promise[String]()
     idCache.putIfAbsent(id, promise.future) match {
       case null =>
-        val future = resolver.ask(FindId(QualifiedId(kind, id)))(new Timeout(timeout.toMillis)).mapTo[Resolved]
-        future.onComplete {
-          case Success(r: Resolved) =>
-            addToCache(r)
-          case Failure(x) =>
+        val future = resolver.ask(FindId(QualifiedId(kind, id)))(new Timeout(timeout.toMillis)).mapTo[Response]
+        future.onFailure {
+          case x: Throwable =>
             idCache.remove(id)
+            promise.failure(x)
         }
-        promise.completeWith(future.map {
-          resolved =>
-            resolved.name.name
-        })
+        future.onSuccess {
+          case r: Resolved =>
+            addToCache(r)
+            promise.success(r.name.name)
+          case f: ResolutionFailed =>
+            idCache.remove(id)
+            promise.failure(f.t)
+        }
         promise.future
       case idFuture => idFuture
     }
