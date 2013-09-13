@@ -8,7 +8,7 @@ import popeye.storage.hbase.HBaseStorage._
 import popeye.transport.proto.Message
 import scala.collection.JavaConversions._
 import scala.concurrent.duration._
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{Await, ExecutionContext, Future}
 
 
 /**
@@ -78,6 +78,80 @@ class PointsStorage(tableName: String,
         val qualifiedValue = mkQualifiedValue(point, (timestamp - baseTime).toShort)
         new KeyValue(row, PointsStorage.PointsFamily, qualifiedValue._1, qualifiedValue._2)
     }
+  }
+
+  def pointToKeyValue(point: Message.Point)(implicit eCtx: ExecutionContext): KeyValue = {
+    Await.result(mkKeyValueFuture(point), resolveTimeout)
+  }
+
+  /**
+   * Makes Future for Message.Point from KeyValue.
+   * Most time all identifiers are cached, so this future returns 'complete',
+   * but in case of some unresolved identifiers future will be incomplete
+   *
+   * @param kv keyvalue to restore
+   * @return future
+   */
+  private def mkPointFuture(kv: KeyValue)(implicit eCtx: ExecutionContext): Future[Message.Point] = {
+    val row = kv.getRow
+    val kvValue = kv.getValue
+    val kvQualifier = kv.getQualifier
+    require(kv.getRowLength >= metricNames.width,
+      s"Metric Id is wider then row key ${Bytes.toStringBinary(row)}")
+    require(kv.getQualifierLength == Bytes.SIZEOF_SHORT,
+      s"Expected qualifier to be with size of Short")
+    val attributesLen = kv.getRowLength - metricNames.width - Bytes.SIZEOF_LONG
+    val attributeLen = attributeNames.width + attributeValues.width
+    require(attributesLen %
+      (attributeNames.width + attributeValues.width) == 0,
+      s"Row key should have room for" +
+        s" metric name (${metricNames.width} bytes) +" +
+        s" timestamp (${Bytes.SIZEOF_LONG} bytes)}" +
+        s" qualifier (N x $attributeLen bytes)}" +
+        s" but got row ${Bytes.toStringBinary(row)}")
+
+
+    val metricNameFuture = metricNames.resolveNameById(util.Arrays.copyOf(kv.getRow, metricNames.width))(resolveTimeout)
+    var attributeOffset = metricNames.width + Bytes.SIZEOF_LONG
+    val attributes = Future.traverse((0 until attributesLen / attributeLen).map { idx =>
+      val attributeNameId = util.Arrays.copyOfRange(row, attributeOffset, attributeOffset + attributeNames.width)
+      val attributeValueId = util.Arrays.copyOfRange(row,
+        attributeOffset + attributeNames.width,
+        attributeOffset + attributeNames.width + attributeValues.width)
+      attributeOffset += attributeLen * idx
+      (attributeNameId, attributeValueId)
+    }) { attribute =>
+      attributeNames.resolveNameById(attribute._1)(resolveTimeout)
+        .zip(attributeValues.resolveNameById(attribute._2)(resolveTimeout))
+    }
+    metricNameFuture.zip(attributes).map {
+      case tuple =>
+        val builder = Message.Point.newBuilder()
+          .setMetric(tuple._1)
+        val qualifier = Bytes.toShort(kvQualifier)
+        if ((qualifier & HBaseStorage.FLAG_FLOAT) == 0) {
+          // int
+          builder.setIntValue(Bytes.toLong(kvValue))
+        } else {
+          // float
+          builder.setFloatValue(Bytes.toFloat(kvValue))
+        }
+
+        val baseTs = Bytes.toLong(row, metricNames.width, Bytes.SIZEOF_LONG)
+
+        builder.setTimestamp(baseTs + qualifier >> HBaseStorage.FLAG_BITS)
+
+        tuple._2.foreach { attribute =>
+          builder.addAttributesBuilder()
+            .setName(attribute._1)
+            .setValue(attribute._2)
+        }
+        builder.build
+    }
+  }
+
+  def keyValueToPoint(kv: KeyValue)(implicit eCtx: ExecutionContext): Message.Point = {
+    Await.result(mkPointFuture(kv), resolveTimeout)
   }
 
   @inline

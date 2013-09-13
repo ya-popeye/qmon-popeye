@@ -2,7 +2,7 @@ package popeye.storage.hbase
 
 import akka.actor._
 import popeye.Logging
-import popeye.storage.hbase.UniqueId._
+import popeye.storage.hbase.BytesKey._
 import popeye.storage.hbase.UniqueIdProtocol.NotFoundName
 import popeye.storage.hbase.UniqueIdProtocol.FindName
 import popeye.storage.hbase.UniqueIdProtocol.NotFoundId
@@ -106,7 +106,9 @@ class UniqueIdActor(storage: UniqueIdStorage,
     var recreate = Map[QualifiedName, List[ActorRef]]()
     try {
       val keys = lookupRequests.keySet ++ createRequests.keySet
+      debug(s"Lookup for $keys")
       val resolved = storage.findByName(keys.toSeq).map(resolved => (resolved.toQualifiedName, resolved)).toMap
+      debug(s"Found $resolved")
       lookupRequests.foreach { tuple =>
         resolved.get(tuple._1) match {
           case Some(rname) =>
@@ -121,11 +123,14 @@ class UniqueIdActor(storage: UniqueIdStorage,
             tuple._2.foreach { ref => ref ! Resolved(rname)}
           case None =>
             try {
-              storage.registerName(tuple._1)
+              val result = storage.registerName(tuple._1)
+              tuple._2.foreach { ref => ref ! result}
             } catch {
               case ex: UniqueIdRaceException =>
+                error("Race: ", ex)
                 tuple._2.foreach { ref => ref ! Race(tuple._1)}
               case ex: Throwable =>
+                error("UniqueIdActor got error", ex)
                 tuple._2.foreach {
                   _ ! ResolutionFailed(ex)
                 }
@@ -136,5 +141,42 @@ class UniqueIdActor(storage: UniqueIdStorage,
       createRequests = recreate
       lookupRequests = Map()
     }
+  }
+}
+
+/**
+ * @author Andrey Stepachev
+ */
+class FixedUniqueIdActor(initial: Seq[ResolvedName] = Seq.empty)
+  extends Actor with Logging {
+
+  private var ids = initial.map(ev=>(ev.toQualifiedId, ev)).toMap
+  private var names = initial.map(ev=>(ev.toQualifiedName, ev)).toMap
+
+  override def supervisorStrategy: SupervisorStrategy = OneForOneStrategy() {
+    case _ => Restart
+  }
+
+  def add(name: ResolvedName) = {
+    if (!names.contains(name.toQualifiedName)) {
+      names = names.updated(name.toQualifiedName, name)
+      ids = ids.updated(name.toQualifiedId, name)
+      debug(s"Adding name $name")
+    }
+  }
+
+  def receive: Actor.Receive = {
+
+    case r: FindId =>
+      ids.get(r.qid) match {
+        case Some(x) => sender ! Resolved(x)
+        case None => sender ! ResolutionFailed(new IllegalArgumentException(s"Unknown id for request $r"))
+      }
+
+    case r: FindName =>
+      names.get(r.qname) match {
+        case Some(x) => sender ! Resolved(x)
+        case None => sender ! ResolutionFailed(new IllegalArgumentException(s"Unknown name for request $r"))
+      }
   }
 }

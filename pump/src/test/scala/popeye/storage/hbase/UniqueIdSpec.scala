@@ -9,7 +9,6 @@ import scala.concurrent.Await
 import scala.concurrent.duration._
 import popeye.storage.hbase.UniqueIdProtocol.FindName
 import popeye.storage.hbase.UniqueIdProtocol.Race
-import popeye.storage.hbase.QualifiedName
 import popeye.storage.hbase.UniqueIdProtocol.Resolved
 import popeye.storage.hbase.UniqueIdProtocol.ResolutionFailed
 
@@ -112,7 +111,7 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
 
   def mkUniq(): (TestProbe, UniqueId) = {
     val resolverProbe = TestProbe()
-    val uniq = new UniqueId(3, HBaseStorage.MetricKind, resolverProbe.ref, 1, 10, 1 seconds)
+    val uniq = new UniqueIdImpl(3, HBaseStorage.MetricKind, resolverProbe.ref, 1, 10, 1 seconds)
     (resolverProbe, uniq)
   }
 }

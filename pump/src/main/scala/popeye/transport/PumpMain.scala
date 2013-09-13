@@ -35,7 +35,7 @@ object PumpMain extends PopeyeMain("pump") {
   val consumer = HBasePointConsumer.start(config, storage)
 
   private def makeUniqueIdCache(config: Config, kind: String, resolver: ActorRef, storage: UniqueIdStorage, resolveTimeout: FiniteDuration): UniqueId = {
-    new UniqueId(storage.kindWidth(kind), kind, resolver,
+    new UniqueIdImpl(storage.kindWidth(kind), kind, resolver,
       config.getInt(s"$kind.initial-capacity"),
       config.getInt(s"$kind.max-capacity"),
       resolveTimeout

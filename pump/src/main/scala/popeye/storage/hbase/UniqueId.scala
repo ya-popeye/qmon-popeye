@@ -6,59 +6,103 @@ import akka.util.Timeout
 import com.googlecode.concurrentlinkedhashmap.ConcurrentLinkedHashMap
 import org.apache.hadoop.hbase.util.Bytes
 import popeye.Logging
-import popeye.storage.hbase.UniqueId._
+import popeye.storage.hbase.BytesKey._
 import popeye.storage.hbase.UniqueIdProtocol._
 import scala.Byte
 import scala.Some
 import scala.concurrent._
 import scala.concurrent.duration._
-import scala.util.Failure
 import scala.util.Success
+import java.util
 
-object UniqueId {
-
-  implicit def bytesToBytesKey(bytes: Array[Byte]) = new BytesKey(bytes)
+trait UniqueId {
 
   /**
-   * Helper class, making byte[] comparable
-   * @param data what to wrap
+   * Id width for given UniqueId
+   * @return
    */
-  class BytesKey(val data: Array[Byte]) extends Comparable[BytesKey] {
+  def width: Short
 
-    def compareTo(other: BytesKey): Int = {
-      Bytes.BYTES_COMPARATOR.compare(this.data, other.asInstanceOf[UniqueId.BytesKey].data)
-    }
+  /**
+   * Kind name for given UniqueId
+   * @return
+   */
+  def kind: String
 
-    override def equals(obj: scala.Any): Boolean = {
-      obj match {
-        case other: BytesKey =>
-          compareTo(other) == 0
-        case _ =>
-          throw new IllegalArgumentException("Object of wrong class compared: " + obj.getClass)
-      }
-    }
+  /**
+   * Lookup in cache
+   * @param name name to lookup
+   * @return optionally id
+   */
+  def findIdByName(name: String): Option[BytesKey]
 
-    override def hashCode(): Int = {
-      Bytes.hashCode(data)
+  /**
+   * Lookup name in cache
+   * @param id id to lookup for
+   * @return optionally name
+   */
+  def findNameById(id: BytesKey): Option[String]
+
+  /**
+   * Resolve asynchronously id using known name
+   * @param name name to resolve
+   * @param create create if not found
+   * @return future with id
+   */
+  def resolveIdByName(name: String, create: Boolean, retries: Int = 3)(implicit timeout: Duration): Future[BytesKey]
+
+  /**
+   * Resolve asynchronously name using known id
+   * @param id id to find name for
+   * @return future with name
+   */
+  def resolveNameById(id: BytesKey)(implicit timeout: Duration): Future[String]
+
+  /**
+   * Helper method for id <> bytes conversion
+   * @param id id to convert to.
+   * @return key or exception if result is wider then allowed
+   */
+  def toBytes(id: Long): BytesKey = {
+    val barr = Bytes.toBytes(id)
+    for (i <- 0 to (barr.length - width)) {
+      if (barr(i) != 0)
+        throw new IllegalArgumentException("Id is wider then allowed")
     }
+    util.Arrays.copyOfRange(barr, barr.length - width, barr.length)
   }
 
+  /**
+   * Helper method for id <> bytes conversion (id expected in big endian order)
+   * @param id id to convert to.
+   * @return key or exception if result is wider then allowed
+   */
+  def toId(id: BytesKey, offset: Int, len: Int): Long = {
+    if (len != width)
+      throw new IllegalArgumentException("Id lenght mismatch")
+    var v = 0
+    for (i <- Range(id.bytes.length - 1, -1, -1)) {
+      v |= id(i)
+      v <<= 8
+    }
+    v
+  }
 }
 
 /**
  * Shared cache for id resolution
  * @author Andrey Stepachev
  */
-class UniqueId(val width: Short,
+class UniqueIdImpl(val width: Short,
                val kind: String,
                resolver: ActorRef,
                initialCapacity: Int = 1000,
                maxCapacity: Int = 100000,
                timeout: FiniteDuration = 30 seconds)
-              (implicit eCtx: ExecutionContext) extends Logging {
+              (implicit eCtx: ExecutionContext) extends UniqueId with Logging {
 
   /** Cache for forward mappings (name to ID). */
-  private final val nameCache = new ConcurrentLinkedHashMap.Builder[String, Future[Array[Byte]]]
+  private final val nameCache = new ConcurrentLinkedHashMap.Builder[String, Future[BytesKey]]
     .initialCapacity(initialCapacity)
     .maximumWeightedCapacity(maxCapacity)
     .build()
@@ -75,7 +119,7 @@ class UniqueId(val width: Short,
    * @param name name to lookup
    * @return optionally id
    */
-  def findIdByName(name: String): Option[Array[Byte]] = {
+  def findIdByName(name: String): Option[BytesKey] = {
     nameCache.get(name) match {
       case null =>
         None
@@ -92,7 +136,7 @@ class UniqueId(val width: Short,
    * @param id id to lookup for
    * @return optionally name
    */
-  def findNameById(id: Array[Byte]): Option[String] = {
+  def findNameById(id: BytesKey): Option[String] = {
     idCache.get(id) match {
       case null =>
         None
@@ -110,8 +154,8 @@ class UniqueId(val width: Short,
    * @param create create if not found
    * @return future with id
    */
-  def resolveIdByName(name: String, create: Boolean, retries: Int = 3)(implicit timeout: Duration): Future[Array[Byte]] = {
-    val promise = Promise[Array[Byte]]()
+  def resolveIdByName(name: String, create: Boolean, retries: Int = 3)(implicit timeout: Duration): Future[BytesKey] = {
+    val promise = Promise[BytesKey]()
     nameCache.putIfAbsent(name, promise.future) match {
       case null =>
 
@@ -157,7 +201,7 @@ class UniqueId(val width: Short,
    * @param id id to find name for
    * @return future with name
    */
-  def resolveNameById(id: Array[Byte])(implicit timeout: Duration): Future[String] = {
+  def resolveNameById(id: BytesKey)(implicit timeout: Duration): Future[String] = {
     val promise = Promise[String]()
     idCache.putIfAbsent(id, promise.future) match {
       case null =>
@@ -181,7 +225,7 @@ class UniqueId(val width: Short,
   }
 
   private def addToCache(r: Resolved) = {
-    nameCache.putIfAbsent(r.name.name, Promise[Array[Byte]]().success(r.name.id).future)
+    nameCache.putIfAbsent(r.name.name, Promise[BytesKey]().success(r.name.id).future)
     idCache.putIfAbsent(r.name.id, Promise[String]().success(r.name.name).future)
   }
 }
