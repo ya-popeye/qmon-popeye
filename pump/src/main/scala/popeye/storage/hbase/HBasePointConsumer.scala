@@ -170,12 +170,15 @@ object HBasePointConsumer extends Logging {
     val factory = new PopeyeKafkaConsumerFactoryImpl(consumerConfig(config))
     system.actorOf(props(config, storage, factory)
       .withRouter(FromConfig())
-      .withDispatcher("hbase.dispatcher"), "hbase-writer")
+      .withDispatcher("hbase.kafka.consumer.dispatcher"), "hbase-writer")
   }
 
   def consumerConfig(globalConfig: Config): ConsumerConfig = {
     val config: Config = globalConfig.getConfig("hbase.kafka.consumer.config")
+    info(s"consumer will use ${globalConfig.getString("zk.cluster")}")
     val consumerProps: Properties = config
+    consumerProps.setProperty("zookeeper.connect", globalConfig.getString("zk.cluster"))
+    consumerProps.setProperty("metadata.broker.list", globalConfig.getString("kafka.broker.list"))
     val timeout = globalConfig.getMilliseconds("hbase.kafka.consumer.timeout")
     consumerProps.put("consumer.timeout.ms", timeout.toString)
     consumerProps.put("group.id", globalConfig.getString("hbase.kafka.consumer.group"))

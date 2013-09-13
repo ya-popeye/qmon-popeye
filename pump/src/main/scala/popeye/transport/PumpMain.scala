@@ -16,21 +16,22 @@ import scala.concurrent.duration.FiniteDuration
  */
 object PumpMain extends PopeyeMain("pump") {
   val hbaseConfig = makeHBaseConfig(config.getConfig("hbase.client"))
+  hbaseConfig.set("hbase.zookeeper.quorum", config.getString("zk.cluster"))
   val hTablePool = new HTablePool(hbaseConfig, config.getInt("hbase.pool.max"))
 
   import scala.concurrent.ExecutionContext.Implicits.global
 
   system.registerOnTermination(hTablePool.close())
 
-  val resolveTimeout = new FiniteDuration(config.getMilliseconds(s"resolve-timeout"), TimeUnit.MILLISECONDS)
+  val resolveTimeout = new FiniteDuration(config.getMilliseconds(s"hbase.uids.resolve-timeout"), TimeUnit.MILLISECONDS)
 
-  val uniqueIdStorage = new UniqueIdStorage(config.getString("hbase.uids-table"), hTablePool, HBaseStorage.UniqueIdMapping)
-  val uniqIdResolved = system.actorOf(Props(classOf[UniqueIdActor], uniqueIdStorage))
-  val uidsConfig = config.getConfig("hbase.uid")
+  val uniqueIdStorage = new UniqueIdStorage(config.getString("hbase.table.uids"), hTablePool, HBaseStorage.UniqueIdMapping)
+  val uniqIdResolved = system.actorOf(Props.apply(new UniqueIdActor(uniqueIdStorage)))
+  val uidsConfig = config.getConfig("hbase.uids")
   val metrics = makeUniqueIdCache(uidsConfig, HBaseStorage.MetricKind, uniqIdResolved, uniqueIdStorage, resolveTimeout)
   val attrNames = makeUniqueIdCache(uidsConfig, HBaseStorage.AttrNameKind, uniqIdResolved, uniqueIdStorage, resolveTimeout)
   val attrValues = makeUniqueIdCache(uidsConfig, HBaseStorage.AttrValueKind, uniqIdResolved, uniqueIdStorage, resolveTimeout)
-  val storage = new PointsStorage(config.getString("hbase.points-table"), hTablePool, metrics, attrNames, attrValues, resolveTimeout)
+  val storage = new PointsStorage(config.getString("hbase.table.points"), hTablePool, metrics, attrNames, attrValues, resolveTimeout)
   val consumer = HBasePointConsumer.start(config, storage)
 
   private def makeUniqueIdCache(config: Config, kind: String, resolver: ActorRef, storage: UniqueIdStorage, resolveTimeout: FiniteDuration): UniqueId = {

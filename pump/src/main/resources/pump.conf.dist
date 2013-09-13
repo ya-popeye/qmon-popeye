@@ -1,5 +1,5 @@
 zk.cluster = "localhost:2181"
-kafka.metadata.broker.list = "localhost:9092"
+kafka.broker.list = "localhost:9092"
 
 generator {
    worker = 0
