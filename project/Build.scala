@@ -58,6 +58,7 @@ object Version {
   val Logback = "1.0.7"
   val Snappy = "1.0.4.1"
   val Guava = "11.0.2"
+  val FakeHBase = "0.1.2"
 
   val slf4jDependencies: Seq[ModuleID] = Seq(
     "org.slf4j" % "jcl-over-slf4j" % Version.Slf4j,
@@ -176,7 +177,8 @@ object PopeyeBuild extends Build {
       "com.googlecode.concurrentlinkedhashmap" % "concurrentlinkedhashmap-lru" % "1.4",
       "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
       "org.mockito" % "mockito-core" % Version.Mockito % "test",
-      "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"
+      "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test",
+      "org.kiji.testing" %% "fake-hbase" % Version.FakeHBase % "test"
     ).excluding(Version.slf4jExclusions :_*)
      .excluding(Version.commonExclusions :_*)
   )
