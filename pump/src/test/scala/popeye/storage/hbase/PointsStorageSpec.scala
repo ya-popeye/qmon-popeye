@@ -1,30 +1,26 @@
 package popeye.storage.hbase
 
-import java.util
+import akka.actor.Props
+import akka.testkit.TestActorRef
 import java.util.Random
 import java.util.concurrent.atomic.AtomicInteger
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.hbase.HBaseIOException
-import org.apache.hadoop.hbase.client.{HTableInterfaceFactory, Put, HTableInterface, HTablePool}
-import org.apache.hadoop.hbase.util.Bytes
+import org.apache.hadoop.hbase.client.{HTableInterfaceFactory, HTableInterface, HTablePool}
 import org.kiji.testing.fakehtable.FakeHTable
-import org.mockito.Matchers._
-import org.mockito.Mockito._
-import org.scalatest.FlatSpec
-import org.scalatest.matchers.ShouldMatchers
-import popeye.test.{PopeyeTestUtils, MockitoStubs}
+import org.scalatest.matchers.{MustMatchers, ShouldMatchers}
 import popeye.test.PopeyeTestUtils._
-import scala.collection.JavaConversions.iterableAsScalaIterable
-import scala.concurrent.duration._
-import scala.concurrent.{Promise, Await}
+import popeye.test.{PopeyeTestUtils, MockitoStubs}
 import popeye.transport.test.AkkaTestKitSpec
-import akka.actor.{ActorRef, Props}
-import akka.testkit.{TestActorRef, TestProbe}
+import scala.collection.JavaConversions.iterableAsScalaIterable
+import scala.concurrent.Await
+import scala.concurrent.duration._
+import popeye.transport.proto.Message
+import org.scalatest.exceptions.TestFailedException
 
 /**
  * @author Andrey Stepachev
  */
-class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMatchers with MockitoStubs {
+class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMatchers with MustMatchers with MockitoStubs {
 
   import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -42,7 +38,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
   it should "produce key values" in {
     val state = new State
 
-    val events = mkEvents()
+    val events = mkEvents(msgs = 4)
     val future = state.storage.writePoints(events)
     val written = Await.result(future, 5 seconds)
     written should be(events.size)
@@ -50,21 +46,8 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
       kv.map(state.storage.keyValueToPoint)
     }
     points.size should be(events.size)
+    events.toList.sortBy(_.getTimestamp) should equal(points.toList.sortBy(_.getTimestamp))
   }
-
-//  it should "handle failures" in {
-//    val state = new State
-//
-//    state.hTable.put(anyListOf(classOf[Put])) throws new HBaseIOException("Some cryptic hbase exception")
-//
-//    val future = state.storage.writePoints(mkEvents())
-//    intercept[HBaseIOException] {
-//      Await.result(future, 5 seconds)
-//    }
-//    verify(state.hTablePool, atLeastOnce()).getTable(any[String]())
-//    verify(state.hTable, atLeastOnce()).close()
-//    verify(state.hTable, never()).flushCommits()
-//  }
 
   class State {
     val id = new AtomicInteger(1)

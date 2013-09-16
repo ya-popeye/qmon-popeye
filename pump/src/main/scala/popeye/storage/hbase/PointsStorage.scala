@@ -9,6 +9,7 @@ import popeye.transport.proto.Message
 import scala.collection.JavaConversions._
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
+import popeye.Logging
 
 
 /**
@@ -19,7 +20,7 @@ class PointsStorage(tableName: String,
                     metricNames: UniqueId,
                     attributeNames: UniqueId,
                     attributeValues: UniqueId,
-                    resolveTimeout: Duration = 15 seconds) {
+                    resolveTimeout: Duration = 15 seconds) extends Logging {
   val tableBytes = tableName.getBytes(Encoding)
 
   /**
@@ -65,17 +66,19 @@ class PointsStorage(tableName: String,
       case tuple =>
         val timestamp: Long = point.getTimestamp
         val baseTime: Int = (timestamp - (timestamp % HBaseStorage.MAX_TIMESPAN)).toInt
-        val row = new Array[Byte](metricNames.width + Bytes.SIZEOF_LONG +
+        val row = new Array[Byte](metricNames.width + HBaseStorage.TIMESTAMP_BYTES +
           tuple._2.length * (attributeNames.width + attributeValues.width))
         var off = 0
         off = copyBytes(tuple._1, row, off)
-        off = copyBytes(Bytes.toBytes(baseTime), row, off)
+        off = copyBytes(Bytes.toBytes(baseTime.toInt), row, off)
         for (attr <- tuple._2) {
           off = copyBytes(attr._1, row, off)
           off = copyBytes(attr._2, row, off)
         }
 
-        val qualifiedValue = mkQualifiedValue(point, (timestamp - baseTime).toShort)
+        val delta = (timestamp - baseTime).toShort
+        val qualifiedValue = mkQualifiedValue(point, delta)
+        trace(s"Made point: ts=$timestamp, basets=$baseTime, delta=$delta")
         new KeyValue(row, PointsStorage.PointsFamily, qualifiedValue._1, qualifiedValue._2)
     }
   }
@@ -87,7 +90,7 @@ class PointsStorage(tableName: String,
   /**
    * Makes Future for Message.Point from KeyValue.
    * Most time all identifiers are cached, so this future returns 'complete',
-   * but in case of some unresolved identifiers future will be incomplete
+   * but in case of some unresolved identifiers future will be incomplete and become asynchronous
    *
    * @param kv keyvalue to restore
    * @return future
@@ -100,30 +103,31 @@ class PointsStorage(tableName: String,
       s"Metric Id is wider then row key ${Bytes.toStringBinary(row)}")
     require(kv.getQualifierLength == Bytes.SIZEOF_SHORT,
       s"Expected qualifier to be with size of Short")
-    val attributesLen = kv.getRowLength - metricNames.width - Bytes.SIZEOF_LONG
+    val attributesLen = row.length - metricNames.width - HBaseStorage.TIMESTAMP_BYTES
     val attributeLen = attributeNames.width + attributeValues.width
     require(attributesLen %
       (attributeNames.width + attributeValues.width) == 0,
       s"Row key should have room for" +
         s" metric name (${metricNames.width} bytes) +" +
-        s" timestamp (${Bytes.SIZEOF_LONG} bytes)}" +
+        s" timestamp (${HBaseStorage.TIMESTAMP_BYTES}} bytes)}" +
         s" qualifier (N x $attributeLen bytes)}" +
         s" but got row ${Bytes.toStringBinary(row)}")
 
 
     val metricNameFuture = metricNames.resolveNameById(util.Arrays.copyOf(kv.getRow, metricNames.width))(resolveTimeout)
-    var attributeOffset = metricNames.width + Bytes.SIZEOF_LONG
-    val attributes = Future.traverse((0 until attributesLen / attributeLen).map { idx =>
-      val attributeNameId = util.Arrays.copyOfRange(row, attributeOffset, attributeOffset + attributeNames.width)
-      val attributeValueId = util.Arrays.copyOfRange(row,
-        attributeOffset + attributeNames.width,
-        attributeOffset + attributeNames.width + attributeValues.width)
-      attributeOffset += attributeLen * idx
-      (attributeNameId, attributeValueId)
-    }) { attribute =>
-      attributeNames.resolveNameById(attribute._1)(resolveTimeout)
-        .zip(attributeValues.resolveNameById(attribute._2)(resolveTimeout))
-    }
+    var atOffset = metricNames.width + HBaseStorage.TIMESTAMP_BYTES
+    val attributes = Future.traverse((0 until attributesLen / attributeLen)
+      .map { idx =>
+        val atId = util.Arrays.copyOfRange(row, atOffset, atOffset + attributeNames.width)
+        val atVal = util.Arrays.copyOfRange(row,
+          atOffset + attributeNames.width,
+          atOffset + attributeNames.width + attributeValues.width)
+        atOffset += attributeLen * idx
+        (atId, atVal)
+      }) { attribute =>
+        attributeNames.resolveNameById(attribute._1)(resolveTimeout)
+          .zip(attributeValues.resolveNameById(attribute._2)(resolveTimeout))
+      }
     metricNameFuture.zip(attributes).map {
       case tuple =>
         val builder = Message.Point.newBuilder()
@@ -137,9 +141,12 @@ class PointsStorage(tableName: String,
           builder.setFloatValue(Bytes.toFloat(kvValue))
         }
 
-        val baseTs = Bytes.toLong(row, metricNames.width, Bytes.SIZEOF_LONG)
+        val baseTs = Bytes.toInt(row, metricNames.width, HBaseStorage.TIMESTAMP_BYTES)
 
-        builder.setTimestamp(baseTs + qualifier >> HBaseStorage.FLAG_BITS)
+        val deltaTs = delta(qualifier)
+        builder.setTimestamp(baseTs + deltaTs)
+
+        trace(s"Got point: ts=${builder.getTimestamp}, qualifier=$qualifier basets=$baseTs, delta=$deltaTs")
 
         tuple._2.foreach { attribute =>
           builder.addAttributesBuilder()
@@ -152,6 +159,10 @@ class PointsStorage(tableName: String,
 
   def keyValueToPoint(kv: KeyValue)(implicit eCtx: ExecutionContext): Message.Point = {
     Await.result(mkPointFuture(kv), resolveTimeout)
+  }
+
+  private def delta(qualifier: Short) = {
+    ((qualifier & 0xFFFF) >>> HBaseStorage.FLAG_BITS).toShort
   }
 
   @inline
@@ -167,11 +178,12 @@ class PointsStorage(tableName: String,
    * @return packed (qualifier, value)
    */
   private def mkQualifiedValue(point: Message.Point, delta: Short): (Array[Byte], Array[Byte]) = {
+    val ndelta = delta << HBaseStorage.FLAG_BITS
     if (point.hasFloatValue)
-      (Bytes.toBytes(((HBaseStorage.FLAG_FLOAT | 0x3) & (delta << HBaseStorage.FLAG_BITS)).toShort),
+      (Bytes.toBytes((0xffff & (HBaseStorage.FLAG_FLOAT | 0x3) & ndelta).toShort),
         Bytes.toBytes(point.getFloatValue))
     else if (point.hasIntValue)
-      (Bytes.toBytes((0x7 & (delta << HBaseStorage.FLAG_BITS)).toShort), Bytes.toBytes(point.getIntValue))
+      (Bytes.toBytes((0xffff & ndelta).toShort), Bytes.toBytes(point.getIntValue))
     else
       throw new IllegalArgumentException("Neither int nor float values set on point")
 
