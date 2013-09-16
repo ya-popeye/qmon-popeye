@@ -105,8 +105,8 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
     }
   }
 
-  def id(hex: String): Array[Byte] = {
-    hex.getBytes
+  def id(hex: String): BytesKey = {
+    new BytesKey(hex.getBytes)
   }
 
   def mkUniq(): (TestProbe, UniqueId) = {
