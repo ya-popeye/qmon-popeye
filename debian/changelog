@@ -1,3 +1,9 @@
+qmon-popeye (0.6.0) unstable; urgency=low
+
+  * replacing AsynHBase with HBase stock client.
+
+ -- Andrey Stepachev <octo@yandex-team.ru>  Mon, 29 Aug 2013 20:00:00 +0400
+
 qmon-popeye (0.5.4) unstable; urgency=low
 
   * moving from ActorLogging to Logging trait, not needed to turn on akka

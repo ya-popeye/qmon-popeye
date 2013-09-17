@@ -1,0 +1,6 @@
+kafka.broker.list = "localhost:9092"
+
+generator {
+   worker = 0
+   datacenter = 0
+}

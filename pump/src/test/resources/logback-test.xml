@@ -14,7 +14,7 @@
         </encoder>
     </appender>
 
-    <logger name="popeye" level="INFO"/>
+    <logger name="popeye" level="DEBUG"/>
     <logger name="kafka" level="WARN"/>
     <logger name="org.apache.zookeeper" level="WARN"/>
 
