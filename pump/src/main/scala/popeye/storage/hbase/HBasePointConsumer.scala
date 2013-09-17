@@ -132,8 +132,8 @@ class HBasePointConsumer(config: Config, storage: PointsStorage, factory: Popeye
     if (batchIds.size > 0) {
       metrics.pointsMeter.mark(batch.size)
       tctx.close()
-      withDebug {
-        batch.filter(_.getMetric.startsWith("test")).foreach(p => debug(s"Point: ${p.toString}"))
+      withTrace {
+        batch.filter(_.getMetric.startsWith("test")).foreach(p => trace(s"Point: ${p.toString}"))
       }
       sendBatch(batchIds, batch)
     }
