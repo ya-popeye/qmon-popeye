@@ -47,6 +47,12 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
     }
     points.size should be(events.size)
     events.toList.sortBy(_.getTimestamp) should equal(points.toList.sortBy(_.getTimestamp))
+
+    // write once more, we shold write using short path
+    val future2 = state.storage.writePoints(events)
+    val written2 = Await.result(future2, 5 seconds)
+    written2 should be(events.size)
+
   }
 
   class State {
