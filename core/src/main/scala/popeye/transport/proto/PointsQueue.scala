@@ -23,7 +23,7 @@ object PointsQueue extends Logging {
 
   final class PromiseForOffset(val offset: Int, val promise: Promise[Long])
 
-  final class PartitionBuffer(val partitionId: Int, val points: Long, val buffer: Array[Byte])
+  final class PartitionBuffer(val points: Long, val buffer: Array[Byte])
 
   final class BufferedPoints(
                               var consumed: Int = 0,
@@ -43,19 +43,19 @@ object PointsQueue extends Logging {
       points += containedPoints
     }
 
-    def consume(partitionId: Int): PartitionBuffer = {
+    def consumeAll(): PartitionBuffer = {
       time = System.currentTimeMillis()
       val bytes = buffer.toByteArray
-      val r = new PartitionBuffer(partitionId, points, bytes)
+      val r = new PartitionBuffer(points, bytes)
       consumed += buffer.size()
       points = 0
       buffer.reset()
       r
     }
 
-    def consume(partitionId: Int, amount: Int): PartitionBuffer = {
+    def consume(amount: Int): PartitionBuffer = {
       if (amount >= buffer.size)
-        return consume(partitionId)
+        return consumeAll()
       time = System.currentTimeMillis()
       val bytes = buffer.toByteArray
       val coded = CodedInputStream.newInstance(bytes)
@@ -77,7 +77,7 @@ object PointsQueue extends Logging {
           buffer.write(bytes, off, bytes.length - off)
           points -= cnt
           consumed += off
-          return new PartitionBuffer(partitionId, cnt, util.Arrays.copyOf(bytes, off))
+          return new PartitionBuffer(cnt, util.Arrays.copyOf(bytes, off))
         }
         cnt += 1
         off += msgSize
@@ -88,13 +88,12 @@ object PointsQueue extends Logging {
 
 }
 
-class PointsQueue(partitions: Int, minAmount: Int, maxAmount: Int) {
+class PointsQueue(minAmount: Int, maxAmount: Int) {
 
   import PointsQueue._
 
   private[this] val promises: mutable.PriorityQueue[PromiseForOffset] = mutable.PriorityQueue[PromiseForOffset]()(Ordering.by(-_.offset))
   private[this] val points: BufferedPoints = new BufferedPoints()
-  private[this] var roundRobinPartition: Int = partitions - 1
 
   def stat: Stat = {
     Stat(points.points, points.buffer.size, promises.size)
@@ -125,14 +124,9 @@ class PointsQueue(partitions: Int, minAmount: Int, maxAmount: Int) {
     }
   }
 
-  private def nextPartitionId = {
-    roundRobinPartition += 1
-    roundRobinPartition % partitions
-  }
-
   private def consumeInternal(ignoreMinAmount: Boolean): Option[PartitionBuffer] = {
     if ((ignoreMinAmount && points.buffer.size > 0) || points.buffer.size >= minAmount) {
-      Some(points.consume(nextPartitionId, maxAmount))
+      Some(points.consume(maxAmount))
     } else {
       None
     }
