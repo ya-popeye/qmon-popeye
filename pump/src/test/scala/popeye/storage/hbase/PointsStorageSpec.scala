@@ -16,6 +16,7 @@ import scala.concurrent.Await
 import scala.concurrent.duration._
 import popeye.transport.proto.Message
 import org.scalatest.exceptions.TestFailedException
+import com.codahale.metrics.MetricRegistry
 
 /**
  * @author Andrey Stepachev
@@ -23,6 +24,9 @@ import org.scalatest.exceptions.TestFailedException
 class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMatchers with MustMatchers with MockitoStubs {
 
   import scala.concurrent.ExecutionContext.Implicits.global
+
+  implicit val metricRegistry = new MetricRegistry()
+  implicit val pointsStorageMetrics = new PointsStorageMetrics(metricRegistry)
 
   implicit val random = new Random(1234)
   final val tableName = "my-table"
@@ -55,6 +59,17 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
 
   }
 
+//  it should "performance test" in {
+//    val state = new State
+//
+//    for (i <- 1 to 800) {
+//      val events = mkEvents(msgs = 4000)
+//      val future = state.storage.writePoints(events)
+//      val written = Await.result(future, 5 seconds)
+//      written should be(events.size)
+//    }
+//  }
+
   class State {
     val id = new AtomicInteger(1)
 
@@ -63,7 +78,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
     val metrics = setup(uniqActor, HBaseStorage.MetricKind, PopeyeTestUtils.names)
     val attrNames = setup(uniqActor, HBaseStorage.AttrNameKind, Seq("host"))
     val attrValues = setup(uniqActor, HBaseStorage.AttrValueKind, PopeyeTestUtils.hosts)
-    val storage = new PointsStorage(tableName, hTablePool, metrics, attrNames, attrValues)
+    val storage = new PointsStorage(tableName, hTablePool, metrics, attrNames, attrValues, pointsStorageMetrics)
 
     def setup(actor: TestActorRef[FixedUniqueIdActor], kind: String, seq: Seq[String]): UniqueId = {
       val uniq = new UniqueIdImpl(HBaseStorage.UniqueIdMapping.get(kind).get, kind, actor)

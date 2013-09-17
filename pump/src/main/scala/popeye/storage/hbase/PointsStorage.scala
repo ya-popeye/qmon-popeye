@@ -1,17 +1,27 @@
 package popeye.storage.hbase
 
+import com.codahale.metrics.MetricRegistry
 import java.util
 import org.apache.hadoop.hbase.KeyValue
 import org.apache.hadoop.hbase.client.{Put, HTablePool}
 import org.apache.hadoop.hbase.util.Bytes
 import popeye.storage.hbase.HBaseStorage._
 import popeye.transport.proto.Message
+import popeye.{Instrumented, Logging}
 import scala.collection.JavaConversions._
+import scala.collection.mutable
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
-import popeye.Logging
-import scala.collection.mutable
-import scala.util.{Failure, Success}
+
+case class PointsStorageMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
+  val writeProcessingTime = metrics.timer("hbase.storage.write.processing.time")
+  val writeHBaseTime = metrics.timer("hbase.storage.write.hbase.time")
+  val writeTime = metrics.timer("hbase.storage.write.time")
+  val readProcessingTime = metrics.timer("hbase.storage.read.processing.time")
+  val readHBaseTime = metrics.timer("hbase.storage.read.hbase.time")
+  val resolvedPointsMeter = metrics.meter("hbase.storage.resolved.points")
+  val delayedPointsMeter = metrics.meter("hbase.storage.delayed.points")
+}
 
 
 /**
@@ -22,12 +32,10 @@ class PointsStorage(tableName: String,
                     metricNames: UniqueId,
                     attributeNames: UniqueId,
                     attributeValues: UniqueId,
+                    metrics: PointsStorageMetrics,
                     resolveTimeout: Duration = 15 seconds) extends Logging {
+
   val tableBytes = tableName.getBytes(Encoding)
-
-  class KeyValueBuilder {
-
-  }
 
   /**
    * Write points, returned future is awaitable, but can be already completed
@@ -36,58 +44,71 @@ class PointsStorage(tableName: String,
    */
   def writePoints(points: Seq[Message.Point])(implicit eCtx: ExecutionContext): Future[Int] = {
 
-    val delayedKeyValues = mutable.Buffer[Future[KeyValue]]()
-    val keyValues = mutable.Buffer[KeyValue]()
+    val ctx = metrics.writeTime.timerContext()
+    metrics.writeProcessingTime.time {
+      val delayedKeyValues = mutable.Buffer[Future[KeyValue]]()
+      val keyValues = mutable.Buffer[KeyValue]()
 
-    // resolve identificators
-    // unresolved will be delayed for furure expansion
-    points.foreach { point =>
-      val m = metricNames.findIdByName(point.getMetric)
-      val a = point.getAttributesList.sortBy(_.getName).map { attr =>
-        (attributeNames.findIdByName(attr.getName),
-        attributeValues.findIdByName(attr.getValue))
+      // resolve identificators
+      // unresolved will be delayed for furure expansion
+      points.foreach { point =>
+        val m = metricNames.findIdByName(point.getMetric)
+        val a = point.getAttributesList.sortBy(_.getName).map { attr =>
+          (attributeNames.findIdByName(attr.getName),
+            attributeValues.findIdByName(attr.getValue))
+        }
+        if (m.isEmpty || a.exists(a => a._1.isEmpty || a._2.isEmpty))
+          delayedKeyValues += mkKeyValueFuture(point)
+        else
+          keyValues += mkKeyValue(m.get,
+            a.map { t => (t._1.get, t._2.get)},
+            point.getTimestamp,
+            mkQualifiedValue(point))
       }
-      if (m.isEmpty || a.forall{a=>a._1.isEmpty || a._2.isEmpty})
-        delayedKeyValues += mkKeyValueFuture(point)
-      else
-        keyValues += mkKeyValue(m.get,
-          a.map{t=>(t._1.get, t._2.get)},
-          point.getTimestamp,
-          mkQualifiedValue(point))
-    }
 
-    // write resolved points
-    val writeComplete = if (!keyValues.isEmpty) Future[Int]{
-      writeKv(keyValues)
-      keyValues.size
-    } else Future.successful[Int](0)
+      // write resolved points
+      val writeComplete = if (!keyValues.isEmpty) Future[Int] {
+        writeKv(keyValues)
+        keyValues.size
+      } else Future.successful[Int](0)
 
-    // if we have some unresolved keyvalues, combine them to composite feature,
-    // in case of no delayed kevalues, simply return write-feature
-    if (delayedKeyValues.size > 0) {
-      val delayedFuture = Future.sequence(delayedKeyValues).map { kvl =>
-        writeKv(kvl)
-        kvl.size
+      metrics.resolvedPointsMeter.mark(keyValues.size)
+      metrics.delayedPointsMeter.mark(delayedKeyValues.size)
+
+      // if we have some unresolved keyvalues, combine them to composite feature,
+      // in case of no delayed kevalues, simply return write-feature
+      if (delayedKeyValues.size > 0) {
+        val delayedFuture = Future.sequence(delayedKeyValues).map { kvl =>
+          writeKv(kvl)
+          kvl.size
+        }
+        Future.reduce(Seq(delayedFuture, writeComplete)){(a, b) =>
+          ctx.stop
+          a+b
+        }
+      } else {
+        writeComplete.map { a => ctx.stop; a}
       }
-      Future.reduce(Seq(delayedFuture, writeComplete))((a,b) =>
-        a+b
-      )
-    } else {
-      writeComplete
     }
   }
 
   private def writeKv(kvList: Seq[KeyValue]) = {
-    val puts = new util.ArrayList[Put](kvList.length)
-    kvList.foreach { k =>
-      puts.add(new Put(k.getRow).add(k))
-    }
-    val hTable = hTablePool.getTable(tableName)
-    try {
-      hTable.put(puts)
-      hTable.flushCommits()
-    } finally {
-      hTable.close()
+    metrics.writeHBaseTime.time {
+      log.debug(s"Making puts for ${kvList.size} keyvalues")
+      val puts = new util.ArrayList[Put](kvList.length)
+      kvList.foreach { k =>
+        puts.add(new Put(k.getRow).add(k))
+      }
+      log.debug(s"Writing ${kvList.size} keyvalues")
+      val hTable = hTablePool.getTable(tableName)
+      hTable.setAutoFlush(false, true)
+      try {
+        hTable.batch(puts)
+        //hTable.flushCommits()
+        log.debug(s"Writing ${kvList.size} keyvalues - done")
+      } finally {
+        hTable.close()
+      }
     }
   }
 
@@ -127,8 +148,8 @@ class PointsStorage(tableName: String,
   }
 
   private def mkPoint(baseTime: Int, metric: String,
-                            qualifier: Short, value: Array[Byte],
-                            attrs: Seq[(String, String)] ): Message.Point = {
+                      qualifier: Short, value: Array[Byte],
+                      attrs: Seq[(String, String)]): Message.Point = {
     val builder = Message.Point.newBuilder()
       .setMetric(metric)
     if ((qualifier & HBaseStorage.FLAG_FLOAT) == 0) {
@@ -210,20 +231,20 @@ class PointsStorage(tableName: String,
     var atOffset = metricNames.width + HBaseStorage.TIMESTAMP_BYTES
     val attributes = Future.traverse((0 until attributesLen / attributeLen)
       .map { idx =>
-        val atId = util.Arrays.copyOfRange(row, atOffset, atOffset + attributeNames.width)
-        val atVal = util.Arrays.copyOfRange(row,
-          atOffset + attributeNames.width,
-          atOffset + attributeNames.width + attributeValues.width)
-        atOffset += attributeLen * idx
-        (atId, atVal)
-      }) { attribute =>
-        attributeNames.resolveNameById(attribute._1)(resolveTimeout)
-          .zip(attributeValues.resolveNameById(attribute._2)(resolveTimeout))
-      }
+      val atId = util.Arrays.copyOfRange(row, atOffset, atOffset + attributeNames.width)
+      val atVal = util.Arrays.copyOfRange(row,
+        atOffset + attributeNames.width,
+        atOffset + attributeNames.width + attributeValues.width)
+      atOffset += attributeLen * idx
+      (atId, atVal)
+    }) { attribute =>
+      attributeNames.resolveNameById(attribute._1)(resolveTimeout)
+        .zip(attributeValues.resolveNameById(attribute._2)(resolveTimeout))
+    }
     metricNameFuture.zip(attributes).map {
       case tuple =>
-      val baseTs = Bytes.toInt(row, metricNames.width, HBaseStorage.TIMESTAMP_BYTES)
-      mkPoint(baseTs, tuple._1, Bytes.toShort(kvQualifier), kvValue, tuple._2)
+        val baseTs = Bytes.toInt(row, metricNames.width, HBaseStorage.TIMESTAMP_BYTES)
+        mkPoint(baseTs, tuple._1, Bytes.toShort(kvQualifier), kvValue, tuple._2)
     }
   }
 

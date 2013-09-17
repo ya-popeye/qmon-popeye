@@ -31,7 +31,8 @@ object PumpMain extends PopeyeMain("pump") {
   val metrics = makeUniqueIdCache(uidsConfig, HBaseStorage.MetricKind, uniqIdResolved, uniqueIdStorage, resolveTimeout)
   val attrNames = makeUniqueIdCache(uidsConfig, HBaseStorage.AttrNameKind, uniqIdResolved, uniqueIdStorage, resolveTimeout)
   val attrValues = makeUniqueIdCache(uidsConfig, HBaseStorage.AttrValueKind, uniqIdResolved, uniqueIdStorage, resolveTimeout)
-  val storage = new PointsStorage(config.getString("hbase.table.points"), hTablePool, metrics, attrNames, attrValues, resolveTimeout)
+  val storage = new PointsStorage(config.getString("hbase.table.points"), hTablePool, metrics, attrNames, attrValues,
+    new PointsStorageMetrics(metricRegistry), resolveTimeout)
   val consumer = HBasePointConsumer.start(config, storage)
 
   private def makeUniqueIdCache(config: Config, kind: String, resolver: ActorRef, storage: UniqueIdStorage, resolveTimeout: FiniteDuration): UniqueId = {
