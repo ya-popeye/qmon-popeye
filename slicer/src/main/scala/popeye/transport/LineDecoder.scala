@@ -21,11 +21,11 @@ class LineDecoder(maxSize: Int = 2048) {
     val matchPosition = input.indexOf('\n')
     if (matchPosition == -1) {
       if (input.length > maxSize)
-        throw new IllegalArgumentException("Line to big")
+        throw new IllegalArgumentException("Line too big")
       (None, Some(input))
     } else {
       if (matchPosition > maxSize)
-        throw new IllegalArgumentException("Line to big")
+        throw new IllegalArgumentException("Line too big")
       val remainder = input.drop(matchPosition + 1)
       (Some(
         cutSlashR(input.take(matchPosition))),
