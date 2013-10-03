@@ -55,6 +55,17 @@ class UniqueIdActor(storage: UniqueIdStorage,
     case _ => Restart
   }
 
+  override def postStop() {
+    idRequests.foreach {entry => sendResolutionFailed(entry._2)}
+    lookupRequests.foreach {entry => sendResolutionFailed(entry._2)}
+    createRequests.foreach {entry => sendResolutionFailed(entry._2)}
+    super.postStop()
+  }
+
+  def sendResolutionFailed(actors: Seq[ActorRef]) {
+    actors.map{ar => ar ! ResolutionFailed(new InterruptedException("Stopped Actor"))}
+  }
+
   def receive: Actor.Receive = {
 
     case Terminated(watched) =>
