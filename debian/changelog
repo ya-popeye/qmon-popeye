@@ -1,3 +1,10 @@
+qmon-popeye (0.7.0) unstable; urgency=low
+
+  * merged kafka with upstream
+  * fixing bugs int new HBase writer
+
+ -- Andrey Stepachev <octo@yandex-team.ru>  Mon, 04 Oct 2013 0:37:00 +0400
+
 qmon-popeye (0.6.0) unstable; urgency=low
 
   * replacing AsynHBase with HBase stock client.
