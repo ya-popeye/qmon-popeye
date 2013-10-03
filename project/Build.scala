@@ -23,7 +23,6 @@ object Compiler {
     resolvers ++= Seq(
       "spray repo" at "http://repo.spray.io",
       "spray repo (nightly)" at "http://nightlies.spray.io",
-//      "akka repo (nightly)" at "http://repo.akka.io/snapshots",
       Resolver.url("octo47 repo", url("http://octo47.github.com/repo/"))({
         val patt = Resolver.mavenStylePatterns.artifactPatterns
         new Patterns(patt, patt, true)
@@ -52,7 +51,7 @@ object Version {
   val ScalaTest = "1.9.1"
   val Mockito = "1.9.0"
   val Jackson = "1.8.8"
-  val Kafka = "0.8.0-beta1-qmon"
+  val Kafka = "0.8.0-beta1-qmon5"
   val Metrics = "3.0.0"
   val Slf4j = "1.7.5"
   val Logback = "1.0.7"

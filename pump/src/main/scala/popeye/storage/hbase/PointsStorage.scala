@@ -17,6 +17,7 @@ case class PointsStorageMetrics(override val metricRegistry: MetricRegistry) ext
   val writeProcessingTime = metrics.timer("hbase.storage.write.processing.time")
   val writeHBaseTime = metrics.timer("hbase.storage.write.hbase.time")
   val writeTime = metrics.timer("hbase.storage.write.time")
+  val writeHBasePoints = metrics.meter("hbase.storage.write.points")
   val readProcessingTime = metrics.timer("hbase.storage.read.processing.time")
   val readHBaseTime = metrics.timer("hbase.storage.read.hbase.time")
   val resolvedPointsMeter = metrics.meter("hbase.storage.resolved.points")
@@ -94,18 +95,26 @@ class PointsStorage(tableName: String,
 
   private def writeKv(kvList: Seq[KeyValue]) = {
     metrics.writeHBaseTime.time {
-      log.debug(s"Making puts for ${kvList.size} keyvalues")
+      debug(s"Making puts for ${kvList.size} keyvalues")
       val puts = new util.ArrayList[Put](kvList.length)
       kvList.foreach { k =>
         puts.add(new Put(k.getRow).add(k))
       }
-      log.debug(s"Writing ${kvList.size} keyvalues")
+      withDebug {
+        val l = puts.map(_.heapSize()).foldLeft(0l)(_ + _)
+        debug(s"Writing ${kvList.size} keyvalues (heapsize=$l)")
+      }
       val hTable = hTablePool.getTable(tableName)
       hTable.setAutoFlush(false, true)
+      hTable.setWriteBufferSize(4*1024*1024)
       try {
         hTable.batch(puts)
-        //hTable.flushCommits()
-        log.debug(s"Writing ${kvList.size} keyvalues - done")
+        metrics.writeHBasePoints.mark(puts.size())
+        debug(s"Writing ${kvList.size} keyvalues - flushing")
+        hTable.flushCommits()
+        debug(s"Writing ${kvList.size} keyvalues - done")
+      } catch {
+        case e: Exception => error("Failed to write points", e)
       } finally {
         hTable.close()
       }

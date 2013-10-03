@@ -16,7 +16,8 @@ import scala.concurrent.Await
 import scala.concurrent.duration._
 import popeye.transport.proto.Message
 import org.scalatest.exceptions.TestFailedException
-import com.codahale.metrics.MetricRegistry
+import com.codahale.metrics.{ConsoleReporter, MetricRegistry}
+import nl.grons.metrics.scala.Meter
 
 /**
  * @author Andrey Stepachev
@@ -59,16 +60,25 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
 
   }
 
-//  it should "performance test" in {
-//    val state = new State
-//
-//    for (i <- 1 to 800) {
-//      val events = mkEvents(msgs = 4000)
-//      val future = state.storage.writePoints(events)
-//      val written = Await.result(future, 5 seconds)
-//      written should be(events.size)
-//    }
-//  }
+  ignore should "performance test" in {
+    val state = new State
+
+    val events = mkEvents(msgs = 4000)
+    for (i <- 1 to 600) {
+      val future = state.storage.writePoints(events)
+      val written = Await.result(future, 5 seconds)
+      written should be(events.size)
+    }
+    printMeter(pointsStorageMetrics.writeHBasePoints)
+  }
+
+  private def printMeter(meter: Meter) {
+    printf("             count = %d%n", meter.getCount)
+    printf("         mean rate = %2.2f events/s%n", meter.getMeanRate)
+    printf("     1-minute rate = %2.2f events/s%n", meter.getOneMinuteRate)
+    printf("     5-minute rate = %2.2f events/s%n", meter.getFiveMinuteRate)
+    printf("    15-minute rate = %2.2f events/s%n", meter.getFifteenMinuteRate)
+  }
 
   class State {
     val id = new AtomicInteger(1)

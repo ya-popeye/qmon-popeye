@@ -140,7 +140,7 @@ class HBasePointConsumer(config: Config, storage: PointsStorage, factory: Popeye
   }
 
 
-  def sendBatch(batches: Seq[Long], events: Seq[Point]): Int = {
+  def sendBatch(batches: Seq[Long], events: Seq[Point]): Future[Int] = {
     val ctx = metrics.writeTimer.timerContext()
     metrics.writeBatchSizeHist.update(events.size)
     val future: Future[Int] = storage.writePoints(events)
@@ -153,9 +153,8 @@ class HBasePointConsumer(config: Config, storage: PointsStorage, factory: Popeye
         val nanos = ctx.stop()
         self ! ConsumeFailed(batches, cause)
         error(s"${batches.size} batches failed to send (after ${NANOSECONDS.toMillis(nanos)}ms)", cause)
-
     }
-    Await.result(future, writeTimeout)
+    future
   }
 
 }
