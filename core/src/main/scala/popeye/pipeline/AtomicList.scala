@@ -1,4 +1,4 @@
-package popeye.transport.kafka
+package popeye.pipeline
 
 import java.util.concurrent.atomic.AtomicReference
 

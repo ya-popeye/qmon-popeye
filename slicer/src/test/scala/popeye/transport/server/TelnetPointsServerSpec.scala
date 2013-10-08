@@ -1,23 +1,22 @@
 package popeye.transport.server
 
-import org.scalatest.mock.MockitoSugar
-import popeye.transport.test.AkkaTestKitSpec
+import akka.actor.{Deploy, Props}
+import akka.io.Tcp
 import akka.testkit.{TestProbe, TestActorRef}
-import java.util.Random
-import org.mockito.Mockito._
-import org.mockito.Matchers.{eq => the}
-import scala.concurrent.duration._
 import akka.util.{ByteString, Timeout}
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.{ConfigFactory, Config}
-import popeye.ConfigUtil
-import akka.actor.{Deploy, Props}
-import akka.io.{Tcp, TcpReadWriteAdapter, TcpPipelineHandler}
-import popeye.transport.kafka.ProducePending
-import akka.event.NoLogging
 import java.io.ByteArrayOutputStream
-import popeye.transport.CompressionDecoder.{Gzip, Snappy, Codec}
+import java.util.Random
+import org.mockito.Matchers.{eq => the}
+import org.mockito.Mockito._
+import org.scalatest.mock.MockitoSugar
+import popeye.ConfigUtil
+import popeye.pipeline.BatcherProtocol.Pending
 import popeye.test.PopeyeTestUtils
+import popeye.transport.CompressionDecoder.{Gzip, Snappy, Codec}
+import popeye.transport.test.AkkaTestKitSpec
+import scala.concurrent.duration._
 
 /**
  * @author Andrey Stepachev
@@ -46,7 +45,7 @@ class TelnetPointsServerSpec extends AkkaTestKitSpec("tsdb-server") with Mockito
     val connection = TestProbe()
     val actor: TestActorRef[TsdbTelnetHandler] = TestActorRef(
       Props.apply(new TsdbTelnetHandler(connection.ref, kafka.ref, config, tsdbMetrics))
-      .withDeploy(Deploy.local))
+        .withDeploy(Deploy.local))
     (connection, kafka, actor)
   }
 
@@ -144,7 +143,7 @@ class TelnetPointsServerSpec extends AkkaTestKitSpec("tsdb-server") with Mockito
 
   def validate(connection: TestProbe, kafka: TestProbe, actor: TestActorRef[TsdbTelnetHandler]) {
     kafka.expectMsgPF() {
-      case p@ProducePending(promise) =>
+      case p@Pending(promise) =>
         assert(p.data.size == 1)
         promise.get.success(123)
     }

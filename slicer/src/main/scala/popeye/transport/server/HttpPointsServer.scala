@@ -1,32 +1,27 @@
 package popeye.transport.server
 
-import scala.concurrent.duration._
+import akka.actor.SupervisorStrategy.Restart
+import akka.actor._
+import akka.io.IO
 import akka.pattern.ask
 import akka.util.Timeout
-import akka.actor._
-import com.google.protobuf.{ByteString => GoogleByteString}
-import spray.can.Http
-import spray.util._
-import spray.http._
-import HttpMethods._
-import MediaTypes._
-import org.codehaus.jackson.JsonParseException
-import popeye.transport.proto.Message.Point
-import akka.actor.SupervisorStrategy.Restart
-import java.net.InetSocketAddress
-import akka.io.IO
-import spray.http.HttpRequest
-import scala.util.Failure
-import popeye.transport.kafka.ProduceDone
-import akka.actor.OneForOneStrategy
-import spray.http.HttpResponse
-import scala.util.Success
-import popeye.transport.kafka.ProducePending
-import com.typesafe.config.Config
-import popeye.{Logging, Instrumented}
 import com.codahale.metrics.MetricRegistry
+import com.google.protobuf.{ByteString => GoogleByteString}
+import com.typesafe.config.Config
+import java.net.InetSocketAddress
+import org.codehaus.jackson.JsonParseException
+import popeye.pipeline.BatcherProtocol.{Done, Pending}
+import popeye.transport.proto.Message.Point
 import popeye.transport.proto.PackedPoints
-
+import popeye.{Logging, Instrumented}
+import scala.concurrent.duration._
+import scala.util.Failure
+import scala.util.Success
+import spray.can.Http
+import spray.http.HttpMethods._
+import spray.http.MediaTypes._
+import spray.http._
+import spray.util._
 
 class HttpPointsServerMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
   val writeTimer = metrics.timer("write")
@@ -70,14 +65,14 @@ class HttpPointsServer(config: Config, kafkaProducer: ActorRef, metrics: HttpPoi
 
       val result = for {
         parsed <- ask(parser, ParseRequest(entity.buffer)).mapTo[ParseResult]
-        stored <- ask(kafkaProducer, ProducePending(None)(PackedPoints(parsed.batch)))(kafkaTimeout)
+        stored <- ask(kafkaProducer, Pending(None)(PackedPoints(parsed.batch)))(kafkaTimeout)
       } yield {
         metrics.requestsBatches.update(parsed.batch.size)
         timer.stop()
         stored
       }
       result onComplete {
-        case Success(r: ProduceDone) =>
+        case Success(r: Done) =>
           client ! HttpResponse(200, "Ok: " + r.correlationId + ":" + r.assignedBatchId)
           timer.stop()
         case Success(x) =>

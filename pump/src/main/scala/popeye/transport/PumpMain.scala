@@ -8,6 +8,8 @@ import popeye.storage.hbase._
  */
 object PumpMain extends PopeyeMain("pump") {
 
+  import scala.concurrent.ExecutionContext.Implicits.global
+
   val pointsStorage = new PointsStorageConfigured(new PointsStorageConfig(
     actorSystem = PumpMain.actorSystem,
     metricRegistry = PumpMain.metricRegistry,

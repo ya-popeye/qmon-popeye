@@ -5,7 +5,6 @@ import akka.io._
 import akka.util.{Timeout, ByteString}
 import akka.io.IO
 import java.net.InetSocketAddress
-import popeye.transport.kafka.{ProduceDone, ProducePending}
 import scala.collection.mutable
 import com.codahale.metrics.{Timer, MetricRegistry}
 import com.typesafe.config.Config
@@ -17,6 +16,7 @@ import scala.util.{Success, Failure}
 import akka.pattern.AskTimeoutException
 import java.util.concurrent.atomic.AtomicInteger
 import akka.dispatch.{UnboundedMessageQueueSemantics, RequiresMessageQueue}
+import popeye.pipeline.BatcherProtocol.{Pending, Done}
 
 class TsdbTelnetMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
   val requestTimer = metrics.timer("request-time")
@@ -111,7 +111,7 @@ class TsdbTelnetHandler(connection: ActorRef,
       tryReplyOk()
       throttle()
 
-    case ProduceDone(completeCorrelationId, batchId) =>
+    case Done(completeCorrelationId, batchId) =>
       if (lastBatchId < batchId) {
         lastBatchId = batchId
       }
@@ -137,7 +137,7 @@ class TsdbTelnetHandler(connection: ActorRef,
     if (!bufferedPoints.isEmpty) {
       pointId += 1
       val p = Promise[Long]()
-      kafkaProducer ! ProducePending(Some(p))(bufferedPoints)
+      kafkaProducer ! Pending(Some(p))(bufferedPoints)
       bufferedPoints = new PackedPoints(messagesPerExtent = batchSize + 1)
       pendingCorrelations.add(pointId)
       val timer = context.system.scheduler.scheduleOnce(askTimeout.duration, new Runnable {
@@ -151,7 +151,7 @@ class TsdbTelnetHandler(connection: ActorRef,
       p.future onComplete {
         case Success(l) =>
           timer.cancel()
-          me ! ProduceDone(cId, l)
+          me ! Done(cId, l)
         case Failure(ex) =>
           timer.cancel()
           connection ! Tcp.Write(ByteString("ERR Command processing timeout\n"))
