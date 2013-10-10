@@ -1,22 +1,21 @@
 package popeye.transport.server
 
 import akka.actor._
-import akka.io._
-import akka.util.{Timeout, ByteString}
 import akka.io.IO
-import java.net.InetSocketAddress
-import scala.collection.mutable
+import akka.io._
+import akka.pattern.AskTimeoutException
+import akka.util.{Timeout, ByteString}
 import com.codahale.metrics.{Timer, MetricRegistry}
 import com.typesafe.config.Config
-import popeye.{Logging, Instrumented}
+import java.net.InetSocketAddress
+import java.util.concurrent.atomic.AtomicInteger
+import popeye.pipeline.DispatcherProtocol.{Pending, Done}
 import popeye.transport.proto.{Message, PackedPoints}
+import popeye.{Logging, Instrumented}
+import scala.collection.mutable
 import scala.concurrent.Promise
 import scala.concurrent.duration._
 import scala.util.{Success, Failure}
-import akka.pattern.AskTimeoutException
-import java.util.concurrent.atomic.AtomicInteger
-import akka.dispatch.{UnboundedMessageQueueSemantics, RequiresMessageQueue}
-import popeye.pipeline.BatcherProtocol.{Pending, Done}
 
 class TsdbTelnetMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
   val requestTimer = metrics.timer("request-time")
@@ -61,7 +60,7 @@ class TsdbTelnetHandler(connection: ActorRef,
 
     override def addPoint(point: Message.Point): Unit = {
       bufferedPoints += point
-      if (bufferedPoints.size >= batchSize) {
+      if (bufferedPoints.pointsCount >= batchSize) {
         sendPack()
       }
     }
@@ -134,7 +133,7 @@ class TsdbTelnetHandler(connection: ActorRef,
 
   private def sendPack() {
     import context.dispatcher
-    if (!bufferedPoints.isEmpty) {
+    if (bufferedPoints.pointsCount > 0) {
       pointId += 1
       val p = Promise[Long]()
       kafkaProducer ! Pending(Some(p))(bufferedPoints)

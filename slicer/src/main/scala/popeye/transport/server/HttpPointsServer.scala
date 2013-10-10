@@ -10,7 +10,7 @@ import com.google.protobuf.{ByteString => GoogleByteString}
 import com.typesafe.config.Config
 import java.net.InetSocketAddress
 import org.codehaus.jackson.JsonParseException
-import popeye.pipeline.BatcherProtocol.{Done, Pending}
+import popeye.pipeline.DispatcherProtocol.{Done, Pending}
 import popeye.transport.proto.Message.Point
 import popeye.transport.proto.PackedPoints
 import popeye.{Logging, Instrumented}

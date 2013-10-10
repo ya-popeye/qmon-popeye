@@ -7,7 +7,7 @@ import scala.collection.mutable.ArrayBuffer
 /**
  * @author Andrey Stepachev
  */
-class PackedPoints(val avgMessageSize: Int = 100, val messagesPerExtent: Int = 100, val initialCapacity: Int = 0) {
+final class PackedPoints(val avgMessageSize: Int = 100, val messagesPerExtent: Int = 100, val initialCapacity: Int = 0) {
   private[proto] val points = new ExpandingBuffer(initialMessages * avgMessageSize)
   private val pointsCoder = CodedOutputStream.newInstance(points)
   private var pointsCount_ = 0
@@ -23,14 +23,22 @@ class PackedPoints(val avgMessageSize: Int = 100, val messagesPerExtent: Int = 1
 
 
   @inline
-  def +=(point: Point) = append(point)
+  def +=(point: Point): PackedPoints = append(point)
 
-  def append(point: Point) = {
+  @inline
+  def ++=(points: Seq[Point]): PackedPoints = append(points :_*)
+
+  def append(point: Point): PackedPoints = {
     MessageUtil.validatePoint(point)
     val size = point.getSerializedSize
     pointsCoder.writeRawVarint32(size)
     point.writeTo(pointsCoder)
     pointsCount_ += 1
+    this
+  }
+
+  def append(points: Point*): PackedPoints = {
+    points.foreach { point => append(point) }
     this
   }
 

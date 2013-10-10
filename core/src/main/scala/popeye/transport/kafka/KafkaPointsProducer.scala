@@ -10,23 +10,27 @@ import kafka.serializer.Encoder
 import kafka.utils.VerifiableProperties
 import popeye.pipeline._
 import popeye.transport.proto.PackedPoints
-import popeye.transport.proto.PointsQueue.PartitionBuffer
 import popeye.{IdGenerator, ConfigUtil}
 import scala.concurrent.Promise
 
 
 class KafkaProducerMetrics(prefix: String, metricsRegistry: MetricRegistry)
-  extends BatcherMetrics(s"$prefix.producer", metricsRegistry)
+  extends PointsDispatcherMetrics(s"$prefix.producer", metricsRegistry)
 
-class KafkaProducerConfig(config: Config) extends BatcherConfig(config.getConfig("producer")) {
+class KafkaProducerConfig(config: Config)
+  extends PointsDispatcherConfig(config.getConfig("producer")) {
+
   val topic = config.getString("topic")
 }
 
 class KafkaPointsWorker(kafkaClient: PopeyeKafkaProducerFactory,
                         val batcher: KafkaPointsProducer)
-  extends BatcherWorkerActor[KafkaPointsProducer] {
+  extends PointsBatcherWorkerActor {
 
-  val producer = kafkaClient.newProducer()
+  type Batch = Seq[PackedPoints]
+  type Batcher = KafkaPointsProducer
+
+  val producer = kafkaClient.newProducer(batcher.config.topic)
 
   override val supervisorStrategy = OneForOneStrategy(loggingEnabled = true) {
     case _ => Restart
@@ -37,18 +41,16 @@ class KafkaPointsWorker(kafkaClient: PopeyeKafkaProducerFactory,
     producer.close()
   }
 
-  def processBatch(batchId: Long, buffer: PartitionBuffer): Unit = {
-    val message = new KeyedMessage(batcher.config.topic, batchId, PackedPoints.prependBatchId(batchId, buffer.buffer))
-    producer.send(message)
+  def processBatch(batchId: Long, buffer: Seq[PackedPoints]): Unit = {
+    producer.sendPacked(batchId, buffer :_*)
   }
 }
-
 
 class KafkaPointsProducer(producerConfig: Config,
                           val idGenerator: IdGenerator,
                           kafkaClient: PopeyeKafkaProducerFactory,
                           val metrics: KafkaProducerMetrics)
-  extends BatcherActor {
+  extends PointsDispatcherActor {
 
   type Config = KafkaProducerConfig
   type Metrics = KafkaProducerMetrics
@@ -73,7 +75,7 @@ object KafkaPointsProducer {
   type ProducerFactory = (ProducerConfig) => Producer[Int, Array[Byte]]
 
   def produce(producer: ActorRef, promise: Option[Promise[Long]], points: PackedPoints) = {
-    producer ! BatcherProtocol.Pending(promise)(points)
+    producer ! DispatcherProtocol.Pending(promise)(Seq(points))
   }
 
   def start(name: String, config: Config, idGenerator: IdGenerator)

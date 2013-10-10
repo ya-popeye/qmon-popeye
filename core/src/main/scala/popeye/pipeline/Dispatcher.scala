@@ -5,10 +5,10 @@ import akka.actor._
 import com.codahale.metrics.{Timer, MetricRegistry}
 import com.typesafe.config.Config
 import popeye.ConfigUtil._
-import popeye.pipeline.BatcherProtocol.FlushPoints
+import popeye.pipeline.DispatcherProtocol.{Pending, FlushPoints}
+import popeye.pipeline.WorkerProtocol.ProducePack
 import popeye.transport.proto.Message.Point
-import popeye.transport.proto.{PackedPointsBuffer, PointsQueue}
-import popeye.{Logging, IdGenerator, Instrumented}
+import popeye.{Logging, Instrumented}
 import scala.Some
 import scala.annotation.tailrec
 import scala.concurrent.Promise
@@ -17,15 +17,14 @@ import scala.concurrent.duration._
 /**
  * @author Andrey Stepachev
  */
-class BatcherMetrics(prefix: String, override val metricRegistry: MetricRegistry) extends Instrumented {
+class DispatcherMetrics(prefix: String, override val metricRegistry: MetricRegistry) extends Instrumented {
   val writeTimer = metrics.timer(s"$prefix.wall-time")
   val sendTimer = metrics.timer(s"$prefix.send-time")
-  val pointsMeter = metrics.meter(s"$prefix.points")
   val batchFailedMeter = metrics.meter(s"$prefix.batch-failed")
   val batchCompleteMeter = metrics.meter(s"$prefix.batch-complete")
 }
 
-class BatcherConfig(config: Config) {
+class DispatcherConfig(config: Config) {
   val batchWaitTimeout: FiniteDuration = toFiniteDuration(
     config.getMilliseconds("tick"))
   val maxQueued = config.getInt("max-queued")
@@ -34,18 +33,18 @@ class BatcherConfig(config: Config) {
   val lowWatermark = config.getInt("low-watermark")
 }
 
-object BatcherWorkerProtocol {
+private object WorkerProtocol {
 
   case class WorkDone(batchId: Long)
 
   case class CorrelatedPoint(correlationId: Long, sender: ActorRef)(val points: Seq[Point])
 
-  case class ProducePack(batchId: Long, started: Timer.Context)
-                        (val buffer: PointsQueue.PartitionBuffer, val promises: Seq[Promise[Long]])
+  case class ProducePack[Event](batchId: Long, started: Timer.Context)
+                               (val batch: Event, val promises: Seq[Promise[Long]])
 
 }
 
-object BatcherProtocol {
+object DispatcherProtocol {
 
   sealed class Reply
 
@@ -59,18 +58,23 @@ object BatcherProtocol {
 
   case object FlushPoints extends Command
 
-  case class Pending(batchIdPromise: Option[Promise[Long]] = None)(val data: PackedPointsBuffer) extends Command
+  case class Pending[Event](batchIdPromise: Option[Promise[Long]] = None)(val event: Event)
+                           (implicit evidence$1: scala.reflect.ClassTag[Event])
+    extends Command
 
 }
 
 
-trait BatcherWorkerActor[Batcher <: BatcherActor] extends Actor with Logging {
+trait WorkerActor extends Actor with Logging {
 
-  import BatcherWorkerProtocol._
+  import WorkerProtocol._
+
+  type Batcher <: DispatcherActor
+  type Batch
 
   def batcher: Batcher
 
-  def processBatch(batchId: Long, buffer: PointsQueue.PartitionBuffer)
+  def processBatch(batchId: Long, pack: Batch)
 
   override def preStart() {
     super.preStart()
@@ -84,12 +88,11 @@ trait BatcherWorkerActor[Batcher <: BatcherActor] extends Actor with Logging {
   }
 
   def receive = {
-    case p@ProducePack(batchId, started) =>
+    case p: ProducePack[Batch] =>
       val sendctx = batcher.metrics.sendTimer.timerContext()
       try {
-        processBatch(batchId, p.buffer)
+        processBatch(p.batchId, p.batch)
         debug(s"Sent batch ${p.batchId}")
-        batcher.metrics.pointsMeter.mark(p.buffer.points)
         batcher.metrics.batchCompleteMeter.mark()
         withDebug {
           p.promises.foreach {
@@ -99,7 +102,7 @@ trait BatcherWorkerActor[Batcher <: BatcherActor] extends Actor with Logging {
         }
         p.promises
           .filter(!_.isCompleted) // we should check, that pormise not complete before
-          .foreach(_.success(batchId))
+          .foreach(_.success(p.batchId))
       } catch {
         case e: Exception => sender ! Failure(e)
           batcher.metrics.batchFailedMeter.mark()
@@ -115,26 +118,33 @@ trait BatcherWorkerActor[Batcher <: BatcherActor] extends Actor with Logging {
           throw e
       } finally {
         val sended = sendctx.stop.nano
-        val elapsed = started.stop.nano
+        val elapsed = p.started.stop.nano
         log.debug(s"batch ${p.batchId} sent in ${sended.toMillis}ms at total ${elapsed.toMillis}ms")
         batcher.addWorker(self)
-        sender ! WorkDone(batchId)
+        sender ! WorkDone(p.batchId)
       }
   }
 }
 
-trait BatcherActor extends Actor with Logging {
+trait DispatcherActor extends Actor with Logging {
 
-  type Config <: BatcherConfig
-  type Metrics <: BatcherMetrics
+
+  type Batch
+  type WriteBuffer
+  type Config <: DispatcherConfig
+  type Metrics <: DispatcherMetrics
+
+  class WorkerData(val batchId: Long, val batch: Batch, val batchPromises: Seq[Promise[Long]])
 
   def config: Config
 
   def metrics: Metrics
 
-  def idGenerator: IdGenerator
+  def spawnWorker(): ActorRef
 
-  lazy val pendingPoints = new PointsQueue(config.lowWatermark, config.highWatermark)
+  def buffer(buffer: Batch, batchIdPromise: Option[Promise[Long]])
+
+  def unbuffer(ignoreMinSize: Boolean): Option[WorkerData]
 
   var flusher: Option[Cancellable] = None
 
@@ -144,7 +154,6 @@ trait BatcherActor extends Actor with Logging {
     workQueue.add(worker)
   }
 
-  def spawnWorker(): ActorRef
 
   override def preStart() {
     super.preStart()
@@ -167,33 +176,29 @@ trait BatcherActor extends Actor with Logging {
   }
 
   def receive: Actor.Receive = {
-    case BatcherProtocol.FlushPoints =>
-      flushPoints(ignoreMinSize = true)
+    case DispatcherProtocol.FlushPoints =>
+      flushBuffered(ignoreMinSize = true)
 
-    case BatcherWorkerProtocol.WorkDone(_) =>
-      flushPoints()
+    case WorkerProtocol.WorkDone(_) =>
+      flushBuffered()
 
-    case p@BatcherProtocol.Pending(promise) =>
-      pendingPoints.addPending(p.data, p.batchIdPromise)
-      flushPoints()
+    case p: Pending[Batch] =>
+      buffer(p.event, p.batchIdPromise)
+      flushBuffered()
   }
 
   @tailrec
-  private def flushPoints(ignoreMinSize: Boolean = false): Unit = {
+  private def flushBuffered(ignoreMinSize: Boolean = false): Unit = {
     if (workQueue.isEmpty)
       return
     workQueue.headOption() match {
       case Some(worker: ActorRef) =>
-        val batchId = idGenerator.nextId()
-        val (data, promises) = pendingPoints.consume(ignoreMinSize)
-        if (!data.isEmpty) {
-          worker ! BatcherWorkerProtocol.ProducePack(batchId, metrics.writeTimer.timerContext())(data.get, promises)
-          log.debug(s"Sending ${data.foldLeft(0)({
-            (a, b) => a + b.buffer.length
-          })} bytes, will trigger ${promises.size} promises")
-          flushPoints(ignoreMinSize)
-        } else {
-          workQueue.add(worker)
+        unbuffer(ignoreMinSize) match {
+          case Some(wd) =>
+            worker ! ProducePack[Batch](wd.batchId, metrics.writeTimer.timerContext())(wd.batch, wd.batchPromises)
+            flushBuffered(ignoreMinSize)
+          case None =>
+            workQueue.add(worker)
         }
       case None =>
         return

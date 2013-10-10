@@ -62,9 +62,9 @@ class HBasePointConsumer(config: Config, storage: PointsStorage, factory: Popeye
   import ExecutionContext.Implicits.global
   import HBasePointConsumer._
 
-  val topic = config.getString("kafka.points.topic")
+  val topic = config.getString("kafka.topic")
 
-  val consumer = factory.newConsumer()
+  val consumer = factory.newConsumer(topic)
 
   lazy val maxBatchSize = config.getLong("hbase.kafka.consumer.batch-size")
   lazy val checkTick = toFiniteDuration(config.getMilliseconds("hbase.kafka.consumer.check-tick"))

@@ -6,34 +6,38 @@ import kafka.message.MessageAndMetadata
 import popeye.Logging
 import popeye.transport.proto.Message.Point
 import popeye.transport.proto.{Message, PackedPoints}
+import scala.collection.mutable.ArrayBuffer
 
 /**
  * @author Andrey Stepachev
  */
 trait PopeyeKafkaConsumer {
-  def iterateTopic(topic: String): Iterator[Option[(Long, Seq[Message.Point])]]
+  def consume(): Option[(Long, Seq[Point])]
 
   def commitOffsets(): Unit
   def shutdown(): Unit
 }
 
 trait PopeyeKafkaConsumerFactory {
-  def newConsumer(): PopeyeKafkaConsumer
+  def newConsumer(topic: String): PopeyeKafkaConsumer
 }
 
-class PopeyeKafkaConsumerImpl(consumerConnector: ConsumerConnector) extends PopeyeKafkaConsumer with Logging {
+class PopeyeKafkaConsumerImpl(consumerConnector: ConsumerConnector, topic: String) extends PopeyeKafkaConsumer with Logging {
 
-  private[this] var streams = Map[String, KafkaStream[Array[Byte], Array[Byte]]]()
+  val stream = topicStream(topic)
+  val iterator = stream.iterator()
 
   def commitOffsets(): Unit = {
     consumerConnector.commitOffsets
   }
 
   def shutdown(): Unit = {
+    iterator.clearCurrentChunk()
     consumerConnector.shutdown()
   }
 
   private def topicStream(topic: String): KafkaStream[Array[Byte], Array[Byte]] = {
+    var streams = Map[String, KafkaStream[Array[Byte], Array[Byte]]]()
     streams.get(topic) match {
       case Some(stream) => stream
       case None =>
@@ -44,38 +48,34 @@ class PopeyeKafkaConsumerImpl(consumerConnector: ConsumerConnector) extends Pope
     }
   }
 
+  def hasNext: Boolean = try {
+    iterator.hasNext()
+  } catch {
+    case ex: ConsumerTimeoutException =>
+      false
+  }
+
   /**
    * Iterate messages in topic stream
    * @throws InvalidProtocolBufferException in case of bad message
-   * @param topic
    * @return Some((batchId, message)) or None in case of read timeout
    */
-  def iterateTopic(topic: String): Iterator[Option[(Long, Seq[Message.Point])]] = {
-    val stream = topicStream(topic)
-    new Iterator[Option[(Long, Seq[Message.Point])]] {
-      val iterator = stream.iterator()
-
-      def hasNext: Boolean = try {
-        iterator.hasNext()
+  def consume(): Option[(Long, Seq[Point])] = {
+    if (hasNext) {
+      try {
+        val msg: MessageAndMetadata[Array[Byte], Array[Byte]] = iterator.next()
+        Some(PackedPoints.decodeWithBatchId(msg.message))
       } catch {
         case ex: ConsumerTimeoutException =>
-          false
+          None // ok
       }
-
-      def next(): Option[(Long, Seq[Point])] = {
-        try {
-          val msg: MessageAndMetadata[Array[Byte], Array[Byte]] = iterator.next()
-          Some(PackedPoints.decodeWithBatchId(msg.message))
-        } catch {
-          case ex: ConsumerTimeoutException =>
-            None // ok
-        }
-      }
+    } else {
+      None
     }
   }
 }
 
 class PopeyeKafkaConsumerFactoryImpl(consumerConfig: ConsumerConfig)
   extends PopeyeKafkaConsumerFactory {
-  def newConsumer(): PopeyeKafkaConsumer = new PopeyeKafkaConsumerImpl(Consumer.create(consumerConfig))
+  def newConsumer(topic: String): PopeyeKafkaConsumer = new PopeyeKafkaConsumerImpl(Consumer.create(consumerConfig), topic)
 }

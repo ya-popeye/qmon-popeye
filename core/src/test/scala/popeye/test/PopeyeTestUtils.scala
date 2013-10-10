@@ -63,7 +63,7 @@ object PopeyeTestUtils {
 
     val consumer = new MockPopeyeConsumer
 
-    def newConsumer(): PopeyeKafkaConsumer = consumer
+    def newConsumer(topic: String): PopeyeKafkaConsumer = consumer
   }
 
   class MockPopeyeConsumer extends PopeyeKafkaConsumer {
@@ -76,8 +76,10 @@ object PopeyeTestUtils {
       list = list :+ Some(batchId -> points)
     }
 
-    def iterateTopic(topic: String): Iterator[Option[(Long, Seq[Point])]] = {
-      list.iterator
+    def consume(): Option[(Long, Seq[Point])] = {
+      val l = list.head
+      list = list.tail
+      l
     }
 
     def commitOffsets() {
@@ -87,6 +89,7 @@ object PopeyeTestUtils {
     def shutdown() {
       isShutdown = true
     }
+
   }
 
   class MockAnswer[T](function: Any => T) extends Answer[T] {
