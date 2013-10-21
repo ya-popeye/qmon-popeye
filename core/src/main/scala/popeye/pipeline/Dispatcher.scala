@@ -2,6 +2,7 @@ package popeye.pipeline
 
 import akka.actor.Status.Failure
 import akka.actor._
+import akka.pattern.{AskTimeoutException, ask, after}
 import com.codahale.metrics.{Timer, MetricRegistry}
 import com.typesafe.config.Config
 import popeye.ConfigUtil._
@@ -11,7 +12,7 @@ import popeye.transport.proto.Message.Point
 import popeye.{Logging, Instrumented}
 import scala.Some
 import scala.annotation.tailrec
-import scala.concurrent.Promise
+import scala.concurrent.{ExecutionContext, Await, Future, Promise}
 import scala.concurrent.duration._
 
 /**
@@ -130,7 +131,6 @@ trait DispatcherActor extends Actor with Logging {
 
 
   type Batch
-  type WriteBuffer
   type Config <: DispatcherConfig
   type Metrics <: DispatcherMetrics
 
@@ -205,4 +205,22 @@ trait DispatcherActor extends Actor with Logging {
     }
   }
 
+}
+
+object DispatcherActor {
+  def sendBatch[Event](dispatcherActor: ActorRef, batchId: Long, event: Event, askTimeout: Duration)
+                      (implicit evidence$1: scala.reflect.ClassTag[Event], sch: Scheduler, eCtx: ExecutionContext)
+  : Future[Long] = {
+    val batchPromise = Promise[Long]()
+    val message = Pending[Event](Some(batchPromise))(event)
+    if (askTimeout.isFinite()) {
+      dispatcherActor ! message
+      val timeout = after[Long](askTimeout.asInstanceOf[FiniteDuration], using=sch)(
+        Future.failed(new AskTimeoutException(s"Query for batch $batchId timed out")))
+      Future.firstCompletedOf(Seq(batchPromise.future, timeout))
+    } else {
+      dispatcherActor ! message
+      batchPromise.future
+    }
+  }
 }
