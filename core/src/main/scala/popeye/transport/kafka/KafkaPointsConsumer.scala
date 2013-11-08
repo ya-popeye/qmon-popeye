@@ -23,7 +23,7 @@ class KafkaPointsConsumerConfig(config: Config) {
   val maxLag = config.getMilliseconds("max-lag")
 }
 
-trait PointsConsumer {
+trait PointsSink {
   def send(batchIds: Seq[Long], points: PackedPoints): Future[Long]
 }
 
@@ -38,8 +38,8 @@ private object KafkaPointsConsumerProto {
 class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
                           val metrics: KafkaPointsConsumerMetrics,
                           val pointsConsumer: PopeyeKafkaConsumer,
-                          val sinkPipe: PointsConsumer,
-                          val dropPipe: PointsConsumer)
+                          val sinkPipe: PointsSink,
+                          val dropPipe: PointsSink)
   extends Actor with Logging {
 
   import KafkaPointsConsumerProto._

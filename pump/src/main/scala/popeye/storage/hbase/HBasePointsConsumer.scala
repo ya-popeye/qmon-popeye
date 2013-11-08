@@ -113,22 +113,22 @@ class HBasePointConsumer(config: Config, storage: PointsStorage, factory: Popeye
     val batch = new ArrayBuffer[Message.Point]
     val tctx = metrics.consumeTimer.timerContext()
 
-    val iterator = consumer.iterateTopic(topic)
-    while (iterator.hasNext && batch.size < maxBatchSize) {
-      try {
-        iterator.next() match {
-          case Some((batchId, points)) =>
-            metrics.batchSizeHist.update(points.size)
-            batchIds += batchId
-            batch ++= points
-          case None =>
-            // timeout, we should break on hasNext == false
-        }
-      } catch {
-        case e: InvalidProtocolBufferException =>
-          metrics.batchDecodeFailuresMeter.mark()
-      }
-    }
+//    val iterator = consumer.iterateTopic(topic)
+//    while (iterator.hasNext && batch.size < maxBatchSize) {
+//      try {
+//        iterator.next() match {
+//          case Some((batchId, points)) =>
+//            metrics.batchSizeHist.update(points.size)
+//            batchIds += batchId
+//            batch ++= points
+//          case None =>
+//            // timeout, we should break on hasNext == false
+//        }
+//      } catch {
+//        case e: InvalidProtocolBufferException =>
+//          metrics.batchDecodeFailuresMeter.mark()
+//      }
+//    }
     if (batchIds.size > 0) {
       metrics.pointsMeter.mark(batch.size)
       tctx.close()

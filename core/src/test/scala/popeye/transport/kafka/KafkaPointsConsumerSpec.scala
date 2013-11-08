@@ -65,7 +65,7 @@ class MyListener(val failBatches: Set[Long],
   val sinkedBatches = new AtomicList[Long]
   val droppedBatches = new AtomicList[Long]
 
-  def sinkPipe: PointsConsumer = new PointsConsumer {
+  def sinkPipe: PointsSink = new PointsSink {
     def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] = {
       batchIds.find(failBatches.contains) match {
         case Some(x) =>
@@ -80,7 +80,7 @@ class MyListener(val failBatches: Set[Long],
     }
   }
 
-  def dropPipe: PointsConsumer = new PointsConsumer {
+  def dropPipe: PointsSink = new PointsSink {
     def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] = {
       batchIds.foreach {
         droppedBatches.add
