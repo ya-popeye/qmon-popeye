@@ -17,6 +17,6 @@ object PumpMain extends PopeyeMain("pump") {
     zkQuorum = PumpMain.config.getString("zk.cluster")
   ))
 
-  val consumer = HBasePointConsumer.start(config, pointsStorage.storage)
+  //  val consumer = HBasePointConsumer.start(config, pointsStorage.storage)
   log.info("Pump initialization done")
 }

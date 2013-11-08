@@ -14,7 +14,7 @@ import popeye.transport.test.AkkaTestKitSpec
 import scala.collection.JavaConversions.iterableAsScalaIterable
 import scala.concurrent.Await
 import scala.concurrent.duration._
-import popeye.transport.proto.Message
+import popeye.transport.proto.{PackedPoints, Message}
 import org.scalatest.exceptions.TestFailedException
 import com.codahale.metrics.{ConsoleReporter, MetricRegistry}
 import nl.grons.metrics.scala.Meter
@@ -44,7 +44,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
     val state = new State
 
     val events = mkEvents(msgs = 4)
-    val future = state.storage.writePoints(events)
+    val future = state.storage.writePoints(PackedPoints(events))
     val written = Await.result(future, 5 seconds)
     written should be(events.size)
     val points = hTable.getScanner(PointsStorage.PointsFamily).map(_.raw).flatMap { kv =>
@@ -54,7 +54,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
     events.toList.sortBy(_.getTimestamp) should equal(points.toList.sortBy(_.getTimestamp))
 
     // write once more, we shold write using short path
-    val future2 = state.storage.writePoints(events)
+    val future2 = state.storage.writePoints(PackedPoints(events))
     val written2 = Await.result(future2, 5 seconds)
     written2 should be(events.size)
 
@@ -65,7 +65,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
 
     val events = mkEvents(msgs = 4000)
     for (i <- 1 to 600) {
-      val future = state.storage.writePoints(events)
+      val future = state.storage.writePoints(PackedPoints(events))
       val written = Await.result(future, 5 seconds)
       written should be(events.size)
     }

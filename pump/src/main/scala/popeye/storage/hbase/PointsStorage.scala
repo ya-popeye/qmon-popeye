@@ -6,7 +6,7 @@ import org.apache.hadoop.hbase.KeyValue
 import org.apache.hadoop.hbase.client.{Put, HTablePool}
 import org.apache.hadoop.hbase.util.Bytes
 import popeye.storage.hbase.HBaseStorage._
-import popeye.transport.proto.Message
+import popeye.transport.proto.{PackedPoints, Message}
 import popeye.{Instrumented, Logging}
 import scala.collection.JavaConversions._
 import scala.collection.mutable
@@ -43,7 +43,7 @@ class PointsStorage(tableName: String,
    * @param points what to write
    * @return number of written points
    */
-  def writePoints(points: Seq[Message.Point])(implicit eCtx: ExecutionContext): Future[Int] = {
+  def writePoints(points: PackedPoints)(implicit eCtx: ExecutionContext): Future[Int] = {
 
     val ctx = metrics.writeTime.timerContext()
     metrics.writeProcessingTime.time {
