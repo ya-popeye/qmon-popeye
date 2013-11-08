@@ -12,9 +12,22 @@ import scala.collection.mutable.ArrayBuffer
  * @author Andrey Stepachev
  */
 trait PopeyeKafkaConsumer {
-  def consume(): Option[(Long, Seq[Point])]
 
+  type BatchedMessageSet = (Long, Seq[Point])
+
+  /**
+   * Iterate messages in topic stream
+   * @throws InvalidProtocolBufferException in case of bad message
+   * @return Some((batchId, messages)) or None in case of read timeout
+   */
+  def consume(): Option[BatchedMessageSet]
+
+  /**
+   * Commit offsets consumed so far
+   */
   def commitOffsets(): Unit
+
+  /** Shutdown this consumer */
   def shutdown(): Unit
 }
 
@@ -55,11 +68,6 @@ class PopeyeKafkaConsumerImpl(consumerConnector: ConsumerConnector, topic: Strin
       false
   }
 
-  /**
-   * Iterate messages in topic stream
-   * @throws InvalidProtocolBufferException in case of bad message
-   * @return Some((batchId, message)) or None in case of read timeout
-   */
   def consume(): Option[(Long, Seq[Point])] = {
     if (hasNext) {
       try {

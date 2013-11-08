@@ -1,74 +1,109 @@
 package popeye.transport.kafka
 
+import akka.actor.Actor
 import com.google.protobuf.InvalidProtocolBufferException
 import com.typesafe.config.Config
 import popeye.transport.proto.PackedPoints
-import popeye.{IdGenerator, Instrumented, Logging}
+import popeye.{Instrumented, Logging}
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.Future
 import scala.util.{Failure, Success}
+import com.codahale.metrics.MetricRegistry
 
-trait KafkaConsumerMetrics extends Instrumented {
-  def prefix: String
-
+class KafkaPointsConsumerMetrics(val prefix: String,
+                                 val metricRegistry: MetricRegistry) extends Instrumented {
   val consumeTimer = metrics.timer(s"$prefix.consume.time")
   val decodeFailures = metrics.meter(s"$prefix.consume.decode-failures")
 }
 
-trait KafkaConsumerConfig {
-  def config: Config
-
+class KafkaPointsConsumerConfig(config: Config) {
   val topic = config.getString("topic")
   val group = config.getString("group")
   val batchSize = config.getInt("batch-size")
-  val queueSize = config.getInt("queue-size")
   val maxLag = config.getMilliseconds("max-lag")
 }
 
-trait PointsPipeline {
-  def send(batchId: Long, points: PackedPoints): Future[Long]
+trait PointsConsumer {
+  def send(batchIds: Seq[Long], points: PackedPoints): Future[Long]
 }
 
-sealed case class TimedPointsBatch(points: PackedPoints, time: Long = System.currentTimeMillis())
+private object KafkaPointsConsumerProto {
+  case class NextChunk()
 
-trait KafkaPointsConsumer extends Logging {
-  type Metrics <: KafkaConsumerMetrics
-  type Config <: KafkaConsumerConfig
-  type Consumer <: PopeyeKafkaConsumer
+  case class FailedChunk()
 
-  def metrics: Metrics
+  case class CompletedChunk()
+}
 
-  def config: Config
+class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
+                          val metrics: KafkaPointsConsumerMetrics,
+                          val pointsConsumer: PopeyeKafkaConsumer,
+                          val sinkPipe: PointsConsumer,
+                          val dropPipe: PointsConsumer)
+  extends Actor with Logging {
 
-  def idGenerator: IdGenerator
+  import KafkaPointsConsumerProto._
+  import scala.concurrent.ExecutionContext.Implicits.global
 
-  def pointsConsumer: Consumer
+  private var buffer = new PackedPoints()
+  private var batches = new ArrayBuffer[Long]()
+  private var commit = false
 
-  def sinkPipe: PointsPipeline
+  override def preStart(): Unit = {
+    super.preStart()
+    self ! NextChunk
+  }
 
-  def dropPipe: PointsPipeline
+  def receive: Actor.Receive = {
 
-  private val queue = ArrayBuffer[TimedPointsBatch]()
+    case NextChunk =>
+      tryCommit()
+      consumeNext(buffer)
+      if (buffer.pointsCount > config.batchSize) {
+        val me = self
+        val myBatches = batches
+        sinkPipe.send(myBatches, buffer) onComplete {
+          case Success(x) =>
+            commit = true
+            debug(s"Batches: ${myBatches.mkString(",")} commited")
 
-  private def doWork() = {
-    if (queue.size <= config.queueSize) {
-      consumeNext()
-    }
-    if (!queue.isEmpty) {
-      processQueue()
+            me ! NextChunk
+          case Failure(x: Throwable) =>
+            error(s"Failed to send batches $myBatches", x)
+            me ! FailedChunk
+        }
+      } else {
+        self ! NextChunk
+      }
+
+    case FailedChunk =>
+      val me = self
+      dropPipe.send(batches, buffer) onComplete {
+        case Success(x) =>
+          commit = true
+          me ! NextChunk
+        case Failure(x) =>
+          error("fatal, can't drop ")
+      }
+  }
+
+  private def tryCommit() = {
+    if (commit) {
+      buffer = new PackedPoints
+      batches = new ArrayBuffer[Long]()
+      commit = false
+      pointsConsumer.commitOffsets()
     }
   }
 
-  private def processQueue() = {
-  }
-
-  private def consumeNext(): Unit = {
+  private def consumeNext(buffer: PackedPoints): Unit = {
     val tctx = metrics.consumeTimer.timerContext()
     try {
       pointsConsumer.consume() match {
         case Some((batchId, points)) =>
           debug(s"Batch: $batchId queued")
-          queue.append(TimedPointsBatch(PackedPoints(points)))
+          buffer.append(points: _*)
+          batches += batchId
 
         case None =>
 

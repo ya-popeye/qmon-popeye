@@ -14,6 +14,7 @@ import scala.Some
 import scala.annotation.tailrec
 import scala.concurrent.{ExecutionContext, Await, Future, Promise}
 import scala.concurrent.duration._
+import java.util.concurrent.TimeoutException
 
 /**
  * @author Andrey Stepachev
@@ -32,6 +33,14 @@ class DispatcherConfig(config: Config) {
   val numOfWorkers = config.getInt("workers")
   val highWatermark = config.getInt("high-watermark")
   val lowWatermark = config.getInt("low-watermark")
+}
+
+class DispatcherActorException(message: String, cause: Throwable) extends RuntimeException(message, cause) {
+  def this(message: String) = this(message, null)
+}
+
+class WorkerActorException(message: String, cause: Throwable) extends DispatcherActorException(message, cause) {
+  def this(message: String) = this(message, null)
 }
 
 private object WorkerProtocol {
@@ -91,29 +100,32 @@ trait WorkerActor extends Actor with Logging {
   def receive = {
     case p: ProducePack[Batch] =>
       val sendctx = batcher.metrics.sendTimer.timerContext()
+      val batchId = p.batchId
+      val promises = p.promises
       try {
         processBatch(p.batchId, p.batch)
         debug(s"Sent batch ${p.batchId}")
         batcher.metrics.batchCompleteMeter.mark()
         withDebug {
-          p.promises.foreach {
+          promises.foreach {
             promise =>
               debug(s"${self.path} got promise $promise for SUCCESS batch ${p.batchId}")
           }
         }
-        p.promises
+        promises
           .filter(!_.isCompleted) // we should check, that pormise not complete before
           .foreach(_.success(p.batchId))
       } catch {
-        case e: Exception => sender ! Failure(e)
+        case e: Exception =>
+          sender ! Failure(new DispatcherActorException(s"batch $batchId failed", e))
           batcher.metrics.batchFailedMeter.mark()
           withDebug {
-            p.promises.foreach {
+            promises.foreach {
               promise =>
-                log.debug(s"${self.path} got promise for FAILURE $promise for batch ${p.batchId}")
+                log.debug(s"${self.path} got promise for FAILURE $promise for batch ${batchId}")
             }
           }
-          p.promises
+          promises
             .filter(!_.isCompleted) // we should check, that pormise not complete before
             .foreach(_.failure(e))
           throw e
@@ -122,7 +134,7 @@ trait WorkerActor extends Actor with Logging {
         val elapsed = p.started.stop.nano
         log.debug(s"batch ${p.batchId} sent in ${sended.toMillis}ms at total ${elapsed.toMillis}ms")
         batcher.addWorker(self)
-        sender ! WorkDone(p.batchId)
+        sender ! WorkDone(batchId)
       }
   }
 }
