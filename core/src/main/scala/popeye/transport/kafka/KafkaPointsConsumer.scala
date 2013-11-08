@@ -2,38 +2,11 @@ package popeye.transport.kafka
 
 import akka.actor.Actor
 import com.google.protobuf.InvalidProtocolBufferException
-import com.typesafe.config.Config
-import popeye.transport.proto.PackedPoints
-import popeye.{Instrumented, Logging}
+import popeye.Logging
+import popeye.transport.proto.{PackedPoints}
 import scala.collection.mutable.ArrayBuffer
-import scala.concurrent.Future
 import scala.util.{Failure, Success}
-import com.codahale.metrics.MetricRegistry
-
-class KafkaPointsConsumerMetrics(val prefix: String,
-                                 val metricRegistry: MetricRegistry) extends Instrumented {
-  val consumeTimer = metrics.timer(s"$prefix.consume.time")
-  val decodeFailures = metrics.meter(s"$prefix.consume.decode-failures")
-}
-
-class KafkaPointsConsumerConfig(config: Config) {
-  val topic = config.getString("topic")
-  val group = config.getString("group")
-  val batchSize = config.getInt("batch-size")
-  val maxLag = config.getMilliseconds("max-lag")
-}
-
-trait PointsSink {
-  def send(batchIds: Seq[Long], points: PackedPoints): Future[Long]
-}
-
-private object KafkaPointsConsumerProto {
-  case class NextChunk()
-
-  case class FailedChunk()
-
-  case class CompletedChunk()
-}
+import popeye.pipeline.PointsSink
 
 class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
                           val metrics: KafkaPointsConsumerMetrics,

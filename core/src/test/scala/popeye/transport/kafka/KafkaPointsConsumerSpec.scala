@@ -8,9 +8,9 @@ import java.util.Random
 import java.util.concurrent.CountDownLatch
 import org.scalatest.matchers.ShouldMatchers
 import org.scalatest.mock.MockitoSugar
-import popeye.pipeline.AtomicList
+import popeye.pipeline.{PointsSink, AtomicList}
 import popeye.test.{PopeyeTestUtils, MockitoStubs}
-import popeye.transport.proto.PackedPoints
+import popeye.transport.proto.{PackedPoints}
 import popeye.transport.test.AkkaTestKitSpec
 import scala.concurrent.Future
 

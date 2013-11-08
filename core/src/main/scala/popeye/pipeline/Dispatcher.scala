@@ -1,30 +1,22 @@
 package popeye.pipeline
 
-import akka.actor.Status.Failure
 import akka.actor._
-import akka.pattern.{AskTimeoutException, ask, after}
-import com.codahale.metrics.{Timer, MetricRegistry}
-import com.typesafe.config.Config
-import popeye.ConfigUtil._
+import akka.pattern.{AskTimeoutException, after}
+import popeye.{Instrumented, Logging}
 import popeye.pipeline.DispatcherProtocol.{Pending, FlushPoints}
 import popeye.pipeline.WorkerProtocol.ProducePack
-import popeye.transport.proto.Message.Point
-import popeye.{Logging, Instrumented}
 import scala.Some
 import scala.annotation.tailrec
-import scala.concurrent.{ExecutionContext, Await, Future, Promise}
 import scala.concurrent.duration._
-import java.util.concurrent.TimeoutException
-
-/**
- * @author Andrey Stepachev
- */
-class DispatcherMetrics(prefix: String, override val metricRegistry: MetricRegistry) extends Instrumented {
-  val writeTimer = metrics.timer(s"$prefix.wall-time")
-  val sendTimer = metrics.timer(s"$prefix.send-time")
-  val batchFailedMeter = metrics.meter(s"$prefix.batch-failed")
-  val batchCompleteMeter = metrics.meter(s"$prefix.batch-complete")
-}
+import scala.concurrent.{ExecutionContext, Future, Promise}
+import com.typesafe.config.Config
+import popeye.ConfigUtil._
+import popeye.pipeline.WorkerProtocol.ProducePack
+import scala.Some
+import popeye.pipeline.DispatcherProtocol.Pending
+import com.codahale.metrics.{Timer, MetricRegistry}
+import scala.util.Failure
+import popeye.transport.proto.Message.Point
 
 class DispatcherConfig(config: Config) {
   val batchWaitTimeout: FiniteDuration = toFiniteDuration(
@@ -35,23 +27,11 @@ class DispatcherConfig(config: Config) {
   val lowWatermark = config.getInt("low-watermark")
 }
 
-class DispatcherActorException(message: String, cause: Throwable) extends RuntimeException(message, cause) {
-  def this(message: String) = this(message, null)
-}
-
-class WorkerActorException(message: String, cause: Throwable) extends DispatcherActorException(message, cause) {
-  def this(message: String) = this(message, null)
-}
-
-private object WorkerProtocol {
-
-  case class WorkDone(batchId: Long)
-
-  case class CorrelatedPoint(correlationId: Long, sender: ActorRef)(val points: Seq[Point])
-
-  case class ProducePack[Event](batchId: Long, started: Timer.Context)
-                               (val batch: Event, val promises: Seq[Promise[Long]])
-
+class DispatcherMetrics(prefix: String, override val metricRegistry: MetricRegistry) extends Instrumented {
+  val writeTimer = metrics.timer(s"$prefix.wall-time")
+  val sendTimer = metrics.timer(s"$prefix.send-time")
+  val batchFailedMeter = metrics.meter(s"$prefix.batch-failed")
+  val batchCompleteMeter = metrics.meter(s"$prefix.batch-complete")
 }
 
 object DispatcherProtocol {
@@ -74,6 +54,16 @@ object DispatcherProtocol {
 
 }
 
+private object WorkerProtocol {
+
+  case class WorkDone(batchId: Long)
+
+  case class CorrelatedPoint(correlationId: Long, sender: ActorRef)(val points: Seq[Point])
+
+  case class ProducePack[Event](batchId: Long, started: Timer.Context)
+                               (val batch: Event, val promises: Seq[Promise[Long]])
+
+}
 
 trait WorkerActor extends Actor with Logging {
 
@@ -98,12 +88,12 @@ trait WorkerActor extends Actor with Logging {
   }
 
   def receive = {
-    case p: ProducePack[Batch] =>
+    case p: ProducePack[_] =>
       val sendctx = batcher.metrics.sendTimer.timerContext()
       val batchId = p.batchId
       val promises = p.promises
       try {
-        processBatch(p.batchId, p.batch)
+        processBatch(p.batchId, p.asInstanceOf[ProducePack[Batch]].batch)
         debug(s"Sent batch ${p.batchId}")
         batcher.metrics.batchCompleteMeter.mark()
         withDebug {
@@ -117,7 +107,7 @@ trait WorkerActor extends Actor with Logging {
           .foreach(_.success(p.batchId))
       } catch {
         case e: Exception =>
-          sender ! Failure(new DispatcherActorException(s"batch $batchId failed", e))
+          sender ! Failure(new DispatcherException(s"batch $batchId failed", e))
           batcher.metrics.batchFailedMeter.mark()
           withDebug {
             promises.foreach {
@@ -138,6 +128,7 @@ trait WorkerActor extends Actor with Logging {
       }
   }
 }
+
 
 trait DispatcherActor extends Actor with Logging {
 
@@ -194,8 +185,8 @@ trait DispatcherActor extends Actor with Logging {
     case WorkerProtocol.WorkDone(_) =>
       flushBuffered()
 
-    case p: Pending[Batch] =>
-      buffer(p.event, p.batchIdPromise)
+    case p: Pending[_] =>
+      buffer(p.asInstanceOf[Pending[Batch]].event, p.batchIdPromise)
       flushBuffered()
   }
 
@@ -227,7 +218,7 @@ object DispatcherActor {
     val message = Pending[Event](Some(batchPromise))(event)
     if (askTimeout.isFinite()) {
       dispatcherActor ! message
-      val timeout = after[Long](askTimeout.asInstanceOf[FiniteDuration], using=sch)(
+      val timeout = after[Long](askTimeout.asInstanceOf[FiniteDuration], using = sch)(
         Future.failed(new AskTimeoutException(s"Query for batch $batchId timed out")))
       Future.firstCompletedOf(Seq(batchPromise.future, timeout))
     } else {
