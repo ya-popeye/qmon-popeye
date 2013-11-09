@@ -12,6 +12,11 @@ import scala.collection.JavaConversions._
 import scala.collection.mutable
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
+import com.typesafe.config.Config
+import akka.actor.{ActorRef, Props, ActorSystem}
+import java.util.concurrent.TimeUnit
+import popeye.util.hbase.HBaseConfigured
+import popeye.pipeline.PointsSink
 
 case class PointsStorageMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
   val writeProcessingTime = metrics.timer("hbase.storage.write.processing.time")
@@ -24,10 +29,14 @@ case class PointsStorageMetrics(override val metricRegistry: MetricRegistry) ext
   val delayedPointsMeter = metrics.meter("hbase.storage.delayed.points")
 }
 
+class HBasePointsSink(config: Config, storage: PointsStorage)(implicit eCtx: ExecutionContext) extends PointsSink {
+  def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] = {
+    storage.writePoints(points)(eCtx).mapTo[Long]
+  }
 
-/**
- * @author Andrey Stepachev
- */
+  def close() = {}
+}
+
 class PointsStorage(tableName: String,
                     hTablePool: HTablePool,
                     metricNames: UniqueId,
@@ -275,4 +284,55 @@ class PointsStorage(tableName: String,
 
 object PointsStorage {
   final val PointsFamily = "t".getBytes(HBaseStorage.Encoding)
+}
+
+class PointsStorageConfig(val config: Config,
+                          val actorSystem: ActorSystem,
+                          val metricRegistry: MetricRegistry,
+                          val zkQuorum: String)
+                         (implicit val eCtx: ExecutionContext){
+  val uidsTableName = config.getString("table.uids")
+  val pointsTableName = config.getString("table.points")
+  val poolSize = config.getInt("pool.max")
+  val resolveTimeout = new FiniteDuration(config.getMilliseconds(s"uids.resolve-timeout"), TimeUnit.MILLISECONDS)
+  val uidsConfig = config.getConfig("uids")
+}
+
+/**
+ * Encapsulates configured hbase client and points storage actors.
+ * @param config provides necessary configuration parameters
+ */
+class PointsStorageConfigured(config: PointsStorageConfig) {
+
+  val hbase = new HBaseConfigured(
+    config.config, config.zkQuorum, config.poolSize)
+
+  config.actorSystem.registerOnTermination(hbase.close())
+
+  val storage = {
+    implicit val eCtx = config.eCtx
+
+    val uniqueIdStorage = new UniqueIdStorage(config.uidsTableName, hbase.hTablePool, HBaseStorage.UniqueIdMapping)
+    val uniqIdResolved = config.actorSystem.actorOf(Props.apply(new UniqueIdActor(uniqueIdStorage)))
+    val metrics = makeUniqueIdCache(config.uidsConfig, HBaseStorage.MetricKind, uniqIdResolved, uniqueIdStorage,
+      config.resolveTimeout)
+    val attrNames = makeUniqueIdCache(config.uidsConfig, HBaseStorage.AttrNameKind, uniqIdResolved, uniqueIdStorage,
+      config.resolveTimeout)
+    val attrValues = makeUniqueIdCache(config.uidsConfig, HBaseStorage.AttrValueKind, uniqIdResolved, uniqueIdStorage,
+      config.resolveTimeout)
+    new PointsStorage(
+      config.pointsTableName, hbase.hTablePool, metrics, attrNames, attrValues,
+      new PointsStorageMetrics(config.metricRegistry), config.resolveTimeout)
+  }
+
+  private def makeUniqueIdCache(config: Config, kind: String, resolver: ActorRef,
+                                storage: UniqueIdStorage, resolveTimeout: FiniteDuration)
+                               (implicit eCtx: ExecutionContext): UniqueId = {
+    new UniqueIdImpl(storage.kindWidth(kind), kind, resolver,
+      config.getInt(s"$kind.initial-capacity"),
+      config.getInt(s"$kind.max-capacity"),
+      resolveTimeout
+    )
+  }
+
 }

@@ -1,11 +1,11 @@
-package popeye.transport.kafka
+package popeye.pipeline
 
 import popeye.transport.proto.Message.Point
 
 /**
  * @author Andrey Stepachev
  */
-trait PopeyeKafkaConsumer {
+trait PointsSource {
 
   type BatchedMessageSet = (Long, Seq[Point])
 
@@ -23,4 +23,8 @@ trait PopeyeKafkaConsumer {
 
   /** Shutdown this consumer */
   def shutdown(): Unit
+}
+
+trait PointsSourceFactory {
+  def newConsumer(topic: String): PointsSource
 }

@@ -3,16 +3,19 @@ package popeye.pipeline
 import akka.actor.SupervisorStrategy.Restart
 import akka.actor.{Deploy, Props, ActorRef, OneForOneStrategy}
 import popeye.IdGenerator
-import popeye.transport.kafka.{KafkaPointsProducer, KafkaPointsWorker}
 import popeye.transport.proto.PackedPoints
+import scala.concurrent.Await
+import scala.concurrent.duration.Duration
 
-class PointsSinkActor(val idGenerator: IdGenerator,
-                      val pointsSinkFactory: () => PointsSink,
-                      val metrics: DispatcherMetrics)
+class PointsSinkDispatcherActor(
+                                 val config: PointsDispatcherConfig,
+                                 val idGenerator: IdGenerator,
+                                 val factory: PointsSinkFactory,
+                                 val metrics: PointsDispatcherMetrics)
   extends PointsDispatcherActor {
 
-  type Config = DispatcherConfig
-  type Metrics = DispatcherMetrics
+  type Config = PointsDispatcherConfig
+  type Metrics = PointsDispatcherMetrics
 
   override val supervisorStrategy = OneForOneStrategy(loggingEnabled = true) {
     case _ ⇒ Restart
@@ -23,17 +26,26 @@ class PointsSinkActor(val idGenerator: IdGenerator,
   def spawnWorker(): ActorRef = {
     idx += 1
     context.actorOf(
-      Props.apply(new KafkaPointsWorker(kafkaClient, this)).withDeploy(Deploy.local),
+      Props.apply(new PointsSinkWorkerActor(factory, this)).withDeploy(Deploy.local),
       "points-sender-" + idx)
   }
 }
 
-class PointsSinkWorkerActor(val batcher: PointsSinkActor) extends PointsDispatcherWorkerActor {
+class PointsSinkWorkerActor(val factory: PointsSinkFactory, val batcher: PointsSinkDispatcherActor) extends PointsDispatcherWorkerActor {
 
   type Batch = Seq[PackedPoints]
-  type Batcher = KafkaPointsProducer
+  type Batcher = PointsSinkDispatcherActor
+
+  val sink = factory.newPointsSink()
+
+  override def postStop(): Unit = {
+    sink.close()
+    super.postStop()
+  }
 
   def processBatch(batchId: Long, pack: Seq[PackedPoints]): Unit = {
-
+    pack.foreach { points =>
+      Await.result(sink.send(Seq(batchId), points), Duration.Undefined)
+    }
   }
 }

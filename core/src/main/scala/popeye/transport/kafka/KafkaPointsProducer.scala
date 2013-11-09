@@ -13,15 +13,47 @@ import popeye.transport.proto.PackedPoints
 import popeye.{IdGenerator, ConfigUtil}
 import scala.concurrent.{ExecutionContext, Future, Promise}
 
+class KafkaPointsProducerConfig(config: Config)
+  extends PointsDispatcherConfig(config.getConfig("producer")) {
+
+  val topic = config.getString("topic")
+}
+
+class KafkaProducerMetrics(prefix: String, metricsRegistry: MetricRegistry)
+  extends PointsDispatcherMetrics(s"$prefix.producer", metricsRegistry)
+
+class KafkaPointsProducerWorker(kafkaClient: PopeyeKafkaProducerFactory,
+                        val batcher: KafkaPointsProducer)
+  extends PointsDispatcherWorkerActor {
+
+  type Batch = Seq[PackedPoints]
+  type Batcher = KafkaPointsProducer
+
+  val producer = kafkaClient.newProducer(batcher.config.topic)
+
+  override val supervisorStrategy = OneForOneStrategy(loggingEnabled = true) {
+    case _ => Restart
+  }
+
+  override def postStop() {
+    super.postStop()
+    producer.close()
+  }
+
+  def processBatch(batchId: Long, buffer: Seq[PackedPoints]): Unit = {
+    producer.sendPacked(batchId, buffer :_*)
+  }
+}
+
 class KafkaPointsProducer(producerConfig: Config,
                           val idGenerator: IdGenerator,
                           kafkaClient: PopeyeKafkaProducerFactory,
                           val metrics: KafkaProducerMetrics)
   extends PointsDispatcherActor {
 
-  type Config = KafkaProducerConfig
+  type Config = KafkaPointsProducerConfig
   type Metrics = KafkaProducerMetrics
-  val config = new KafkaProducerConfig(producerConfig)
+  val config = new KafkaPointsProducerConfig(producerConfig)
 
   override val supervisorStrategy = OneForOneStrategy(loggingEnabled = true) {
     case _ ⇒ Restart
@@ -32,12 +64,21 @@ class KafkaPointsProducer(producerConfig: Config,
   def spawnWorker(): ActorRef = {
     idx += 1
     context.actorOf(
-      Props.apply(new KafkaPointsWorker(kafkaClient, this)).withDeploy(Deploy.local),
+      Props.apply(new KafkaPointsProducerWorker(kafkaClient, this)).withDeploy(Deploy.local),
       "points-sender-" + idx)
   }
 }
 
+class KafkaPointsSink(producer: ActorRef)(implicit eCtx: ExecutionContext) extends PointsSink {
+  def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] = {
+    val promise = Promise[Long]()
+    KafkaPointsProducer.produce(producer, Some(promise), points)
+    val pointsInPack = points.pointsCount
+    promise.future map { batchId => pointsInPack.toLong }
+  }
 
+  def close() = {}
+}
 
 object KafkaPointsProducer {
 
@@ -77,3 +118,29 @@ object KafkaPointsProducer {
   def defaultProducerFactory(config: ProducerConfig) = new Producer[Int, Array[Byte]](config)
 }
 
+class KeyPartitioner(props: VerifiableProperties = null) extends Partitioner[Long] {
+  def partition(data: Long, numPartitions: Int): Int = (data % numPartitions).toInt
+}
+
+class KeySerialiser(props: VerifiableProperties = null) extends Encoder[Long] {
+  def toBytes(p1: Long): Array[Byte] = {
+    val conv = new Array[Byte](8)
+    var input = p1
+    conv(7) = (input & 0xff).toByte
+    input >>= 8
+    conv(6) = (input & 0xff).toByte
+    input >>= 8
+    conv(5) = (input & 0xff).toByte
+    input >>= 8
+    conv(4) = (input & 0xff).toByte
+    input >>= 8
+    conv(3) = (input & 0xff).toByte
+    input >>= 8
+    conv(2) = (input & 0xff).toByte
+    input >>= 8
+    conv(1) = (input & 0xff).toByte
+    input >>= 8
+    conv(0) = input.toByte
+    conv
+  }
+}

@@ -1,16 +1,16 @@
 package popeye.transport.kafka
 
 import kafka.common.KafkaException
-import kafka.consumer.{ConsumerTimeoutException, KafkaStream, ConsumerConnector}
+import kafka.consumer._
 import kafka.message.MessageAndMetadata
 import popeye.Logging
 import popeye.transport.proto.Message.Point
 import popeye.transport.proto.PackedPoints
+import popeye.pipeline.{PointsSourceFactory, PointsSource}
+import kafka.message.MessageAndMetadata
+import scala.Some
 
-/**
- * @author Andrey Stepachev
- */
-class PopeyeKafkaConsumerImpl(consumerConnector: ConsumerConnector, topic: String) extends PopeyeKafkaConsumer with Logging {
+class KafkaPointsSourceImpl(consumerConnector: ConsumerConnector, topic: String) extends PointsSource with Logging {
 
   val stream = topicStream(topic)
   val iterator = stream.iterator()
@@ -56,4 +56,9 @@ class PopeyeKafkaConsumerImpl(consumerConnector: ConsumerConnector, topic: Strin
       None
     }
   }
+}
+
+class KafkaPointsSourceFactoryImpl(consumerConfig: ConsumerConfig)
+  extends PointsSourceFactory {
+  def newConsumer(topic: String): PointsSource = new KafkaPointsSourceImpl(Consumer.create(consumerConfig), topic)
 }

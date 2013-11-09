@@ -8,7 +8,7 @@ import java.util.Random
 import java.util.concurrent.CountDownLatch
 import org.scalatest.matchers.ShouldMatchers
 import org.scalatest.mock.MockitoSugar
-import popeye.pipeline.{PointsSink, AtomicList}
+import popeye.pipeline.{PointsSource, PointsSink, AtomicList}
 import popeye.test.{PopeyeTestUtils, MockitoStubs}
 import popeye.transport.proto.{PackedPoints}
 import popeye.transport.test.AkkaTestKitSpec
@@ -28,7 +28,7 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
   "Dispatcher" should "buffer" in {
     val metrics = new KafkaPointsConsumerMetrics("test", registry)
     val dconf = new KafkaPointsConsumerConfig(mkConfig().withValue("tick", ConfigValueFactory.fromAnyRef(10000)))
-    val consumer = mock[PopeyeKafkaConsumer]
+    val consumer = mock[PointsSource]
     val events1: consumer.BatchedMessageSet = 1l -> PopeyeTestUtils.mkEvents(3)
     val events2: consumer.BatchedMessageSet = 2l -> PopeyeTestUtils.mkEvents(3)
     consumer.consume() answers {
@@ -78,6 +78,8 @@ class MyListener(val failBatches: Set[Long],
           Future.successful(batchIds.length)
       }
     }
+
+    def close() = {}
   }
 
   def dropPipe: PointsSink = new PointsSink {
@@ -88,5 +90,7 @@ class MyListener(val failBatches: Set[Long],
       callback.apply(MyListener.this)
       Future.successful(1)
     }
+
+    def close() = {}
   }
 }

@@ -6,9 +6,9 @@ import java.util.Random
 import java.text.SimpleDateFormat
 import popeye.transport.proto.Message
 import scala.collection.JavaConversions.iterableAsScalaIterable
-import popeye.transport.kafka.{PopeyeKafkaConsumer, PopeyeKafkaConsumerFactory}
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
+import popeye.pipeline.{PointsSourceFactory, PointsSource}
 
 /**
  * @author Andrey Stepachev
@@ -59,14 +59,14 @@ object PopeyeTestUtils {
     ).build()
   }
 
-  class MockPopeyeConsumerFacotory extends PopeyeKafkaConsumerFactory {
+  class MockPopeyeConsumerFacotory extends PointsSourceFactory {
 
     val consumer = new MockPopeyeConsumer
 
-    def newConsumer(topic: String): PopeyeKafkaConsumer = consumer
+    def newConsumer(topic: String): PointsSource = consumer
   }
 
-  class MockPopeyeConsumer extends PopeyeKafkaConsumer {
+  class MockPopeyeConsumer extends PointsSource {
 
     var list = List[Option[(Long, Seq[Point])]]()
     var isCommit = false

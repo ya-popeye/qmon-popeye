@@ -11,3 +11,7 @@ trait PopeyeKafkaProducer extends Closeable {
 
   def sendPacked(batchId: Long, buffers: PackedPoints*)
 }
+
+trait PopeyeKafkaProducerFactory {
+  def newProducer(topic: String): PopeyeKafkaProducer
+}
