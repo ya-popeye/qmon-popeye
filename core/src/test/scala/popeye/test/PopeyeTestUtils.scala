@@ -1,10 +1,10 @@
 package popeye.test
 
-import popeye.transport.proto.Message.{Attribute, Point}
+import popeye.proto.Message.{Attribute, Point}
 import java.util.concurrent.atomic.AtomicLong
 import java.util.Random
 import java.text.SimpleDateFormat
-import popeye.transport.proto.Message
+import popeye.proto.Message
 import scala.collection.JavaConversions.iterableAsScalaIterable
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer

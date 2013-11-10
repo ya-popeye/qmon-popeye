@@ -14,7 +14,7 @@ import popeye.transport.test.AkkaTestKitSpec
 import scala.collection.JavaConversions.iterableAsScalaIterable
 import scala.concurrent.Await
 import scala.concurrent.duration._
-import popeye.transport.proto.{PackedPoints, Message}
+import popeye.proto.{PackedPoints, Message}
 import org.scalatest.exceptions.TestFailedException
 import com.codahale.metrics.{ConsoleReporter, MetricRegistry}
 import nl.grons.metrics.scala.Meter

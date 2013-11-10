@@ -1,6 +1,6 @@
 package popeye.pipeline
 
-import popeye.transport.proto.PackedPoints
+import popeye.proto.PackedPoints
 import scala.concurrent.Future
 import java.io.Closeable
 
