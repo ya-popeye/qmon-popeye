@@ -16,7 +16,7 @@ import scala.Some
 import popeye.pipeline.DispatcherProtocol.Pending
 import com.codahale.metrics.{Timer, MetricRegistry}
 import scala.util.Failure
-import popeye.transport.proto.Message.Point
+import popeye.proto.Message.Point
 
 class DispatcherConfig(config: Config) {
   val batchWaitTimeout: FiniteDuration = toFiniteDuration(

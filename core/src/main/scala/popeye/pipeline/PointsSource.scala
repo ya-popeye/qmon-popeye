@@ -1,6 +1,6 @@
 package popeye.pipeline
 
-import popeye.transport.proto.Message.Point
+import popeye.proto.Message.Point
 
 /**
  * @author Andrey Stepachev

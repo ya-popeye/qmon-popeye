@@ -3,7 +3,7 @@ package popeye.pipeline
 import akka.actor.SupervisorStrategy.Restart
 import akka.actor.{Deploy, Props, ActorRef, OneForOneStrategy}
 import popeye.IdGenerator
-import popeye.transport.proto.PackedPoints
+import popeye.proto.PackedPoints
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
 

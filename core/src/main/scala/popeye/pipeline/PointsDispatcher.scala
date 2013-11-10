@@ -1,6 +1,6 @@
 package popeye.pipeline
 
-import popeye.transport.proto.{PointsQueue, PackedPoints}
+import popeye.proto.{PointsQueue, PackedPoints}
 import popeye.IdGenerator
 import akka.actor.ActorRef
 import scala.concurrent.Promise

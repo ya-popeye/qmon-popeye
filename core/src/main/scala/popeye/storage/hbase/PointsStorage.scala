@@ -6,7 +6,7 @@ import org.apache.hadoop.hbase.KeyValue
 import org.apache.hadoop.hbase.client.{Put, HTablePool}
 import org.apache.hadoop.hbase.util.Bytes
 import popeye.storage.hbase.HBaseStorage._
-import popeye.transport.proto.{PackedPoints, Message}
+import popeye.proto.{PackedPoints, Message}
 import popeye.{Instrumented, Logging}
 import scala.collection.JavaConversions._
 import scala.collection.mutable
