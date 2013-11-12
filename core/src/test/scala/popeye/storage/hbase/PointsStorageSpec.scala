@@ -27,7 +27,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
   import scala.concurrent.ExecutionContext.Implicits.global
 
   implicit val metricRegistry = new MetricRegistry()
-  implicit val pointsStorageMetrics = new PointsStorageMetrics(metricRegistry)
+  implicit val pointsStorageMetrics = new HBaseStorageMetrics(metricRegistry)
 
   implicit val random = new Random(1234)
   final val tableName = "my-table"
@@ -88,7 +88,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
     val metrics = setup(uniqActor, HBaseStorage.MetricKind, PopeyeTestUtils.names)
     val attrNames = setup(uniqActor, HBaseStorage.AttrNameKind, Seq("host"))
     val attrValues = setup(uniqActor, HBaseStorage.AttrValueKind, PopeyeTestUtils.hosts)
-    val storage = new PointsStorage(tableName, hTablePool, metrics, attrNames, attrValues, pointsStorageMetrics)
+    val storage = new HBaseStorage(tableName, hTablePool, metrics, attrNames, attrValues, pointsStorageMetrics)
 
     def setup(actor: TestActorRef[FixedUniqueIdActor], kind: String, seq: Seq[String]): UniqueId = {
       val uniq = new UniqueIdImpl(HBaseStorage.UniqueIdMapping.get(kind).get, kind, actor)
