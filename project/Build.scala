@@ -59,6 +59,7 @@ object Version {
   val Snappy = "1.0.5"
   val Guava = "11.0.2"
   val FakeHBase = "0.1.2"
+  val Scopt = "3.1.0"
 
   val slf4jDependencies: Seq[ModuleID] = Seq(
     "org.slf4j" % "jcl-over-slf4j" % Version.Slf4j,
@@ -132,8 +133,9 @@ object PopeyeBuild extends Build {
     base = file("core"),
     settings = defaultSettings ++ QMonDistPlugin.distSettings ++ HBase.settings)
     .settings(
-    distMainClass := "popeye.transport.PopeyeMain",
+    distMainClass := "popeye.PopeyeMain",
     libraryDependencies ++= Version.slf4jDependencies ++ Seq(
+      "com.github.scopt" %% "scopt" % Version.Scopt,
       "com.google.protobuf" % "protobuf-java" % "2.4.1",
       "org.apache.kafka" %% "kafka" % Version.Kafka,
       "nl.grons" %% "metrics-scala" % Version.Metrics,
