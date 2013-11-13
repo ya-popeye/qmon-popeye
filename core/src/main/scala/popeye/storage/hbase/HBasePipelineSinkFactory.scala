@@ -13,6 +13,7 @@ class HBasePipelineSinkFactory extends PipelineSinkFactory {
         channel.metrics,
         sinkName
       )(ectx))
+    hbaseStorage.storage.ping()
     channel.startReader(
       "popeye-" + sinkName,
       new HBasePointsSink(config, hbaseStorage.storage)(ectx))

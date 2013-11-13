@@ -109,6 +109,9 @@ class HBaseStorage(tableName: String,
 
   val tableBytes = tableName.getBytes(Encoding)
 
+  def ping(): Unit = {
+    Await.result(metricNames.resolveIdByName("_.ping", create = true)(resolveTimeout), resolveTimeout)
+  }
   /**
    * Write points, returned future is awaitable, but can be already completed
    * @param points what to write
@@ -180,10 +183,10 @@ class HBaseStorage(tableName: String,
       hTable.setWriteBufferSize(4*1024*1024)
       try {
         hTable.batch(puts)
-        metrics.writeHBasePoints.mark(puts.size())
         debug(s"Writing ${kvList.size} keyvalues - flushing")
         hTable.flushCommits()
         debug(s"Writing ${kvList.size} keyvalues - done")
+        metrics.writeHBasePoints.mark(puts.size())
       } catch {
         case e: Exception => error("Failed to write points", e)
       } finally {
