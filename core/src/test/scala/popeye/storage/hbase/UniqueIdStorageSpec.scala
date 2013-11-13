@@ -7,6 +7,7 @@ import org.kiji.testing.fakehtable.FakeHTable
 import org.scalatest.FlatSpec
 import org.scalatest.matchers.ShouldMatchers
 import popeye.test.MockitoStubs
+import popeye.storage.hbase.HBaseStorage.{ResolvedName, QualifiedName}
 
 /**
  * @author Andrey Stepachev

@@ -11,6 +11,7 @@ import popeye.storage.hbase.UniqueIdProtocol.FindName
 import popeye.storage.hbase.UniqueIdProtocol.Race
 import popeye.storage.hbase.UniqueIdProtocol.Resolved
 import popeye.storage.hbase.UniqueIdProtocol.ResolutionFailed
+import popeye.storage.hbase.HBaseStorage.{ResolvedName, QualifiedId, QualifiedName}
 
 /**
  * @author Andrey Stepachev

@@ -1,4 +1,4 @@
-package popeye.transport.kafka
+package popeye.pipeline.kafka
 
 import akka.testkit.TestActorRef
 import akka.util.Timeout

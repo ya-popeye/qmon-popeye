@@ -14,6 +14,8 @@ import akka.actor.Terminated
 import popeye.storage.hbase.UniqueIdProtocol.ResolutionFailed
 import akka.actor.SupervisorStrategy.Restart
 
+import HBaseStorage._
+
 object UniqueIdProtocol {
 
   sealed trait Request

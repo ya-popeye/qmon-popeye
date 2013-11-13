@@ -27,7 +27,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
   import scala.concurrent.ExecutionContext.Implicits.global
 
   implicit val metricRegistry = new MetricRegistry()
-  implicit val pointsStorageMetrics = new HBaseStorageMetrics(metricRegistry)
+  implicit val pointsStorageMetrics = new HBaseStorageMetrics("hbase", metricRegistry)
 
   implicit val random = new Random(1234)
   final val tableName = "my-table"
@@ -47,7 +47,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
     val future = state.storage.writePoints(PackedPoints(events))
     val written = Await.result(future, 5 seconds)
     written should be(events.size)
-    val points = hTable.getScanner(PointsStorage.PointsFamily).map(_.raw).flatMap { kv =>
+    val points = hTable.getScanner(HBaseStorage.PointsFamily).map(_.raw).flatMap { kv =>
       kv.map(state.storage.keyValueToPoint)
     }
     points.size should be(events.size)
@@ -93,7 +93,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
     def setup(actor: TestActorRef[FixedUniqueIdActor], kind: String, seq: Seq[String]): UniqueId = {
       val uniq = new UniqueIdImpl(HBaseStorage.UniqueIdMapping.get(kind).get, kind, actor)
       seq.map {
-        item => actor.underlyingActor.add(ResolvedName(kind, item, uniq.toBytes(id.incrementAndGet())))
+        item => actor.underlyingActor.add(HBaseStorage.ResolvedName(kind, item, uniq.toBytes(id.incrementAndGet())))
       }
       uniq
     }

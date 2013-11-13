@@ -16,7 +16,7 @@ import com.typesafe.config.Config
 import akka.actor.{ActorRef, Props, ActorSystem}
 import java.util.concurrent.TimeUnit
 import popeye.util.hbase.HBaseConfigured
-import popeye.pipeline.{PipelineSinkFactory, PointsSink}
+import popeye.pipeline.{PointsSinkFactory, PipelineSinkFactory, PointsSink}
 import java.nio.charset.Charset
 
 object HBaseStorage {
@@ -81,23 +81,22 @@ object HBaseStorage {
   def sinkFactory(): PipelineSinkFactory = ???
 }
 
-case class HBaseStorageMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
-  val writeProcessingTime = metrics.timer("hbase.storage.write.processing.time")
-  val writeHBaseTime = metrics.timer("hbase.storage.write.hbase.time")
-  val writeTime = metrics.timer("hbase.storage.write.time")
-  val writeHBasePoints = metrics.meter("hbase.storage.write.points")
-  val readProcessingTime = metrics.timer("hbase.storage.read.processing.time")
-  val readHBaseTime = metrics.timer("hbase.storage.read.hbase.time")
-  val resolvedPointsMeter = metrics.meter("hbase.storage.resolved.points")
-  val delayedPointsMeter = metrics.meter("hbase.storage.delayed.points")
-}
-
 class HBasePointsSink(config: Config, storage: HBaseStorage)(implicit eCtx: ExecutionContext) extends PointsSink {
   def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] = {
     storage.writePoints(points)(eCtx).mapTo[Long]
   }
+}
 
-  def close() = {}
+
+case class HBaseStorageMetrics(name: String, override val metricRegistry: MetricRegistry) extends Instrumented {
+  val writeProcessingTime = metrics.timer(s"$name.storage.write.processing.time")
+  val writeHBaseTime = metrics.timer(s"$name.storage.write.hbase.time")
+  val writeTime = metrics.timer(s"$name.storage.write.time")
+  val writeHBasePoints = metrics.meter(s"$name.storage.write.points")
+  val readProcessingTime = metrics.timer(s"$name.storage.read.processing.time")
+  val readHBaseTime = metrics.timer(s"$name.storage.read.hbase.time")
+  val resolvedPointsMeter = metrics.meter(s"$name.storage.resolved.points")
+  val delayedPointsMeter = metrics.meter(s"$name.storage.delayed.points")
 }
 
 class HBaseStorage(tableName: String,
@@ -348,11 +347,12 @@ class HBaseStorage(tableName: String,
 class HBaseStorageConfig(val config: Config,
                           val actorSystem: ActorSystem,
                           val metricRegistry: MetricRegistry,
-                          val zkQuorum: String)
+                          val storageName: String = "hbase")
                          (implicit val eCtx: ExecutionContext){
   val uidsTableName = config.getString("table.uids")
   val pointsTableName = config.getString("table.points")
   val poolSize = config.getInt("pool.max")
+  val zkQuorum = config.getString("zkquorum")
   val resolveTimeout = new FiniteDuration(config.getMilliseconds(s"uids.resolve-timeout"), TimeUnit.MILLISECONDS)
   val uidsConfig = config.getConfig("uids")
 }
@@ -381,7 +381,7 @@ class HBaseStorageConfigured(config: HBaseStorageConfig) {
       config.resolveTimeout)
     new HBaseStorage(
       config.pointsTableName, hbase.hTablePool, metrics, attrNames, attrValues,
-      new HBaseStorageMetrics(config.metricRegistry), config.resolveTimeout)
+      new HBaseStorageMetrics(config.storageName, config.metricRegistry), config.resolveTimeout)
   }
 
   private def makeUniqueIdCache(config: Config, kind: String, resolver: ActorRef,

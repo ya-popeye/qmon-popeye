@@ -76,8 +76,6 @@ class KafkaPointsSink(producer: ActorRef)(implicit eCtx: ExecutionContext) exten
     val pointsInPack = points.pointsCount
     promise.future map { batchId => pointsInPack.toLong }
   }
-
-  def close() = {}
 }
 
 object KafkaPointsProducer {

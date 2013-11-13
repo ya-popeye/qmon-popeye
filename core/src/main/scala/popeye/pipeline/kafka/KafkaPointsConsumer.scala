@@ -1,14 +1,15 @@
 package popeye.pipeline.kafka
 
-import akka.actor.Actor
+import akka.actor.{Props, Actor}
 import com.google.protobuf.InvalidProtocolBufferException
-import popeye.{Instrumented, Logging}
-import popeye.proto.{PackedPoints}
+import popeye.{ConfigUtil, Instrumented, Logging}
+import popeye.proto.PackedPoints
 import scala.collection.mutable.ArrayBuffer
 import scala.util.{Failure, Success}
 import popeye.pipeline.{PointsSource, PointsSink}
 import com.typesafe.config.Config
 import com.codahale.metrics.MetricRegistry
+import kafka.consumer.{Consumer, ConsumerConfig}
 
 class KafkaPointsConsumerConfig(config: Config) {
   val topic = config.getString("topic")
@@ -29,6 +30,24 @@ private object KafkaPointsConsumerProto {
   case class FailedChunk()
 
   case class CompletedChunk()
+}
+
+object KafkaPointsConsumer {
+  def consumerConfig(group: String, kafkaConfig: Config): ConsumerConfig = {
+    val producerProps = ConfigUtil.mergeProperties(kafkaConfig, "consumer.config")
+    producerProps.setProperty("metadata.broker.list", kafkaConfig.getString("broker.list"))
+    producerProps.setProperty("group", group)
+    new ConsumerConfig(producerProps)
+  }
+
+  def props(group: String, config: Config, metrics: MetricRegistry, sink: PointsSink, drop: PointsSink): Props = {
+    val pc = new KafkaPointsConsumerConfig(config)
+    val m = new KafkaPointsConsumerMetrics("kafka", metrics)
+    val consumerConfig = KafkaPointsConsumer.consumerConfig(group, config)
+    val consumerConnector = Consumer.create(consumerConfig)
+    val pointsSource = new KafkaPointsSourceImpl(consumerConnector, pc.topic)
+    Props.apply(new KafkaPointsConsumer(pc, m, pointsSource, sink, drop))
+  }
 }
 
 class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,

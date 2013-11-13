@@ -3,16 +3,16 @@ package popeye.pipeline
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.Config
 import popeye.storage.hbase.HBaseStorage
-import popeye.transport.server.http.HttpPointsServer
-import popeye.{MainConfig, PopeyeCommand}
+import popeye.{IdGenerator, MainConfig, PopeyeCommand}
 import scala.collection.JavaConversions._
 import scopt.OptionParser
 import akka.actor.ActorSystem
+import popeye.pipeline.kafka.KafkaPipelineChannel
+import scala.concurrent.ExecutionContext
 
 object PipelineCommand {
 
-  val channels: Map[String, PipelineChannelFactory] = Map("kafka" -> KafkaPipelineChannel.factory())
-  val sources: Map[String, PipelineSourceFactory] = Map("http" -> HttpPointsServer.sourceFactory())
+  val sources: Map[String, PipelineSourceFactory] = Map()//"http" -> HttpPointsServer.sourceFactory())
   val sinks: Map[String, PipelineSinkFactory] = Map("hbase" -> HBaseStorage.sinkFactory())
 
   def sinkForType(typeName: String): PipelineSinkFactory = {
@@ -24,10 +24,6 @@ object PipelineCommand {
   }
 }
 
-
-/**
- * @author Andrey Stepachev
- */
 class PipelineCommand extends PopeyeCommand {
   def prepare(parser: OptionParser[MainConfig]): OptionParser[MainConfig] = {
     parser cmd "pipeline" action { (_, c) => c}
@@ -37,18 +33,25 @@ class PipelineCommand extends PopeyeCommand {
   def run(actorSystem: ActorSystem, metrics: MetricRegistry, config: Config, mainConfig: MainConfig): Unit = {
 
     val pc = config.getConfig("popeye.pipeline")
-    val channel = PipelineCommand.channels.getOrElse(pc.getString("channel"),
-      throw new NoSuchElementException(s"Requested channel type not supported"))
-      .make(actorSystem, metrics)
+    val channel = pc.getString("channel") match {
+      case "kafka" =>
+        new KafkaPipelineChannel(config, actorSystem, metrics,
+          new IdGenerator(config.getInt("generator.id"), config.getInt("generator.datacenter")))
+      case x =>
+        throw new NoSuchElementException(s"Requested channel type not supported")
 
-    pc.getStringList("popeye.sinks").map { sn =>
-      val sinkConfig = pc.getConfig(s"popeye.$sn").withFallback(pc)
-      PipelineCommand.sinkForType(sn).newSink(sn, channel, sinkConfig)
-    }.foreach(_.start())
+    }
 
-    pc.getStringList("popeye.sources").map { sn =>
+    val ectx = ExecutionContext.global
+
+    pc.getStringList("popeye.sinks").foreach { sn =>
       val sinkConfig = pc.getConfig(s"popeye.$sn").withFallback(pc)
-      PipelineCommand.sourceForType(sn).newSource(sn, channel, sinkConfig)
-    }.foreach(_.start())
+      PipelineCommand.sinkForType(sn).startSink(sn, channel, sinkConfig, ectx)
+    }
+
+    pc.getStringList("popeye.sources").foreach { sn =>
+      val sinkConfig = pc.getConfig(s"popeye.$sn").withFallback(pc)
+      PipelineCommand.sourceForType(sn).startSource(sn, channel, sinkConfig, ectx)
+    }
   }
 }

@@ -7,7 +7,7 @@ import java.io.Closeable
 /**
  * @author Andrey Stepachev
  */
-trait PointsSink extends Closeable {
+trait PointsSink {
   def send(batchIds: Seq[Long], points: PackedPoints): Future[Long]
 }
 

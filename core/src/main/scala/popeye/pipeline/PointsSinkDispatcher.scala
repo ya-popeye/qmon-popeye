@@ -7,8 +7,7 @@ import popeye.proto.PackedPoints
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
 
-class PointsSinkDispatcherActor(
-                                 val config: PointsDispatcherConfig,
+class PointsSinkDispatcherActor( val config: PointsDispatcherConfig,
                                  val idGenerator: IdGenerator,
                                  val factory: PointsSinkFactory,
                                  val metrics: PointsDispatcherMetrics)
@@ -39,7 +38,6 @@ class PointsSinkWorkerActor(val factory: PointsSinkFactory, val batcher: PointsS
   val sink = factory.newPointsSink()
 
   override def postStop(): Unit = {
-    sink.close()
     super.postStop()
   }
 

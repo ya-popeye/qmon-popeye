@@ -1,4 +1,4 @@
-package popeye.transport.kafka
+package popeye.pipeline.kafka
 
 import akka.actor.{Actor, Props}
 import akka.testkit.TestActorRef
@@ -78,8 +78,6 @@ class MyListener(val failBatches: Set[Long],
           Future.successful(batchIds.length)
       }
     }
-
-    def close() = {}
   }
 
   def dropPipe: PointsSink = new PointsSink {
@@ -90,7 +88,5 @@ class MyListener(val failBatches: Set[Long],
       callback.apply(MyListener.this)
       Future.successful(1)
     }
-
-    def close() = {}
   }
 }

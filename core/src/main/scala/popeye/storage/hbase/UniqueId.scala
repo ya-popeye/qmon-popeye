@@ -14,6 +14,7 @@ import scala.concurrent._
 import scala.concurrent.duration._
 import scala.util.Success
 import java.util
+import HBaseStorage._
 
 trait UniqueId {
 

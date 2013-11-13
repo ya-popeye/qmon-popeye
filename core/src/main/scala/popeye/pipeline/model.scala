@@ -1,44 +1,31 @@
 package popeye.pipeline
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 import java.io.Closeable
 import akka.actor.ActorSystem
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.Config
-
-trait PipelineLifecycle {
-  def start()
-  def stop()
-}
+import popeye.IdGenerator
 
 trait PipelineSourceFactory {
-  def newSource(sinkName: String, channel: PipelineChannel, config: Config): PipelineSource
+  def startSource(sinkName: String, channel: PipelineChannel, config: Config, ect:ExecutionContext): Unit
 }
 
 trait PipelineSinkFactory {
-  def newSink(sinkName: String, channel: PipelineChannel, config: Config): PipelineSink
+  def startSink(sinkName: String, channel: PipelineChannel, config: Config, ect:ExecutionContext): Unit
 }
 
 trait PipelineChannelFactory {
-  def make(actorSystem: ActorSystem, metrics: MetricRegistry): PipelineChannel
+  def make(actorSystem: ActorSystem, metrics: MetricRegistry, ect:ExecutionContext): PipelineChannel
 }
 
 trait PipelineChannel {
   def actorSystem: ActorSystem
   def metrics: MetricRegistry
+  def idGenerator: IdGenerator
   def newWriter(): PipelineChannelWriter
-  def newReader(group: String, sink: PointsSink): PipelineChannelReader
-}
-
-trait PipelineSource extends PipelineLifecycle {
-}
-
-trait PipelineSink extends PipelineLifecycle {
+  def startReader(group: String, sink: PointsSink): Unit
 }
 
 trait PipelineChannelWriter {
   def write(): Future[Long]
 }
-
-trait PipelineChannelReader extends Closeable {
-}
-
