@@ -14,11 +14,21 @@ popeye.pipeline {
 
   sinks = {
     opentsdb: hbase
+    bh: blackhole
   }
-  sources = {}
+
+  bh = {
+    max-queued = 150000
+    high-watermark = 2000000
+    low-watermark = 10000
+    tick = 500ms
+    workers = 2
+  }
 
   opentsdb = {
     zk.quorum = "localhost:2181"
     topic = "popeye-points"
   }
+
+  sources = {}
 }

@@ -8,12 +8,16 @@ import popeye.storage.hbase.HBaseStorage
 import popeye.{ConfigUtil, IdGenerator, MainConfig, PopeyeCommand}
 import scala.concurrent.ExecutionContext
 import scopt.OptionParser
+import popeye.storage.BlackHole
 
 object PipelineCommand {
 
   val sources: Map[String, PipelineSourceFactory] = Map()
   //"http" -> HttpPointsServer.sourceFactory())
-  val sinks: Map[String, PipelineSinkFactory] = Map("hbase" -> HBaseStorage.sinkFactory())
+  val sinks: Map[String, PipelineSinkFactory] = Map(
+    "hbase" -> HBaseStorage.sinkFactory(),
+    "blackhole" -> BlackHole.sinkFactory()
+  )
 
   def sinkForType(typeName: String): PipelineSinkFactory = {
     sinks.getOrElse(typeName, throw new IllegalArgumentException("No such sink type"))
