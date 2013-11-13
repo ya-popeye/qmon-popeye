@@ -78,7 +78,7 @@ object HBaseStorage {
 
   sealed case class QualifiedId(kind: String, id: BytesKey)
 
-  def sinkFactory(): PipelineSinkFactory = ???
+  def sinkFactory(): PipelineSinkFactory = new HBasePipelineSinkFactory
 }
 
 class HBasePointsSink(config: Config, storage: HBaseStorage)(implicit eCtx: ExecutionContext) extends PointsSink {
@@ -352,7 +352,7 @@ class HBaseStorageConfig(val config: Config,
   val uidsTableName = config.getString("table.uids")
   val pointsTableName = config.getString("table.points")
   val poolSize = config.getInt("pool.max")
-  val zkQuorum = config.getString("zkquorum")
+  val zkQuorum = config.getString("zk.quorum")
   val resolveTimeout = new FiniteDuration(config.getMilliseconds(s"uids.resolve-timeout"), TimeUnit.MILLISECONDS)
   val uidsConfig = config.getConfig("uids")
 }

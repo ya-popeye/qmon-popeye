@@ -133,7 +133,7 @@ object PopeyeBuild extends Build {
     base = file("core"),
     settings = defaultSettings ++ QMonDistPlugin.distSettings ++ HBase.settings)
     .settings(
-    distMainClass := "popeye.PopeyeMain",
+    distMainClass := "popeye.Main",
     libraryDependencies ++= Version.slf4jDependencies ++ Seq(
       "com.github.scopt" %% "scopt" % Version.Scopt,
       "com.google.protobuf" % "protobuf-java" % "2.4.1",

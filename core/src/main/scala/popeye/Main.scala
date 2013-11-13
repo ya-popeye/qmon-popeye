@@ -4,6 +4,7 @@ import java.io.File
 import com.typesafe.config.{ConfigFactory, Config}
 import com.codahale.metrics.MetricRegistry
 import akka.actor.ActorSystem
+import popeye.pipeline.PipelineCommand
 
 case class MainConfig(debug: Boolean = false,
                       configPath: Option[File] = None,
@@ -14,12 +15,10 @@ trait PopeyeCommand {
   def run(actorSystem: ActorSystem, metrics: MetricRegistry, config: Config, mainConfig: MainConfig): Unit
 }
 
-object Main {
-  val commands = List[PopeyeCommand]()
-}
+object Main extends App with MetricsConfiguration with Logging {
+  val commands = List[PopeyeCommand](new PipelineCommand)
 
-class Main extends App with MetricsConfiguration with Logging {
-  val initialParser = new scopt.OptionParser[MainConfig]("popeye") {
+  val commonParser = new scopt.OptionParser[MainConfig]("popeye") {
     head("popeye", "0.x")
 
     help("help")
@@ -35,32 +34,39 @@ class Main extends App with MetricsConfiguration with Logging {
       c.copy(debug = true) } text "this option is hidden in any usage text"
   }
 
-  val parser =  Main.commands.foldLeft(initialParser)({(parser, cmd) => cmd.prepare(parser)})
+  val parser =  Main.commands.foldLeft(commonParser)({(parser, cmd) => cmd.prepare(parser)})
 
-  for {
-    main <- parser.parse(args, MainConfig())
-    cmd <- main.command
-  } yield {
-    val app = ConfigFactory.parseResources("application.conf")
-    val conf = (main.configPath match {
-      case Some(file) =>
-        app.withFallback(ConfigFactory.parseFile(file))
-      case None => app
-    }).withFallback(ConfigFactory.parseResources("reference.conf"))
-     .withFallback(ConfigFactory.load())
-    val metrics = initMetrics(conf)
-    val actorSystem = ActorSystem("popeye", conf)
-    Runtime.getRuntime.addShutdownHook(new Thread(new Runnable() {
-      def run() {
-        actorSystem.shutdown()
+  val main = parser.parse(args, MainConfig())
+  if (!main.isDefined) {
+    System.exit(1)
+  } else {
+    val cmd = main.get.command
+    if (!cmd.isDefined) {
+      parser.reportError("No command was passed")
+      System.exit(2)
+    } else {
+      val conf = (main.get.configPath match {
+        case Some(file) =>
+          ConfigFactory.parseFile(file)
+        case None =>
+          ConfigFactory.load("application")
+      }).withFallback(ConfigFactory.load("reference"))
+        .withFallback(ConfigFactory.load())
+        .resolve()
+      val metrics = initMetrics(conf)
+      val actorSystem = ActorSystem("popeye", conf)
+      Runtime.getRuntime.addShutdownHook(new Thread(new Runnable() {
+        def run() {
+          actorSystem.shutdown()
+        }
+      }))
+      try {
+        cmd.get.run(actorSystem, metrics, conf, main.get)
+      } catch {
+        case e: Exception=>
+          log.error("Failed to start", e)
+          actorSystem.shutdown()
       }
-    }))
-    try {
-      cmd.run(actorSystem, metrics, conf, main)
-    } catch {
-      case e: Exception=>
-        log.error("Failed to start", e)
-        actorSystem.shutdown()
     }
   }
 }

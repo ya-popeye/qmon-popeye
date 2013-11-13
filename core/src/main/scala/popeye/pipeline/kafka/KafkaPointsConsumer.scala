@@ -34,15 +34,16 @@ private object KafkaPointsConsumerProto {
 
 object KafkaPointsConsumer {
   def consumerConfig(group: String, kafkaConfig: Config): ConsumerConfig = {
-    val producerProps = ConfigUtil.mergeProperties(kafkaConfig, "consumer.config")
-    producerProps.setProperty("metadata.broker.list", kafkaConfig.getString("broker.list"))
-    producerProps.setProperty("group", group)
-    new ConsumerConfig(producerProps)
+    val consumerProps = ConfigUtil.mergeProperties(kafkaConfig, "consumer.config")
+    consumerProps.setProperty("zookeeper.connect", kafkaConfig.getString("zk.quorum"))
+    consumerProps.setProperty("metadata.broker.list", kafkaConfig.getString("broker.list"))
+    consumerProps.setProperty("group.id", group)
+    new ConsumerConfig(consumerProps)
   }
 
   def props(group: String, config: Config, metrics: MetricRegistry, sink: PointsSink, drop: PointsSink): Props = {
-    val pc = new KafkaPointsConsumerConfig(config)
-    val m = new KafkaPointsConsumerMetrics("kafka", metrics)
+    val pc = new KafkaPointsConsumerConfig(config.getConfig("consumer").withFallback(config))
+    val m = new KafkaPointsConsumerMetrics(s"kafka.$group", metrics)
     val consumerConfig = KafkaPointsConsumer.consumerConfig(group, config)
     val consumerConnector = Consumer.create(consumerConfig)
     val pointsSource = new KafkaPointsSourceImpl(consumerConnector, pc.topic)

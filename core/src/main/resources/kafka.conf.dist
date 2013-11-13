@@ -1,0 +1,24 @@
+generator.id = 0
+
+popeye.pipeline {
+  channel {
+   type = kafka
+   kafka {
+     topic = popeye-points
+     group = opentsdb
+     max-lag = 300s
+     zk.quorum = "localhost:2181"
+     borker.list = "localhost:9092"
+   }
+  }
+
+  sinks = {
+    opentsdb: hbase
+  }
+  sources = {}
+
+  opentsdb = {
+    zk.quorum = "localhost:2181"
+    topic = "popeye-points"
+  }
+}
