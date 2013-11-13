@@ -17,7 +17,7 @@
         </encoder>
     </appender>
     <appender name="R" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <File>${qmon.logdir}/slicer.log</File>
+        <File>${qmon.logdir}/popeye.log</File>
         <encoder>
             <pattern>%date{ISO8601} %-5level [%logger{36}] [%X{sourceThread}] [%X{akkaSource}] : %m%n</pattern>
         </encoder>
