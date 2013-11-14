@@ -1,6 +1,6 @@
 package popeye.pipeline.kafka
 
-import akka.actor.{Cancellable, Props, Actor}
+import akka.actor.{FSM, Props, Actor}
 import com.codahale.metrics.MetricRegistry
 import com.google.protobuf.InvalidProtocolBufferException
 import com.typesafe.config.Config
@@ -11,7 +11,11 @@ import popeye.proto.PackedPoints
 import popeye.{ConfigUtil, Instrumented, Logging}
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration.FiniteDuration
-import scala.util.{Failure, Success}
+import popeye.pipeline.kafka.KafkaPointsConsumerProto._
+import scala.util.Failure
+import scala.Some
+import scala.util.Success
+import scala.annotation.tailrec
 
 class KafkaPointsConsumerConfig(val topic: String, val group: String, config: Config) {
   val tick = new FiniteDuration(config.getMilliseconds("tick"), TimeUnit.MILLISECONDS)
@@ -25,34 +29,42 @@ class KafkaPointsConsumerMetrics(val prefix: String,
   val decodeFailures = metrics.meter(s"$prefix.consume.decode-failures")
 }
 
-private object KafkaPointsConsumerProto {
-
-  case object Tick
-
-  case object NextChunk
-
-  case object FailedChunk
-
-  case object CompletedChunk
-
-}
-
 object KafkaPointsConsumer {
-  def consumerConfig(group: String, kafkaConfig: Config): ConsumerConfig = {
+  def consumerConfig(group: String, kafkaConfig: Config, pc: KafkaPointsConsumerConfig): ConsumerConfig = {
     val consumerProps = ConfigUtil.mergeProperties(kafkaConfig, "consumer.config")
     consumerProps.setProperty("zookeeper.connect", kafkaConfig.getString("zk.quorum"))
     consumerProps.setProperty("metadata.broker.list", kafkaConfig.getString("broker.list"))
     consumerProps.setProperty("group.id", group)
+    consumerProps.setProperty("consumer.timeout.ms", pc.tick.toMillis.toString)
     new ConsumerConfig(consumerProps)
   }
 
   def props(topic: String, group: String, config: Config, metrics: MetricRegistry, sink: PointsSink, drop: PointsSink): Props = {
     val pc = new KafkaPointsConsumerConfig(topic, group, config.getConfig("consumer").withFallback(config))
     val m = new KafkaPointsConsumerMetrics(s"kafka.$topic.$group", metrics)
-    val consumerConfig = KafkaPointsConsumer.consumerConfig(group, config)
+    val consumerConfig = KafkaPointsConsumer.consumerConfig(group, config, pc)
     val consumerConnector = Consumer.create(consumerConfig)
     val pointsSource = new KafkaPointsSourceImpl(consumerConnector, pc.topic)
     Props.apply(new KafkaPointsConsumer(pc, m, pointsSource, sink, drop))
+  }
+}
+
+object KafkaPointsConsumerProto {
+
+  sealed trait Cmd
+  case object Ok extends Cmd
+  case object Failed extends Cmd
+
+  sealed trait State
+
+  case object Idle extends State
+  case object Active extends State
+  case object Sending extends State
+  case object Dropping extends State
+
+  case class PointsState(var points: PackedPoints = new PackedPoints(),
+                   var batches: ArrayBuffer[Long] = new ArrayBuffer[Long]()){
+    def hasData = points.pointsCount > 0
   }
 }
 
@@ -61,93 +73,123 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
                           val pointsConsumer: PointsSource,
                           val sinkPipe: PointsSink,
                           val dropPipe: PointsSink)
-  extends Actor with Logging {
+  extends FSM[State, PointsState] {
 
-  import KafkaPointsConsumerProto._
-  import scala.concurrent.ExecutionContext.Implicits.global
+  startWith(Idle, PointsState())
 
-  private var buffer = new PackedPoints()
-  private var batches = new ArrayBuffer[Long]()
-  private var commit = false
-  private var flush = false
 
-  override def preStart(): Unit = {
-    super.preStart()
-    self ! NextChunk
+  when(Idle, stateTimeout = config.tick) {
+    case Event(StateTimeout, _) =>
+      goto(Active)
   }
 
-  override def postStop(): Unit = {
-    info("Consumer stopped")
-    super.postStop()
+  when(Active, stateTimeout = config.tick) {
+    case Event(StateTimeout, p: PointsState) =>
+      log.debug(s"Tick: ${p.batches.mkString}")
+      if (p.hasData)
+        goto(Sending)
+      else
+        goto(Idle) using PointsState()
   }
 
-  def receive: Actor.Receive = {
-
-    case Tick =>
-      flush = true
-      self ! NextChunk
-
-    case NextChunk =>
-      debug(s"Buffered ${buffer.pointsCount} points so far (flush = $flush)")
-      tryCommit()
-      consumeNext(buffer)
-      debug(s"Collected ${buffer.pointsCount} points so far (flush = $flush)")
-      if ( flush || (buffer.pointsCount > config.batchSize) ) {
-        val me = self
-        val myBatches = batches
-        sinkPipe.send(myBatches, buffer) onComplete {
-          case Success(x) =>
-            commit = true
-            debug(s"Batches: ${myBatches.mkString(",")} commited")
-
-            me ! NextChunk
-          case Failure(x: Throwable) =>
-            error(s"Failed to send batches $myBatches", x)
-            me ! FailedChunk
-        }
-        flush = false
-      } else {
-        context.system.scheduler.scheduleOnce(config.tick, self, Tick)
-      }
-
-    case FailedChunk =>
-      val me = self
-      dropPipe.send(batches, buffer) onComplete {
-        case Success(x) =>
-          commit = true
-          me ! NextChunk
-        case Failure(x) =>
-          error("fatal, can't drop ")
-      }
-  }
-
-  private def tryCommit() = {
-    if (commit) {
-      debug(s"Commiting offsets: affected batches ${batches.mkString}")
-      buffer = new PackedPoints
-      batches = new ArrayBuffer[Long]()
-      commit = false
+  when(Sending) {
+    case Event(Ok, p: PointsState) =>
+      log.info(s"Committing batches ${p.batches.mkString}")
       pointsConsumer.commitOffsets()
+      goto(Active) using PointsState()
+
+    case Event(Failed, p: PointsState) =>
+      log.info(s"Failed batches ${p.batches.mkString}, sending to dropPipe")
+      goto(Dropping)
+  }
+
+  when(Dropping) {
+    case Event(Ok, _) =>
+      pointsConsumer.commitOffsets()
+      goto(Active) using PointsState()
+    case Event(Failed, _) =>
+      log.info("Drop failed: terminating")
+      context.stop(self)
+      goto(Idle) using PointsState()
+  }
+
+  onTransition {
+    case Idle -> Active =>
+      consumeNext(stateData, config.batchSize)
+      log.debug(s"consume: buffered ${stateData.points.pointsCount} points")
+
+    case Active -> Sending =>
+      log.debug(s"Sending ${stateData.batches.mkString} with ${stateData.points.pointsCount} points")
+      sendPoints(stateData)
+
+    case Sending -> Dropping =>
+      log.debug(s"Droping ${stateData.batches.mkString} with ${stateData.points.pointsCount} points")
+      dropPoints(stateData)
+
+  }
+
+  private def sendPoints(p: PointsState) = {
+    import scala.concurrent.ExecutionContext.Implicits.global
+
+    val me = self
+    val myBatches = p.batches
+    sinkPipe.send(myBatches, p.points) onComplete {
+      case Success(x) =>
+        log.debug(s"Batches: ${myBatches.mkString(",")} committed")
+        me ! Ok
+      case Failure(x: Throwable) =>
+        log.error(s"Failed to send batches $myBatches", x)
+        me ! Failed
     }
   }
 
-  private def consumeNext(buffer: PackedPoints): Unit = {
+  private def dropPoints(p: PointsState) = {
+    import scala.concurrent.ExecutionContext.Implicits.global
+
+    val me = self
+    val batches = p.batches.mkString(",")
+    dropPipe.send(p.batches, p.points) onComplete {
+      case Success(x) =>
+        log.debug(s"Batches: $batches successfully dropped")
+        me ! Ok
+      case Failure(x: Throwable) =>
+        log.error(s"Batches: $batches failed to safe drop", x)
+        me ! Failed
+    }
+
+  }
+
+
+  private def consumeNext(p: PointsState, batchSize: Long): Unit = {
     val tctx = metrics.consumeTimer.timerContext()
+    try {
+      consumeInner(p, batchSize)
+    } finally {
+      tctx.close()
+    }
+  }
+
+  @tailrec
+  private def consumeInner(p: PointsState, batchSize: Long): Unit = {
+    if (p.points.pointsCount > batchSize)
+      return
     try {
       pointsConsumer.consume() match {
         case Some((batchId, points)) =>
-          debug(s"Batch: $batchId queued")
-          buffer.append(points: _*)
-          batches += batchId
+          log.debug(s"Batch: $batchId queued")
+          p.points.append(points: _*)
+          p.batches += batchId
 
         case None =>
-
+          return
       }
     } catch {
       case e: InvalidProtocolBufferException =>
-        debug("Can't decode point", e)
+        log.debug("Can't decode point", e)
         metrics.decodeFailures.mark()
     }
-    tctx.close()
+    consumeInner(p, batchSize)
   }
+
+  initialize()
 }
