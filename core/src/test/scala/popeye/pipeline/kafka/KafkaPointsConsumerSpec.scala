@@ -27,7 +27,7 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
 
   "Dispatcher" should "buffer" in {
     val metrics = new KafkaPointsConsumerMetrics("test", registry)
-    val dconf = new KafkaPointsConsumerConfig(mkConfig().withValue("tick", ConfigValueFactory.fromAnyRef(10000)))
+    val dconf = new KafkaPointsConsumerConfig("test", "test", mkConfig().withValue("tick", ConfigValueFactory.fromAnyRef(10000)))
     val consumer = mock[PointsSource]
     val events1: consumer.BatchedMessageSet = 1l -> PopeyeTestUtils.mkEvents(3)
     val events2: consumer.BatchedMessageSet = 2l -> PopeyeTestUtils.mkEvents(3)

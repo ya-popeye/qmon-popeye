@@ -1,12 +1,12 @@
 package popeye.pipeline.kafka
 
+import _root_.kafka.serializer.{Decoder, Encoder}
 import akka.actor.SupervisorStrategy.Restart
 import akka.actor._
 import akka.routing.FromConfig
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.Config
 import kafka.producer._
-import kafka.serializer.Encoder
 import kafka.utils.VerifiableProperties
 import popeye.pipeline._
 import popeye.proto.PackedPoints
@@ -23,7 +23,7 @@ class KafkaProducerMetrics(prefix: String, metricsRegistry: MetricRegistry)
   extends PointsDispatcherMetrics(s"$prefix.producer", metricsRegistry)
 
 class KafkaPointsProducerWorker(kafkaClient: PopeyeKafkaProducerFactory,
-                        val batcher: KafkaPointsProducer)
+                                val batcher: KafkaPointsProducer)
   extends PointsDispatcherWorkerActor {
 
   type Batch = Seq[PackedPoints]
@@ -41,7 +41,7 @@ class KafkaPointsProducerWorker(kafkaClient: PopeyeKafkaProducerFactory,
   }
 
   def processBatch(batchId: Long, buffer: Seq[PackedPoints]): Unit = {
-    producer.sendPacked(batchId, buffer :_*)
+    producer.sendPacked(batchId, buffer: _*)
   }
 }
 
@@ -74,7 +74,7 @@ class KafkaPointsSink(producer: ActorRef)(implicit eCtx: ExecutionContext) exten
     val promise = Promise[Long]()
     KafkaPointsProducer.produce(producer, Some(promise), points)
     val pointsInPack = points.pointsCount
-    promise.future map { batchId => pointsInPack.toLong }
+    promise.future map { batchId => pointsInPack.toLong}
   }
 }
 
@@ -90,7 +90,7 @@ object KafkaPointsProducer {
            (implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
     val myConf = config.getConfig(name).withFallback(config.getConfig("kafka"))
     val kafkaClient = new PopeyeKafkaProducerFactoryImpl(producerConfig(myConf))
-    system.actorOf(KafkaPointsProducer.props(name, config, idGenerator, kafkaClient)
+    system.actorOf(KafkaPointsProducer.props(name, config, idGenerator, kafkaClient, metricRegistry)
       .withRouter(FromConfig())
       .withDispatcher(s"$name.producer.dispatcher"), s"$name-producer")
   }
@@ -103,9 +103,9 @@ object KafkaPointsProducer {
     new ProducerConfig(producerProps)
   }
 
-  def props(metricsName: String, config: Config, idGenerator: IdGenerator, kafkaClient: PopeyeKafkaProducerFactory)
-           (implicit metricRegistry: MetricRegistry) = {
-    val metrics = new KafkaProducerMetrics(metricsName, metricRegistry)
+  def props(prefix: String, config: Config, idGenerator: IdGenerator,
+            kafkaClient: PopeyeKafkaProducerFactory, metricRegistry: MetricRegistry) = {
+    val metrics = new KafkaProducerMetrics(prefix, metricRegistry)
     Props.apply(new KafkaPointsProducer(
       config,
       idGenerator,
@@ -140,5 +140,21 @@ class KeySerialiser(props: VerifiableProperties = null) extends Encoder[Long] {
     input >>= 8
     conv(0) = input.toByte
     conv
+  }
+}
+
+class KeyDeserializer(props: VerifiableProperties = null) extends Decoder[Long] {
+  def fromBytes(bytes: Array[Byte]): Long = {
+    if (bytes.length != 8)
+      throw new IllegalArgumentException(s"Need 8 bytes, got ${bytes.length}")
+
+    (bytes(0).toLong << 56) +
+      ((bytes(1) & 255).toLong << 48) +
+      ((bytes(2) & 255).toLong << 40) +
+      ((bytes(3) & 255).toLong << 32) +
+      ((bytes(4) & 255).toLong << 24) +
+      ((bytes(5) & 255).toLong << 16) +
+      ((bytes(6) & 255).toLong << 8) +
+      ((bytes(7) & 255).toLong << 0)
   }
 }

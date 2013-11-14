@@ -39,7 +39,7 @@ class KafkaPointProducerSpec extends AkkaTestKitSpec("tsdb-writer") with Mockito
     val config: Config = ConfigFactory.parseString(
       s"""
         |   kafka.broker.list="localhost:9092"
-        |   kafka.producer.config += "popeye/transport/kafka/KafkaPointProducerSpec.properties"
+        |   kafka.producer.config += "popeye/pipeline/kafka/KafkaPointProducerSpec.properties"
         |   kafka.producer.workers = 1
         |   kafka.producer.low-watermark = 1
         |   kafka.topic="$topic"
@@ -51,7 +51,7 @@ class KafkaPointProducerSpec extends AkkaTestKitSpec("tsdb-writer") with Mockito
     val actor: TestActorRef[KafkaPointsProducer] = TestActorRef(
       KafkaPointsProducer.props("kafka", kafkaConfig, generator, new PopeyeKafkaProducerFactory {
         def newProducer(topic: String): PopeyeKafkaProducer = producer
-      }))
+      }, metricRegistry))
     val p = Promise[Long]()
     KafkaPointsProducer.produce(actor, Some(p), PackedPoints(makeBatch()))
     val done = Await.result(p.future, timeout.duration)

@@ -1,4 +1,4 @@
-package popeye.transport.server.telnet
+package popeye.pipeline.server.telnet
 
 import akka.actor._
 import akka.io.IO
@@ -9,40 +9,43 @@ import com.codahale.metrics.{Timer, MetricRegistry}
 import com.typesafe.config.Config
 import java.net.InetSocketAddress
 import java.util.concurrent.atomic.AtomicInteger
-import popeye.pipeline.DispatcherProtocol.{Pending, Done}
+import popeye.pipeline.DispatcherProtocol.Done
+import popeye.pipeline.{PipelineChannel, PipelineSourceFactory, PipelineChannelWriter}
 import popeye.proto.{Message, PackedPoints}
 import popeye.{Logging, Instrumented}
 import scala.collection.mutable
-import scala.concurrent.Promise
 import scala.concurrent.duration._
+import scala.concurrent.{ExecutionContext, Promise}
 import scala.util.{Success, Failure}
 
-class TsdbTelnetMetrics(override val metricRegistry: MetricRegistry) extends Instrumented {
-  val requestTimer = metrics.timer("request-time")
-  val commitTimer = metrics.timer("commit-time")
-  val pointsRcvMeter = metrics.meter("points-received")
-  val pointsCommitMeter = metrics.meter("points-commited")
+class TelnetPointsMetrics(prefix: String, override val metricRegistry: MetricRegistry) extends Instrumented {
+  val requestTimer = metrics.timer(s"$prefix.request-time")
+  val commitTimer = metrics.timer(s"$prefix.commit-time")
+  val pointsRcvMeter = metrics.meter(s"$prefix.points-received")
+  val pointsCommitMeter = metrics.meter(s"$prefix.points-commited")
   val connections = new AtomicInteger(0)
-  val connectionsGauge = metrics.gauge("connections") {
+  val connectionsGauge = metrics.gauge(s"$prefix.connections") {
     connections.get()
   }
 }
 
-class TsdbTelnetHandler(connection: ActorRef,
-                        kafkaProducer: ActorRef,
-                        config: Config,
-                        metrics: TsdbTelnetMetrics)
+class TelnetPointsServerConfig(config: Config) {
+  val hwPendingPoints: Int = config.getInt("high-watermark")
+  val lwPendingPoints: Int = config.getInt("low-watermark")
+  val batchSize: Int = config.getInt("batchSize")
+  implicit val askTimeout: Timeout = new Timeout(config.getMilliseconds("produce.timeout"), MILLISECONDS)
+
+  require(hwPendingPoints > lwPendingPoints, "High watermark should be greater then low watermark")
+}
+
+class TelnetPointsHandler(connection: ActorRef,
+                          channelWriter: PipelineChannelWriter,
+                          config: TelnetPointsServerConfig,
+                          metrics: TelnetPointsMetrics)
   extends Actor with Logging {
 
 
   context watch connection
-
-  val hwPendingPoints: Int = config.getInt("server.telnet.high-watermark")
-  val lwPendingPoints: Int = config.getInt("server.telnet.low-watermark")
-  val batchSize: Int = config.getInt("server.telnet.batchSize")
-  implicit val askTimeout: Timeout = new Timeout(config.getMilliseconds("server.telnet.produce.timeout"), MILLISECONDS)
-
-  require(hwPendingPoints > lwPendingPoints, "High watermark should be greater then low watermark")
 
   type PointId = Long
   type BatchId = Long
@@ -50,17 +53,19 @@ class TsdbTelnetHandler(connection: ActorRef,
 
   sealed case class TryReadResumeMessage(timestampMillis: Long = System.currentTimeMillis(), resume: Boolean = false)
 
-  sealed case class CommitReq(sender: ActorRef, pointId: PointId, correlation: CorrelationId, timerContext: Timer.Context)
+  sealed case class CommitReq(sender: ActorRef, pointId: PointId,
+                              correlation: CorrelationId,
+                              timerContext: Timer.Context)
 
   private var bufferedPoints = PackedPoints()
   private var pendingCommits: Seq[CommitReq] = Vector()
   private val pendingCorrelations = mutable.TreeSet[PointId]()
 
-  private val commands = new TelnetCommands(metrics, config) {
+  private val commands = new TelnetCommands(metrics) {
 
     override def addPoint(point: Message.Point): Unit = {
       bufferedPoints += point
-      if (bufferedPoints.pointsCount >= batchSize) {
+      if (bufferedPoints.pointsCount >= config.batchSize) {
         sendPack()
       }
     }
@@ -103,8 +108,8 @@ class TsdbTelnetHandler(connection: ActorRef,
         commands.process(data)
       } catch {
         case ex: Exception =>
-          debug(s"Err: ${ex.getMessage}", ex)
-          sender ! Tcp.Write(ByteString("ERR " + ex.getMessage + "\n"))
+          error(s"Err: ${ex.getMessage}", ex)
+          sender ! Tcp.Write(ByteString(s"ERR ${ex.getClass.getSimpleName} ${ex.getMessage} \n"))
           context.stop(self)
       }
       tryReplyOk()
@@ -136,10 +141,10 @@ class TsdbTelnetHandler(connection: ActorRef,
     if (bufferedPoints.pointsCount > 0) {
       pointId += 1
       val p = Promise[Long]()
-      kafkaProducer ! Pending(Some(p))(bufferedPoints)
-      bufferedPoints = new PackedPoints(messagesPerExtent = batchSize + 1)
+      channelWriter.write(Some(p), bufferedPoints)
+      bufferedPoints = new PackedPoints(messagesPerExtent = config.batchSize + 1)
       pendingCorrelations.add(pointId)
-      val timer = context.system.scheduler.scheduleOnce(askTimeout.duration, new Runnable {
+      val timer = context.system.scheduler.scheduleOnce(config.askTimeout.duration, new Runnable {
         def run() {
           p.tryFailure(new AskTimeoutException("Producer timeout"))
         }
@@ -182,26 +187,30 @@ class TsdbTelnetHandler(connection: ActorRef,
 
   def throttle(timeout: Boolean = false) {
     val size: Int = pendingCorrelations.size
-    if (size > hwPendingPoints) {
+    if (size > config.hwPendingPoints) {
       if (!paused) {
         paused = true
-        debug(s"Pausing reads: $size > $hwPendingPoints")
+        debug(s"Pausing reads: $size > ${config.hwPendingPoints}")
         context.setReceiveTimeout(1 millisecond)
       }
       connection ! Tcp.SuspendReading
     }
 
     // resume reading only after recieving 'end-of-queue' marker
-    if (paused && timeout && size < lwPendingPoints) {
+    if (paused && timeout && size < config.lwPendingPoints) {
       paused = false
       connection ! Tcp.ResumeReading
       context.setReceiveTimeout(Duration.Undefined)
-      debug(s"Reads resumed: $size < $lwPendingPoints")
+      debug(s"Reads resumed: $size < ${config.lwPendingPoints}")
     }
   }
 }
 
-class TsdbTelnetServer(local: InetSocketAddress, kafka: ActorRef, metrics: TsdbTelnetMetrics) extends Actor with Logging {
+class TelnetPointsServer(config: TelnetPointsServerConfig,
+                         local: InetSocketAddress,
+                         channelWriter: PipelineChannelWriter,
+                         metrics: TelnetPointsMetrics)
+  extends Actor with Logging {
 
   import Tcp._
 
@@ -219,8 +228,9 @@ class TsdbTelnetServer(local: InetSocketAddress, kafka: ActorRef, metrics: TsdbT
     case Connected(remote, _) ⇒
       val connection = sender
 
-      val handler = context.actorOf(Props.apply(new TsdbTelnetHandler(connection, kafka, system.settings.config, metrics))
-        .withDeploy(Deploy.local))
+      val handler = context.actorOf(Props.apply(
+        new TelnetPointsHandler(connection, channelWriter, config, metrics)
+      ).withDeploy(Deploy.local))
 
       debug(s"Connection from $remote (connection=${connection.path})")
       metrics.connections.incrementAndGet()
@@ -238,11 +248,24 @@ class TsdbTelnetServer(local: InetSocketAddress, kafka: ActorRef, metrics: TsdbT
   }
 }
 
-object TsdbTelnetServer {
+object TelnetPointsServer {
 
-  def start(config: Config, kafkaProducer: ActorRef)(implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
-    val hostport = config.getString("server.telnet.listen").split(":")
-    val addr = new InetSocketAddress(hostport(0), hostport(1).toInt)
-    system.actorOf(Props.apply(new TsdbTelnetServer(addr, kafkaProducer, new TsdbTelnetMetrics(metricRegistry))))
+  def sourceFactory(): PipelineSourceFactory = {
+    new PipelineSourceFactory {
+      def startSource(sinkName: String, channel: PipelineChannel,
+                      config: Config, ect: ExecutionContext): Unit = {
+        channel.actorSystem.actorOf(props(sinkName, config, channel.newWriter(), channel.metrics))
+      }
+    }
+  }
+
+  def props(prefix: String, config: Config, channelWriter: PipelineChannelWriter,
+            metricRegistry: MetricRegistry): Props = {
+    val host = config.getString("listen")
+    val port = config.getInt("port")
+    val addr = new InetSocketAddress(host, port)
+    val serverConf = new TelnetPointsServerConfig(config)
+    Props.apply(new TelnetPointsServer(serverConf, addr, channelWriter,
+      new TelnetPointsMetrics(prefix, metricRegistry)))
   }
 }

@@ -1,21 +1,20 @@
-package popeye.transport.server.telnet
+package popeye.pipeline.server.telnet
 
 import akka.util.ByteString
-import com.typesafe.config.Config
 import java.io.Closeable
 import popeye.Logging
-import popeye.transport.compression.CompressionDecoder
 import popeye.proto.Message
 import popeye.proto.Message.{Attribute, Point}
-import scala.annotation.tailrec
-import scala.collection.mutable
+import popeye.transport.compression.CompressionDecoder
 import popeye.transport.compression.CompressionDecoder.{Snappy, Gzip}
 import popeye.util.LineDecoder
+import scala.annotation.tailrec
+import scala.collection.mutable
 
 /**
  * @author Andrey Stepachev
  */
-abstract class TelnetCommands(metrics: TsdbTelnetMetrics, config: Config) extends Closeable with Logging {
+abstract class TelnetCommands(metrics: TelnetPointsMetrics) extends Closeable with Logging {
 
   import TelnetCommands._
 
@@ -75,7 +74,7 @@ abstract class TelnetCommands(metrics: TsdbTelnetMetrics, config: Config) extend
             try {
               addPoint(parsePoint(strings))
             } catch {
-              case iae @ (_: IllegalArgumentException| _: IndexOutOfBoundsException) =>
+              case iae@(_: IllegalArgumentException | _: IndexOutOfBoundsException) =>
                 debug(s"Illegal point: ${strings.mkString(",")}", iae)
               case x: Throwable =>
                 throw x

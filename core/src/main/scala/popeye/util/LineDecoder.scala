@@ -27,8 +27,8 @@ class LineDecoder(maxSize: Int = 2048) {
       if (matchPosition > maxSize)
         throw new IllegalArgumentException("Line too big")
       val remainder = input.drop(matchPosition + 1)
-      (Some(
-        cutSlashR(input.take(matchPosition))),
+      val cleanInput = cutSlashR(input.take(matchPosition))
+      (if (cleanInput.length > 0) Some(cleanInput) else None,
         if (remainder.isEmpty) None else Some(remainder))
     }
   }
@@ -42,7 +42,7 @@ class LineDecoder(maxSize: Int = 2048) {
 
   @inline
   private[this] def cutSlashR(input: ByteString): ByteString = {
-    if (input.last == '\r')
+    if (input.length > 0 && input.last == '\r')
       input.dropRight(1)
     else
       input

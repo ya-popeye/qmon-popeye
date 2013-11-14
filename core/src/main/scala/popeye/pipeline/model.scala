@@ -1,10 +1,11 @@
 package popeye.pipeline
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{Promise, ExecutionContext, Future}
 import java.io.Closeable
 import akka.actor.ActorSystem
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.Config
 import popeye.IdGenerator
+import popeye.proto.PackedPoints
 
 trait PipelineSourceFactory {
   def startSource(sinkName: String, channel: PipelineChannel, config: Config, ect:ExecutionContext): Unit
@@ -27,5 +28,5 @@ trait PipelineChannel {
 }
 
 trait PipelineChannelWriter {
-  def write(): Future[Long]
+  def write(promise: Option[Promise[Long]], points: PackedPoints): Unit
 }

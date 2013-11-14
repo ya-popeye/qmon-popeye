@@ -40,10 +40,10 @@ trait PointsDispatcherActor extends DispatcherActor {
   def unbuffer(ignoreMinSize: Boolean): Option[WorkerData] = {
     val batchId = idGenerator.nextId()
     val (data, promises) = pendingPoints.consume(ignoreMinSize)
-    log.debug(s"Sending ${data.foldLeft(0)({
-      (a, b) => a + b.bufferLength
-    })} bytes, will trigger ${promises.size} promises")
     if (!data.isEmpty) {
+      log.debug(s"Sending ${data.foldLeft(0)({
+        (a, b) => a + b.bufferLength
+      })} bytes, will trigger ${promises.size} promises")
       Some(new WorkerData(batchId, data, promises))
     } else {
       None

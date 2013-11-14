@@ -1,19 +1,20 @@
 package popeye.pipeline.kafka
 
-import akka.actor.{Props, Actor}
-import com.google.protobuf.InvalidProtocolBufferException
-import popeye.{ConfigUtil, Instrumented, Logging}
-import popeye.proto.PackedPoints
-import scala.collection.mutable.ArrayBuffer
-import scala.util.{Failure, Success}
-import popeye.pipeline.{PointsSource, PointsSink}
-import com.typesafe.config.Config
+import akka.actor.{Cancellable, Props, Actor}
 import com.codahale.metrics.MetricRegistry
+import com.google.protobuf.InvalidProtocolBufferException
+import com.typesafe.config.Config
+import java.util.concurrent.TimeUnit
 import kafka.consumer.{Consumer, ConsumerConfig}
+import popeye.pipeline.{PointsSource, PointsSink}
+import popeye.proto.PackedPoints
+import popeye.{ConfigUtil, Instrumented, Logging}
+import scala.collection.mutable.ArrayBuffer
+import scala.concurrent.duration.FiniteDuration
+import scala.util.{Failure, Success}
 
-class KafkaPointsConsumerConfig(config: Config) {
-  val topic = config.getString("topic")
-  val group = config.getString("group")
+class KafkaPointsConsumerConfig(val topic: String, val group: String, config: Config) {
+  val tick = new FiniteDuration(config.getMilliseconds("tick"), TimeUnit.MILLISECONDS)
   val batchSize = config.getInt("batch-size")
   val maxLag = config.getMilliseconds("max-lag")
 }
@@ -25,11 +26,15 @@ class KafkaPointsConsumerMetrics(val prefix: String,
 }
 
 private object KafkaPointsConsumerProto {
-  case class NextChunk()
 
-  case class FailedChunk()
+  case object Tick
 
-  case class CompletedChunk()
+  case object NextChunk
+
+  case object FailedChunk
+
+  case object CompletedChunk
+
 }
 
 object KafkaPointsConsumer {
@@ -41,9 +46,9 @@ object KafkaPointsConsumer {
     new ConsumerConfig(consumerProps)
   }
 
-  def props(group: String, config: Config, metrics: MetricRegistry, sink: PointsSink, drop: PointsSink): Props = {
-    val pc = new KafkaPointsConsumerConfig(config.getConfig("consumer").withFallback(config))
-    val m = new KafkaPointsConsumerMetrics(s"kafka.$group", metrics)
+  def props(topic: String, group: String, config: Config, metrics: MetricRegistry, sink: PointsSink, drop: PointsSink): Props = {
+    val pc = new KafkaPointsConsumerConfig(topic, group, config.getConfig("consumer").withFallback(config))
+    val m = new KafkaPointsConsumerMetrics(s"kafka.$topic.$group", metrics)
     val consumerConfig = KafkaPointsConsumer.consumerConfig(group, config)
     val consumerConnector = Consumer.create(consumerConfig)
     val pointsSource = new KafkaPointsSourceImpl(consumerConnector, pc.topic)
@@ -64,18 +69,30 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
   private var buffer = new PackedPoints()
   private var batches = new ArrayBuffer[Long]()
   private var commit = false
+  private var flush = false
 
   override def preStart(): Unit = {
     super.preStart()
     self ! NextChunk
   }
 
+  override def postStop(): Unit = {
+    info("Consumer stopped")
+    super.postStop()
+  }
+
   def receive: Actor.Receive = {
 
+    case Tick =>
+      flush = true
+      self ! NextChunk
+
     case NextChunk =>
+      debug(s"Buffered ${buffer.pointsCount} points so far (flush = $flush)")
       tryCommit()
       consumeNext(buffer)
-      if (buffer.pointsCount > config.batchSize) {
+      debug(s"Collected ${buffer.pointsCount} points so far (flush = $flush)")
+      if ( flush || (buffer.pointsCount > config.batchSize) ) {
         val me = self
         val myBatches = batches
         sinkPipe.send(myBatches, buffer) onComplete {
@@ -88,8 +105,9 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
             error(s"Failed to send batches $myBatches", x)
             me ! FailedChunk
         }
+        flush = false
       } else {
-        self ! NextChunk
+        context.system.scheduler.scheduleOnce(config.tick, self, Tick)
       }
 
     case FailedChunk =>
@@ -105,6 +123,7 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
 
   private def tryCommit() = {
     if (commit) {
+      debug(s"Commiting offsets: affected batches ${batches.mkString}")
       buffer = new PackedPoints
       batches = new ArrayBuffer[Long]()
       commit = false
@@ -126,6 +145,7 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
       }
     } catch {
       case e: InvalidProtocolBufferException =>
+        debug("Can't decode point", e)
         metrics.decodeFailures.mark()
     }
     tctx.close()

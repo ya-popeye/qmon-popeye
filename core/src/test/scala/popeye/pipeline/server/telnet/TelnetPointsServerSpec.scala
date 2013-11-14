@@ -18,6 +18,10 @@ import popeye.pipeline.DispatcherProtocol.Pending
 import popeye.test.PopeyeTestUtils
 import popeye.transport.test.AkkaTestKitSpec
 import scala.concurrent.duration._
+import popeye.pipeline.server.telnet.{TelnetPointsServerConfig, TelnetPointsHandler, TelnetPointsMetrics}
+import popeye.pipeline.PipelineChannelWriter
+import scala.concurrent.Promise
+import popeye.proto.PackedPoints
 
 /**
  * @author Andrey Stepachev
@@ -29,23 +33,27 @@ class TelnetPointsServerSpec extends AkkaTestKitSpec("tsdb-server") with Mockito
   implicit val rnd = new Random(1234)
   implicit val timeout: Timeout = 5 seconds
   implicit val metricRegistry = new MetricRegistry()
-  implicit val tsdbMetrics = new TsdbTelnetMetrics(metricRegistry)
+  implicit val tsdbMetrics = new TelnetPointsMetrics("kafka", metricRegistry)
 
   private def initActors(batchSize: Int = 1) = {
     val config: Config = ConfigFactory.parseString(
       s"""
-        | server.telnet.high-watermark = 1
-        | server.telnet.low-watermark = 0
-        | server.telnet.produce-timeout = 10s
-        | server.telnet.batchSize = $batchSize
+        | high-watermark = 1
+        | low-watermark = 0
+        | produce-timeout = 10s
+        | batchSize = $batchSize
       """.stripMargin)
       .withFallback(ConfigUtil.loadSubsysConfig("slicer"))
       .resolve()
 
     val kafka = TestProbe()
     val connection = TestProbe()
-    val actor: TestActorRef[TsdbTelnetHandler] = TestActorRef(
-      Props.apply(new TsdbTelnetHandler(connection.ref, kafka.ref, config, tsdbMetrics))
+    val actor: TestActorRef[TelnetPointsHandler] = TestActorRef(
+      Props.apply(new TelnetPointsHandler(connection.ref, new PipelineChannelWriter {
+        def write(promise: Option[Promise[Long]], points: PackedPoints): Unit = {
+          kafka.ref ! Pending(promise)(points)
+        }
+      }, new TelnetPointsServerConfig(config), tsdbMetrics))
         .withDeploy(Deploy.local))
     (connection, kafka, actor)
   }
@@ -142,7 +150,7 @@ class TelnetPointsServerSpec extends AkkaTestKitSpec("tsdb-server") with Mockito
     validate(connection, kafka, actor)
   }
 
-  def validate(connection: TestProbe, kafka: TestProbe, actor: TestActorRef[TsdbTelnetHandler]) {
+  def validate(connection: TestProbe, kafka: TestProbe, actor: TestActorRef[TelnetPointsHandler]) {
     kafka.expectMsgPF() {
       case p@Pending(promise) =>
 //        assert(p.event.size == 1)  // TODO: fix this

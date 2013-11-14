@@ -9,11 +9,13 @@ import popeye.{ConfigUtil, IdGenerator, MainConfig, PopeyeCommand}
 import scala.concurrent.ExecutionContext
 import scopt.OptionParser
 import popeye.storage.BlackHole
+import popeye.pipeline.server.telnet.TelnetPointsServer
 
 object PipelineCommand {
 
-  val sources: Map[String, PipelineSourceFactory] = Map()
-  //"http" -> HttpPointsServer.sourceFactory())
+  val sources: Map[String, PipelineSourceFactory] = Map(
+    "telnet" -> TelnetPointsServer.sourceFactory())
+
   val sinks: Map[String, PipelineSinkFactory] = Map(
     "hbase" -> HBaseStorage.sinkFactory(),
     "blackhole" -> BlackHole.sinkFactory()

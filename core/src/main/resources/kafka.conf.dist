@@ -1,5 +1,11 @@
 generator.id = 0
 
+metrics.csv {
+  enabled = false
+  period = 5s
+  directory = ./metrics
+}
+
 popeye.pipeline {
   channel {
    type = kafka
@@ -8,27 +14,43 @@ popeye.pipeline {
      group = opentsdb
      max-lag = 300s
      zk.quorum = "localhost:2181"
-     borker.list = "localhost:9092"
+     broker.list = "localhost:9092"
    }
   }
 
   sinks = {
-    opentsdb: hbase
+//    opentsdb-sink: hbase
     bh: blackhole
   }
 
-  bh = {
-    max-queued = 150000
-    high-watermark = 2000000
-    low-watermark = 10000
-    tick = 500ms
-    workers = 2
-  }
-
-  opentsdb = {
+  opentsdb-sink = {
     zk.quorum = "localhost:2182"
     topic = "popeye-points"
   }
 
-  sources = {}
+  sources = {
+    opentsdb-source: telnet
+  }
+
+  opentsdb-source = {
+    port = 4444
+  }
 }
+
+akka {
+
+#  loglevel = "DEBUG"
+
+  actor {
+    debug {
+#         event-stream = on
+#         autoreceive = on
+#         lifecycle = on
+#         fsm = on
+#         unhandled = on
+#         receive = on
+#         router-misconfiguration = on
+    }
+  }
+}
+

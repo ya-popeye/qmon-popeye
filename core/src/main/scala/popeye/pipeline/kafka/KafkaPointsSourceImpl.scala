@@ -14,6 +14,7 @@ class KafkaPointsSourceImpl(consumerConnector: ConsumerConnector, topic: String)
 
   val stream = topicStream(topic)
   val iterator = stream.iterator()
+  val deser = new KeyDeserializer()
 
   def commitOffsets(): Unit = {
     consumerConnector.commitOffsets
@@ -47,7 +48,8 @@ class KafkaPointsSourceImpl(consumerConnector: ConsumerConnector, topic: String)
     if (hasNext) {
       try {
         val msg: MessageAndMetadata[Array[Byte], Array[Byte]] = iterator.next()
-        Some(PackedPoints.decodeWithBatchId(msg.message))
+        val batchId = deser.fromBytes(msg.key)
+        Some((batchId, PackedPoints.decodePoints(msg.message)))
       } catch {
         case ex: ConsumerTimeoutException =>
           None // ok
