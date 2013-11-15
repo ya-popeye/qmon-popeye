@@ -1,0 +1,6 @@
+put proc.loadavg.1m 1288946927 0.36 host=foo
+put proc.loadavg.5m 1288946927 0.62 host=foo
+put proc.loadavg.1m 1288946942 0.43 host=foo
+put proc.loadavg.5m 1288946942 0.62 host=foo
+commit 1
+
