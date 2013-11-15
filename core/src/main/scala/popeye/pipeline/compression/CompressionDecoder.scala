@@ -1,4 +1,4 @@
-package popeye.transport.compression
+package popeye.pipeline.compression
 
 import CompressionDecoder._
 import akka.util.ByteString

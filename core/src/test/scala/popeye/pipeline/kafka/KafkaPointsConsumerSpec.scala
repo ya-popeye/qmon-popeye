@@ -5,13 +5,13 @@ import akka.testkit.TestActorRef
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.{ConfigValueFactory, ConfigFactory, Config}
 import java.util.Random
-import java.util.concurrent.CountDownLatch
+import java.util.concurrent.{TimeUnit, CountDownLatch}
 import org.scalatest.matchers.ShouldMatchers
 import org.scalatest.mock.MockitoSugar
 import popeye.pipeline.{PointsSource, PointsSink, AtomicList}
 import popeye.test.{PopeyeTestUtils, MockitoStubs}
 import popeye.proto.{PackedPoints}
-import popeye.transport.test.AkkaTestKitSpec
+import popeye.pipeline.test.AkkaTestKitSpec
 import scala.concurrent.Future
 
 
@@ -27,7 +27,8 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
 
   "Dispatcher" should "buffer" in {
     val metrics = new KafkaPointsConsumerMetrics("test", registry)
-    val dconf = new KafkaPointsConsumerConfig("test", "test", mkConfig().withValue("tick", ConfigValueFactory.fromAnyRef(10000)))
+    val config = mkConfig()//.withValue("tick", ConfigValueFactory.fromAnyRef(10000))
+    val dconf = new KafkaPointsConsumerConfig("test", "test", config)
     val consumer = mock[PointsSource]
     val events1: consumer.BatchedMessageSet = 1l -> PopeyeTestUtils.mkEvents(3)
     val events2: consumer.BatchedMessageSet = 2l -> PopeyeTestUtils.mkEvents(3)
@@ -45,7 +46,7 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
     })
     val actor: TestActorRef[KafkaPointsConsumer] = TestActorRef(
       Props.apply(new KafkaPointsConsumer(dconf, metrics, consumer, listener.sinkPipe, listener.dropPipe)))
-    latch.await()
+    latch.await(3000, TimeUnit.MILLISECONDS) should be (true)
   }
 
   def mkConfig(): Config = ConfigFactory.parseString(
@@ -55,7 +56,7 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
     | batch-size = 2
     | max-lag = 60s
       """.stripMargin)
-    .withFallback(ConfigFactory.parseResources("reference.conf"))
+    .withFallback(ConfigFactory.parseResources("reference.conf").getConfig("popeye.pipeline.defaults.kafka.consumer"))
     .resolve()
 
 }

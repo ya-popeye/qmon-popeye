@@ -1,4 +1,4 @@
-package popeye.transport.server.http
+package popeye.pipeline.server.http
 
 import akka.actor.Actor
 import akka.actor.Status.Failure

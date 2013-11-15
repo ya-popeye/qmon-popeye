@@ -77,7 +77,6 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
 
   startWith(Idle, PointsState())
 
-
   when(Idle, stateTimeout = config.tick) {
     case Event(StateTimeout, _) =>
       goto(Active)

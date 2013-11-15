@@ -1,4 +1,4 @@
-package popeye.transport.server
+package popeye.pipeline.server
 
 import org.scalatest.FlatSpec
 import akka.util.ByteString

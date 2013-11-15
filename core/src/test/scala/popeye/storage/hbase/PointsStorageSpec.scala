@@ -10,7 +10,7 @@ import org.kiji.testing.fakehtable.FakeHTable
 import org.scalatest.matchers.{MustMatchers, ShouldMatchers}
 import popeye.test.PopeyeTestUtils._
 import popeye.test.{PopeyeTestUtils, MockitoStubs}
-import popeye.transport.test.AkkaTestKitSpec
+import popeye.pipeline.test.AkkaTestKitSpec
 import scala.collection.JavaConversions.iterableAsScalaIterable
 import scala.concurrent.Await
 import scala.concurrent.duration._

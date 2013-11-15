@@ -1,4 +1,4 @@
-package popeye.transport.server.http
+package popeye.pipeline.server.http
 
 import com.codahale.metrics.MetricRegistry
 import popeye.Instrumented

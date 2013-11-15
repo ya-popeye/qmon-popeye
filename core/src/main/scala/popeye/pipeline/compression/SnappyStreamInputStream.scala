@@ -1,4 +1,4 @@
-package popeye.transport.compression
+package popeye.pipeline.compression
 
 import java.io.{DataInputStream, InputStream}
 import akka.util.ByteString

@@ -4,7 +4,7 @@ import akka.testkit.TestProbe
 import java.io.IOException
 import popeye.Logging
 import popeye.storage.hbase.UniqueIdProtocol._
-import popeye.transport.test.AkkaTestKitSpec
+import popeye.pipeline.test.AkkaTestKitSpec
 import scala.concurrent.Await
 import scala.concurrent.duration._
 import popeye.storage.hbase.UniqueIdProtocol.FindName

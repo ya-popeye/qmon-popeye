@@ -1,6 +1,6 @@
-package popeye.transport.server.telnet
+package popeye.pipeline.server.telnet
 
-import popeye.transport.compression.CompressionDecoder
+import popeye.pipeline.compression.CompressionDecoder
 import CompressionDecoder.{Gzip, Snappy, Codec}
 import akka.actor.{Deploy, Props}
 import akka.io.Tcp
@@ -16,7 +16,7 @@ import org.scalatest.mock.MockitoSugar
 import popeye.ConfigUtil
 import popeye.pipeline.DispatcherProtocol.Pending
 import popeye.test.PopeyeTestUtils
-import popeye.transport.test.AkkaTestKitSpec
+import popeye.pipeline.test.AkkaTestKitSpec
 import scala.concurrent.duration._
 import popeye.pipeline.server.telnet.{TelnetPointsServerConfig, TelnetPointsHandler, TelnetPointsMetrics}
 import popeye.pipeline.PipelineChannelWriter
@@ -38,12 +38,13 @@ class TelnetPointsServerSpec extends AkkaTestKitSpec("tsdb-server") with Mockito
   private def initActors(batchSize: Int = 1) = {
     val config: Config = ConfigFactory.parseString(
       s"""
-        | high-watermark = 1
-        | low-watermark = 0
-        | produce-timeout = 10s
-        | batchSize = $batchSize
+      | high-watermark = 1
+      | low-watermark = 0
+      | produce-timeout = 10s
+      | batchSize = $batchSize
       """.stripMargin)
-      .withFallback(ConfigUtil.loadSubsysConfig("slicer"))
+      .withFallback(ConfigFactory.parseResources("reference.conf")
+      .getConfig("popeye.pipeline.defaults.telnet"))
       .resolve()
 
     val kafka = TestProbe()

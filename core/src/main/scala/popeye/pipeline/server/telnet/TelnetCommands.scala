@@ -5,8 +5,8 @@ import java.io.Closeable
 import popeye.Logging
 import popeye.proto.Message
 import popeye.proto.Message.{Attribute, Point}
-import popeye.transport.compression.CompressionDecoder
-import popeye.transport.compression.CompressionDecoder.{Snappy, Gzip}
+import popeye.pipeline.compression.CompressionDecoder
+import popeye.pipeline.compression.CompressionDecoder.{Snappy, Gzip}
 import popeye.util.LineDecoder
 import scala.annotation.tailrec
 import scala.collection.mutable

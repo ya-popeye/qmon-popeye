@@ -1,4 +1,4 @@
-package popeye.transport.compression
+package popeye.pipeline.compression
 
 import akka.util.ByteString
 import scala.annotation.tailrec

@@ -1,4 +1,4 @@
-package popeye.transport.server.telnet
+package popeye.pipeline.server.telnet
 
 import org.scalatest.FlatSpec
 import org.scalatest.matchers.ShouldMatchers

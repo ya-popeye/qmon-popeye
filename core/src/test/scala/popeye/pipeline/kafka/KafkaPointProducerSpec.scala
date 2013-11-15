@@ -12,7 +12,7 @@ import org.scalatest.mock.MockitoSugar
 import popeye.IdGenerator
 import popeye.test.PopeyeTestUtils._
 import popeye.proto.PackedPoints
-import popeye.transport.test.AkkaTestKitSpec
+import popeye.pipeline.test.AkkaTestKitSpec
 import scala.concurrent.duration._
 import scala.concurrent.{Promise, Await}
 
@@ -38,18 +38,19 @@ class KafkaPointProducerSpec extends AkkaTestKitSpec("tsdb-writer") with Mockito
 
     val config: Config = ConfigFactory.parseString(
       s"""
-        |   kafka.broker.list="localhost:9092"
-        |   kafka.producer.config += "popeye/pipeline/kafka/KafkaPointProducerSpec.properties"
-        |   kafka.producer.workers = 1
-        |   kafka.producer.low-watermark = 1
-        |   kafka.topic="$topic"
+        |   broker.list="localhost:9092"
+        |   producer.config += "popeye/pipeline/kafka/KafkaPointProducerSpec.properties"
+        |   producer.workers = 1
+        |   producer.low-watermark = 1
+        |   tick=200ms
+        |   topic="$topic"
       """.stripMargin)
       .withFallback(ConfigFactory.parseResources("reference.conf"))
       .resolve()
     val producer = mock[PopeyeKafkaProducer]
-    val kafkaConfig = config.getConfig("kafka")
     val actor: TestActorRef[KafkaPointsProducer] = TestActorRef(
-      KafkaPointsProducer.props("kafka", kafkaConfig, generator, new PopeyeKafkaProducerFactory {
+      KafkaPointsProducer.props("kafka", config.withFallback(config.getConfig("popeye.pipeline.defaults.kafka")),
+        generator, new PopeyeKafkaProducerFactory {
         def newProducer(topic: String): PopeyeKafkaProducer = producer
       }, metricRegistry))
     val p = Promise[Long]()
