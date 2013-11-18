@@ -23,7 +23,6 @@ object Compiler {
     javacOptions in Compile ++= Seq("-source", "1.6", "-target", "1.6"),
     resolvers ++= Seq(
       "spray repo" at "http://repo.spray.io",
-//      "spray repo (nightly)" at "http://nightlies.spray.io",
       Resolver.url("octo47 repo", url("http://octo47.github.com/repo/"))({
         val patt = Resolver.mavenStylePatterns.artifactPatterns
         new Patterns(patt, patt, true)
