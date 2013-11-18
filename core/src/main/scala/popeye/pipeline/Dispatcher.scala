@@ -194,7 +194,7 @@ trait DispatcherActor extends Actor with Logging {
   private def flushBuffered(ignoreMinSize: Boolean = false): Unit = {
     if (workQueue.isEmpty)
       return
-    workQueue.headOption() match {
+    workQueue.headOption match {
       case Some(worker: ActorRef) =>
         unbuffer(ignoreMinSize) match {
           case Some(wd) =>

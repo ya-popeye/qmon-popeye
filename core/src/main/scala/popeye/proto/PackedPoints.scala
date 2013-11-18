@@ -1,6 +1,7 @@
 package popeye.proto
 
 import com.google.protobuf.{CodedInputStream, CodedOutputStream}
+import java.io.OutputStream
 import popeye.proto.Message.Point
 import scala.collection.mutable.ArrayBuffer
 
@@ -26,7 +27,7 @@ final class PackedPoints(val avgMessageSize: Int = 100, val messagesPerExtent: I
   def +=(point: Point): PackedPoints = append(point)
 
   @inline
-  def ++=(points: Seq[Point]): PackedPoints = append(points :_*)
+  def ++=(points: Seq[Point]): PackedPoints = append(points: _*)
 
   def append(point: Point): PackedPoints = {
     MessageUtil.validatePoint(point)
@@ -38,7 +39,7 @@ final class PackedPoints(val avgMessageSize: Int = 100, val messagesPerExtent: I
   }
 
   def append(points: Point*): PackedPoints = {
-    points.foreach { point => append(point) }
+    points.foreach { point => append(point)}
     this
   }
 
@@ -51,6 +52,13 @@ final class PackedPoints(val avgMessageSize: Int = 100, val messagesPerExtent: I
   def copyOfBuffer = {
     pointsCoder.flush()
     points.toByteArray
+  }
+
+  override def clone(): PackedPoints = {
+    val copy = new PackedPoints()
+    copy.pointsCoder.writeRawBytes(copy.buffer)
+    copy.pointsCount_ = this.pointsCount_
+    copy
   }
 
   def consumeFrom(pp: PackedPoints, pointsToConsume: Int) = {
@@ -93,7 +101,7 @@ final class PackedPoints(val avgMessageSize: Int = 100, val messagesPerExtent: I
   }
 
   def toPointsSeq: Seq[Point] = {
-    map(p=>p)
+    map(p => p)
   }
 
   private[proto] def buffer = {
