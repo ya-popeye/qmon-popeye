@@ -4,4 +4,9 @@ limit nofile 150000 150000
 console log
 env QMON_CONF=/etc/qmon-popeye-slicer
 env QMON_LOGDIR=/var/log/qmon-popeye-slicer
-exec /usr/share/qmon-popeye-slicer/bin/start
+pre-start script
+  if ! -d /etc/qmon-popeye-slicer/slicer.conf ; then
+    stop ; exit 0
+  fi
+end script
+exec /usr/share/qmon-popeye-slicer/bin/start pipeline -c /etc/qmon-popeye-slicer/slicer.conf

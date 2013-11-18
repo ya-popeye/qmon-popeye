@@ -60,7 +60,9 @@ trait MockitoStubs extends MockitoSugar {
   /** provide stub chain methods. */
 
   class AStubber[T](stub: => Stubber) {
-    def thenReturn[T](t: T) = stub.doReturn(t)
+    def thenReturn(t: T) = stub.doReturn(t)
+
+    def thenAnswer[P](function: Any => T) = stub.doAnswer(new MockAnswer(function))
 
     def thenThrow[E <: Throwable](e: E) = stub.doThrow(e)
   }
@@ -73,6 +75,8 @@ trait MockitoStubs extends MockitoSugar {
 
   class AnOngoingStubbing[T](stub: => OngoingStubbing[T]) {
     def thenReturns(t: T) = stub.thenReturn(t)
+
+    def thenAnswers[P](function: Any => T) = stub.thenAnswer(new MockAnswer(function))
 
     def thenThrows[E <: Throwable](e: E) = stub.thenThrow(e)
   }
@@ -107,22 +111,16 @@ trait MockitoStubs extends MockitoSugar {
       if (args.size == 0) {
         function match {
           case f: Function0[T] => return f()
-        }
-        function match {
           case f: Function[T, _] => return f(mock)
         }
       } else if (args.size == 1) {
         function match {
           case f: Function[T, _] => return f(args(0))
-        }
-        function match {
           case f2: Function2[T, _, _] => return f2(args(0), mock)
         }
       } else {
         function match {
           case f: Function[T, _] => return f(args)
-        }
-        function match {
           case f2: Function2[T, _, _] => return f2(args, mock)
         }
       }

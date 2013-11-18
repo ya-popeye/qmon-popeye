@@ -1,8 +1,9 @@
 import sbt._
 import sbt.ExclusionRule
-import sbt.ExclusionRule
 import sbt.Keys._
 import QMonDistPlugin._
+import com.typesafe.sbt.SbtScalariform
+import com.typesafe.sbt.SbtScalariform.ScalariformKeys
 import net.virtualvoid.sbt.graph.{Plugin => Dep}
 import scala._
 
@@ -22,7 +23,6 @@ object Compiler {
     javacOptions in Compile ++= Seq("-source", "1.6", "-target", "1.6"),
     resolvers ++= Seq(
       "spray repo" at "http://repo.spray.io",
-      "spray repo (nightly)" at "http://nightlies.spray.io",
       Resolver.url("octo47 repo", url("http://octo47.github.com/repo/"))({
         val patt = Resolver.mavenStylePatterns.artifactPatterns
         new Patterns(patt, patt, true)
@@ -47,7 +47,7 @@ object Tests {
 object Version {
   val Scala = "2.10.1"
   val Akka = "2.2.1"
-  val Spray = "1.2-20130710"
+  val Spray = "1.2-RC2"
   val ScalaTest = "1.9.1"
   val Mockito = "1.9.0"
   val Jackson = "1.8.8"
@@ -55,9 +55,10 @@ object Version {
   val Metrics = "3.0.0"
   val Slf4j = "1.7.5"
   val Logback = "1.0.7"
-  val Snappy = "1.0.4.1"
+  val Snappy = "1.0.5"
   val Guava = "11.0.2"
   val FakeHBase = "0.1.2"
+  val Scopt = "3.1.0"
 
   val slf4jDependencies: Seq[ModuleID] = Seq(
     "org.slf4j" % "jcl-over-slf4j" % Version.Slf4j,
@@ -124,55 +125,26 @@ object PopeyeBuild extends Build {
     id = "popeye",
     base = file("."),
     settings = defaultSettings
-  ).aggregate(popeyeCommon, popeyeSlicer, popeyePump, popeyeBench)
+  ).aggregate(popeyeCore, popeyeBench)
 
-  lazy val popeyeCommon = Project(
+  lazy val popeyeCore = Project(
     id = "popeye-core",
     base = file("core"),
-    settings = defaultSettings)
+    settings = defaultSettings ++ QMonDistPlugin.distSettings ++ HBase.settings)
     .settings(
+    distMainClass := "popeye.Main",
     libraryDependencies ++= Version.slf4jDependencies ++ Seq(
+      "com.github.scopt" %% "scopt" % Version.Scopt,
       "com.google.protobuf" % "protobuf-java" % "2.4.1",
       "org.apache.kafka" %% "kafka" % Version.Kafka,
       "nl.grons" %% "metrics-scala" % Version.Metrics,
       "org.codehaus.jackson" % "jackson-core-asl" % Version.Jackson,
       "com.typesafe.akka" %% "akka-actor" % Version.Akka,
       "com.typesafe.akka" %% "akka-slf4j" % Version.Akka,
-      "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
-      "org.mockito" % "mockito-core" % Version.Mockito % "test",
-      "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"
-    ).excluding(Version.slf4jExclusions :_*)
-     .excluding(Version.commonExclusions :_*)
-  )
-
-  lazy val popeyeSlicer = Project(
-    id = "popeye-slicer",
-    base = file("slicer"),
-    settings = defaultSettings ++ QMonDistPlugin.distSettings)
-    .dependsOn(popeyeCommon % "compile->compile;test->test")
-    .settings(
-    distMainClass := "popeye.transport.SlicerMain",
-    distJvmOptions := "-Xms4096M -Xmx4096M -Xss1M -XX:MaxPermSize=256M -XX:+UseParallelGC -XX:NewSize=3G",
-    libraryDependencies ++= Seq(
-      "io.spray" % "spray-can" % Version.Spray,
-      "io.spray" % "spray-io" % Version.Spray,
       "org.xerial.snappy" % "snappy-java" % Version.Snappy,
       "com.google.guava" % "guava" % Version.Guava % "test",
-      "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
-      "org.mockito" % "mockito-core" % Version.Mockito % "test",
-      "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"
-    ).excluding(Version.slf4jExclusions :_*)
-     .excluding(Version.commonExclusions :_*)
-  )
-
-  lazy val popeyePump = Project(
-    id = "popeye-pump",
-    base = file("pump"),
-    settings = defaultSettings ++ QMonDistPlugin.distSettings ++ HBase.settings)
-    .dependsOn(popeyeCommon % "compile->compile;test->test")
-    .settings(
-    distMainClass := "popeye.transport.PumpMain",
-    libraryDependencies ++= Seq(
+      "io.spray" % "spray-can" % Version.Spray,
+      "io.spray" % "spray-io" % Version.Spray,
       "com.googlecode.concurrentlinkedhashmap" % "concurrentlinkedhashmap-lru" % "1.4",
       "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
       "org.mockito" % "mockito-core" % Version.Mockito % "test",
@@ -181,6 +153,7 @@ object PopeyeBuild extends Build {
     ).excluding(Version.slf4jExclusions :_*)
      .excluding(Version.commonExclusions :_*)
   )
+
   lazy val popeyeBench = Project(
     id = "popeye-bench",
     base = file("bench"),

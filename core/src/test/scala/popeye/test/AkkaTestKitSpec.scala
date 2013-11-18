@@ -1,4 +1,4 @@
-package popeye.transport.test
+package popeye.pipeline.test
 
 import akka.actor.ActorSystem
 import org.scalatest.{FlatSpec, BeforeAndAfterAll}

@@ -1,14 +1,14 @@
 package popeye.test
 
-import popeye.transport.proto.Message.{Attribute, Point}
+import popeye.proto.Message.{Attribute, Point}
 import java.util.concurrent.atomic.AtomicLong
 import java.util.Random
 import java.text.SimpleDateFormat
-import popeye.transport.proto.Message
+import popeye.proto.Message
 import scala.collection.JavaConversions.iterableAsScalaIterable
-import popeye.transport.kafka.{PopeyeKafkaConsumer, PopeyeKafkaConsumerFactory}
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
+import popeye.pipeline.{PointsSourceFactory, PointsSource}
 
 /**
  * @author Andrey Stepachev
@@ -59,14 +59,14 @@ object PopeyeTestUtils {
     ).build()
   }
 
-  class MockPopeyeConsumerFacotory extends PopeyeKafkaConsumerFactory {
+  class MockPopeyeConsumerFacotory extends PointsSourceFactory {
 
     val consumer = new MockPopeyeConsumer
 
-    def newConsumer(): PopeyeKafkaConsumer = consumer
+    def newConsumer(topic: String): PointsSource = consumer
   }
 
-  class MockPopeyeConsumer extends PopeyeKafkaConsumer {
+  class MockPopeyeConsumer extends PointsSource {
 
     var list = List[Option[(Long, Seq[Point])]]()
     var isCommit = false
@@ -76,8 +76,10 @@ object PopeyeTestUtils {
       list = list :+ Some(batchId -> points)
     }
 
-    def iterateTopic(topic: String): Iterator[Option[(Long, Seq[Point])]] = {
-      list.iterator
+    def consume(): Option[(Long, Seq[Point])] = {
+      val l = list.head
+      list = list.tail
+      l
     }
 
     def commitOffsets() {
@@ -87,6 +89,7 @@ object PopeyeTestUtils {
     def shutdown() {
       isShutdown = true
     }
+
   }
 
   class MockAnswer[T](function: Any => T) extends Answer[T] {

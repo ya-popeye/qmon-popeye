@@ -13,8 +13,29 @@ import java.io.InputStream
  */
 object ConfigUtil {
 
-  def mergeProperties(globalConfig: Config, path: String): Properties = {
-    val mergedProperties: Properties = globalConfig.getStringList("kafka.producer.config")
+  def foreachKeyValue(config: Config, what: String)(body: (String, String) => Unit) = {
+    val inner = config.getConfig(what)
+    inner.entrySet().foreach { entry =>
+      val confName = entry.getKey
+      val confType = inner.getString(confName)
+      body(confType, confName)
+    }
+  }
+
+  def mergeDefaults(pc: Config, typeName: String, name: String): Config = {
+    val settings = if (pc.hasPath(s"$name"))
+      pc.getConfig(s"$name")
+    else
+      ConfigFactory.empty()
+    if (pc.hasPath(s"defaults.$typeName")) {
+      settings.withFallback(pc.getConfig(s"defaults.$typeName"))
+    } else {
+      settings
+    }
+  }
+
+  def mergeProperties(config: Config, path: String): Properties = {
+    val mergedProperties: Properties = config.getStringList(path)
       .map{ conf =>
       val props = new Properties
       this.getClass.getClassLoader.getResourceAsStream(conf) match {
