@@ -18,10 +18,9 @@ import popeye.pipeline.DispatcherProtocol.Pending
 import popeye.test.PopeyeTestUtils
 import popeye.pipeline.test.AkkaTestKitSpec
 import scala.concurrent.duration._
-import popeye.pipeline.server.telnet.{TelnetPointsServerConfig, TelnetPointsHandler, TelnetPointsMetrics}
-import popeye.pipeline.PipelineChannelWriter
 import scala.concurrent.Promise
 import popeye.proto.PackedPoints
+import popeye.pipeline.PipelineChannelWriter
 
 /**
  * @author Andrey Stepachev

@@ -2,7 +2,6 @@ package popeye.pipeline.server.telnet
 
 import org.scalatest.FlatSpec
 import org.scalatest.matchers.ShouldMatchers
-import popeye.pipeline.server.telnet.TelnetCommands
 
 /**
  * @author Andrey Stepachev

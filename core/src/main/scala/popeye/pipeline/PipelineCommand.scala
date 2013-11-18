@@ -10,6 +10,7 @@ import scala.concurrent.ExecutionContext
 import scopt.OptionParser
 import popeye.storage.BlackHole
 import popeye.pipeline.server.telnet.TelnetPointsServer
+import popeye.pipeline.memory.MemoryPipelineChannel
 
 object PipelineCommand {
 
@@ -44,6 +45,10 @@ class PipelineCommand extends PopeyeCommand {
       case "kafka" =>
         new KafkaPipelineChannel(
           ConfigUtil.mergeDefaults(pc, "kafka", "channel.kafka"),
+          actorSystem, metrics, idGenerator)
+      case "memory" =>
+        new MemoryPipelineChannel(
+          ConfigUtil.mergeDefaults(pc, "memory", "channel.memory"),
           actorSystem, metrics, idGenerator)
       case x =>
         throw new NoSuchElementException(s"Requested channel type not supported")
