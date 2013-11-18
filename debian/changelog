@@ -1,3 +1,10 @@
+qmon-popeye (0.8.0) unstable; urgency=low
+
+  * huge refactoring, single 'bus' like architecture implemented
+  * incompatible configs
+
+ -- Andrey Stepachev <octo@yandex-team.ru>  Mon, 18 Nov 2013 10:09:00 +0400
+
 qmon-popeye (0.7.0) unstable; urgency=low
 
   * merged kafka with upstream
