@@ -9,4 +9,4 @@ pre-start script
     stop ; exit 0
   fi
 end script
-exec /usr/share/qmon-popeye-pump/bin/start
+exec /usr/share/qmon-popeye-pump/bin/start pipeline -c /etc/qmon-popeye-pump/pump.conf

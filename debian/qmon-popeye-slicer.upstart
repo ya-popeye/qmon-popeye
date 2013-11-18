@@ -9,4 +9,4 @@ pre-start script
     stop ; exit 0
   fi
 end script
-exec /usr/share/qmon-popeye-slicer/bin/start
+exec /usr/share/qmon-popeye-slicer/bin/start pipeline -c /etc/qmon-popeye-slicer/slicer.conf
