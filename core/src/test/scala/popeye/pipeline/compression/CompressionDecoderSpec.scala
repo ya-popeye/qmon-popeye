@@ -1,6 +1,6 @@
 package popeye.pipeline.compression
 
-import CompressionDecoder.{Codec, Gzip, Snappy}
+import CompressionDecoder.{Codec, Deflate, Snappy}
 import akka.util.ByteString
 import com.google.common.io.{Files, ByteStreams}
 import java.io.{FileInputStream, File, ByteArrayOutputStream}
@@ -13,7 +13,7 @@ import org.scalatest.FlatSpec
  */
 class CompressionDecoderSpec extends FlatSpec {
 
-  for (codec <- Seq(Gzip(), Snappy())) {
+  for (codec <- Seq(Deflate(), Snappy())) {
 
     behavior of codec.toString
 
