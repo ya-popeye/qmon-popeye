@@ -3,6 +3,7 @@ package popeye.proto
 import java.io.OutputStream
 import java.util
 import com.google.protobuf.CodedInputStream
+import akka.util.ByteString
 
 class ExpandingBuffer(extent: Int) extends OutputStream  {
 
@@ -16,6 +17,10 @@ class ExpandingBuffer(extent: Int) extends OutputStream  {
 
   def write(b: Int) {
     array.add(b.asInstanceOf[Byte])
+  }
+
+  def write(b: ByteString) {
+    array.add(b.toArray, 0, b.length)
   }
 
   def write(other: ExpandingBuffer) {

@@ -1,19 +1,18 @@
 package popeye.pipeline.server.telnet
 
 import akka.util.ByteString
-import java.io.Closeable
+import java.io.{ByteArrayInputStream, Closeable}
 import popeye.Logging
-import popeye.proto.Message
-import popeye.proto.Message.{Attribute, Point}
 import popeye.pipeline.compression.CompressionDecoder
-import popeye.pipeline.compression.CompressionDecoder.{Snappy, Gzip}
+import popeye.pipeline.compression.CompressionDecoder.{Gzip, Snappy, Deflate}
+import popeye.proto.Message.{Attribute, Point}
+import popeye.proto.{PackedPoints, ExpandingBuffer, Message}
 import popeye.util.LineDecoder
 import scala.annotation.tailrec
 import scala.collection.mutable
+import java.util.zip.{Inflater, Deflater}
 
-/**
- * @author Andrey Stepachev
- */
+// TODO: rewrite to FSM
 abstract class TelnetCommands(metrics: TelnetPointsMetrics) extends Closeable with Logging {
 
   import TelnetCommands._
@@ -58,7 +57,7 @@ abstract class TelnetCommands(metrics: TelnetPointsMetrics) extends Closeable wi
           case "deflate" =>
             if (deflater.isDefined)
               throw new IllegalArgumentException("Already in deflate mode")
-            deflater = Some(new CompressionDecoder(strings(1).toInt, Gzip()))
+            deflater = Some(new CompressionDecoder(strings(1).toInt, Deflate()))
             debug(s"Entering deflate mode, expected ${strings(1)} bytes")
             return remainder // early exit, we need to reenter doCommands
 

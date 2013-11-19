@@ -1,7 +1,7 @@
 package popeye.pipeline.server.telnet
 
 import popeye.pipeline.compression.CompressionDecoder
-import CompressionDecoder.{Gzip, Snappy, Codec}
+import CompressionDecoder.{Deflate, Snappy, Codec}
 import akka.actor.{Deploy, Props}
 import akka.io.Tcp
 import akka.testkit.{TestProbe, TestActorRef}
@@ -63,7 +63,7 @@ class TelnetPointsServerSpec extends AkkaTestKitSpec("tsdb-server") with Mockito
     PopeyeTestUtils.mkEvent(List("metric.name"), List("localhost"))
   ) + "\r\n")
 
-  val encodedCmd = encode(plainCmd, Gzip())
+  val encodedCmd = encode(plainCmd, Deflate())
   val snappedCmd = encode(plainCmd, Snappy())
   val deflateCmd = ByteString.fromString(s"deflate ${encodedCmd.length}\r\n")
   val snappyCmd = ByteString.fromString(s"snappy ${snappedCmd.length}\r\n")

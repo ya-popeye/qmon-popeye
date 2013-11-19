@@ -3,9 +3,11 @@ package popeye.pipeline.compression
 import CompressionDecoder._
 import akka.util.ByteString
 import java.io._
-import java.util.zip.{InflaterInputStream, DeflaterOutputStream, ZipException, Inflater}
+import java.util.zip._
 import scala.Some
 import scala.annotation.tailrec
+import popeye.pipeline.compression.CompressionDecoder.Deflate
+import scala.Some
 
 object CompressionDecoder {
 
@@ -17,13 +19,19 @@ object CompressionDecoder {
     def makeInputStream(inner: InputStream): InputStream
   }
 
-  case class Gzip() extends Codec {
-    def makeDecoder: Decoder = new InflaterDecoder
+  class BaseDeflate(noWrap: Boolean = false) extends Codec {
+    def makeDecoder: Decoder = new InflaterDecoder(noWrap = noWrap)
 
-    def makeOutputStream(inner: OutputStream): OutputStream = new DeflaterOutputStream(inner)
+    def makeOutputStream(inner: OutputStream): OutputStream = new DeflaterOutputStream(inner,
+      new Deflater(Deflater.DEFAULT_COMPRESSION, noWrap))
 
-    def makeInputStream(inner: InputStream): InputStream = new InflaterInputStream(inner)
+    def makeInputStream(inner: InputStream): InputStream = new InflaterInputStream(inner,
+      new Inflater(noWrap))
   }
+
+  case class Deflate() extends BaseDeflate(noWrap = false)
+
+  case class Gzip() extends BaseDeflate(noWrap = true)
 
   case class Snappy() extends Codec {
     def makeDecoder: Decoder = new SnappyDecoder
@@ -38,7 +46,7 @@ object CompressionDecoder {
 /**
  * @author Andrey Stepachev
  */
-class CompressionDecoder(var limit: Int, val codec: Codec = Gzip()) extends Closeable {
+class CompressionDecoder(var limit: Int, val codec: Codec = Deflate()) extends Closeable {
 
   def isClosed = closed
 
