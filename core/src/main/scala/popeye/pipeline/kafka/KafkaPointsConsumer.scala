@@ -137,7 +137,7 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
         log.debug(s"Batches: ${myBatches.mkString(",")} committed")
         me ! Ok
       case Failure(x: Throwable) =>
-        log.error(s"Failed to send batches $myBatches", x)
+        log.error(x, s"Failed to send batches $myBatches")
         me ! Failed
     }
   }
