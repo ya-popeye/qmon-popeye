@@ -74,7 +74,7 @@ abstract class TelnetCommands(metrics: TelnetPointsMetrics) extends Closeable wi
               addPoint(parsePoint(strings))
             } catch {
               case iae@(_: IllegalArgumentException | _: IndexOutOfBoundsException) =>
-                debug(s"Illegal point: ${strings.mkString(",")}", iae)
+                debugThrowable(s"Illegal point: ${strings.mkString(",")}", iae)
               case x: Throwable =>
                 throw x
             }
