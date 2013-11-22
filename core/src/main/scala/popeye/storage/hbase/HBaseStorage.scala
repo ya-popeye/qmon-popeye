@@ -3,7 +3,7 @@ package popeye.storage.hbase
 import com.codahale.metrics.MetricRegistry
 import java.util
 import org.apache.hadoop.hbase.KeyValue
-import org.apache.hadoop.hbase.client.{Put, HTablePool}
+import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.util.Bytes
 import popeye.storage.hbase.HBaseStorage._
 import popeye.proto.{PackedPoints, Message}
@@ -15,9 +15,11 @@ import scala.concurrent.{Await, ExecutionContext, Future}
 import com.typesafe.config.Config
 import akka.actor.{ActorRef, Props, ActorSystem}
 import java.util.concurrent.TimeUnit
-import popeye.util.hbase.HBaseConfigured
-import popeye.pipeline.{PointsSinkFactory, PipelineSinkFactory, PointsSink}
+import popeye.util.hbase.{HBaseUtils, HBaseConfigured}
+import popeye.pipeline.{PipelineSinkFactory, PointsSink}
 import java.nio.charset.Charset
+import scala.concurrent.ExecutionContext.Implicits.global
+import org.apache.hadoop.hbase.filter.{RegexStringComparator, CompareFilter, RowFilter}
 
 object HBaseStorage {
   final val Encoding = Charset.forName("UTF-8")
@@ -83,7 +85,7 @@ object HBaseStorage {
 
 class HBasePointsSink(config: Config, storage: HBaseStorage)(implicit eCtx: ExecutionContext) extends PointsSink {
   def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] = {
-    storage.writePoints(points)(eCtx).mapTo[Long]
+    storage.writePoints(points)(eCtx)
   }
 }
 
@@ -100,14 +102,91 @@ case class HBaseStorageMetrics(name: String, override val metricRegistry: Metric
 }
 
 class HBaseStorage(tableName: String,
-                    hTablePool: HTablePool,
-                    metricNames: UniqueId,
-                    attributeNames: UniqueId,
-                    attributeValues: UniqueId,
-                    metrics: HBaseStorageMetrics,
-                    resolveTimeout: Duration = 15 seconds) extends Logging {
+                   hTablePool_ : HTablePool,
+                   metricNames: UniqueId,
+                   attributeNames: UniqueId,
+                   attributeValues: UniqueId,
+                   metrics: HBaseStorageMetrics,
+                   resolveTimeout: Duration = 15 seconds) extends Logging with HBaseUtils {
+
+  def hTablePool: HTablePool = hTablePool_
 
   val tableBytes = tableName.getBytes(Encoding)
+
+  def getPoints(metric: String, timeRange: (Int, Int), attributes: List[(String, String)]): Future[Seq[(Int, String)]] = {
+    val attrFutures = attributes.sortBy(_._1).map {
+      case (name, value) =>
+        val nameIdFuture = attributeNames.resolveIdByName(name, create = false)(resolveTimeout)
+        val valueIdFuture = attributeValues.resolveIdByName(value, create = false)(resolveTimeout)
+        nameIdFuture.map(_.bytes) zip valueIdFuture.map(_.bytes)
+    }
+    for {
+      metricId <- metricNames.resolveIdByName(metric, create = false)(resolveTimeout)
+      attrs <- Future.sequence(attrFutures)
+    } yield {
+      val rawResults = withHTable(tableName) {
+        table => queryRows(table, metricId, timeRange, attrs)
+      }
+      parseTimeValuePoints(rawResults, timeRange)
+    }
+  }
+
+  def queryRows(table: HTableInterface,
+                metricId: Array[Byte],
+                timeRange: (Int, Int),
+                attributes: Seq[(Array[Byte], Array[Byte])]): Array[Result] = {
+    val (startTime, endTime) = timeRange
+    val baseStartTime = startTime - (startTime % 3600)
+    val startRow = metricId ++ Bytes.toBytes(baseStartTime)
+    val stopRow = metricId ++ Bytes.toBytes(endTime)
+    val scan: Scan = new Scan()
+    scan.setStartRow(startRow)
+    scan.setStopRow(stopRow)
+    scan.addFamily(PointsFamily)
+    val regex = HBaseUtils.createRowRegexp(7, attributeNames.width + attributeValues.width, attributes)
+    val comparator = new RegexStringComparator(regex)
+    comparator.setCharset(HBaseUtils.CHARSET)
+    scan.setFilter(new RowFilter(CompareFilter.CompareOp.EQUAL, comparator))
+    val scanner = table.getScanner(scan)
+    scanner.next(10000)
+  }
+
+  private def parseTimeValuePoints(results: Array[Result], timeRange: (Int, Int)): Seq[(Int, String)] = {
+    val baseTimeBuffer = new Array[Byte](HBaseStorage.TIMESTAMP_BYTES)
+
+    val pointsLists = for (result <- results) yield {
+      import scala.collection.JavaConverters.mapAsScalaMapConverter
+      val row = result.getRow
+      System.arraycopy(row, metricNames.width, baseTimeBuffer, 0, HBaseStorage.TIMESTAMP_BYTES)
+      val baseTime = Bytes.toInt(baseTimeBuffer)
+      val columns = result.getFamilyMap(PointsFamily).asScala.toList
+      columns.map {
+        case (qualifierBytes, valueBytes) =>
+          val (delta, value) = parseValue(qualifierBytes, valueBytes)
+          (baseTime + delta, value)
+      }
+    }
+    val (startTime, endTime) = timeRange
+    pointsLists(0) = pointsLists(0).filter {case (time, _) => time >= startTime}
+    val lastIndex = pointsLists.length - 1
+    pointsLists(lastIndex) = pointsLists(lastIndex).filter {case (time, _) => time < endTime}
+    pointsLists.toSeq.flatten
+  }
+
+  private def parseValue(qualifierBytes: Array[Byte], valueBytes: Array[Byte]): (Short, String) = {
+    val qualifier = Bytes.toShort(qualifierBytes)
+    val deltaShort = delta(qualifier)
+    val floatFlag: Int = HBaseStorage.FLAG_FLOAT | 0x3.toShort
+    val isFloatValue = (qualifier & floatFlag) == floatFlag
+    val isIntValue = (qualifier & 0xf) == 0
+    if (isFloatValue) {
+      (deltaShort, Bytes.toFloat(valueBytes).toString)
+    } else if (isIntValue) {
+      (deltaShort, Bytes.toLong(valueBytes).toString)
+    } else {
+      throw new IllegalArgumentException("Neither int nor float values set on point")
+    }
+  }
 
   def ping(): Unit = {
     Await.result(metricNames.resolveIdByName("_.ping", create = true)(resolveTimeout), resolveTimeout)
@@ -117,7 +196,7 @@ class HBaseStorage(tableName: String,
    * @param points what to write
    * @return number of written points
    */
-  def writePoints(points: PackedPoints)(implicit eCtx: ExecutionContext): Future[Int] = {
+  def writePoints(points: PackedPoints)(implicit eCtx: ExecutionContext): Future[Long] = {
 
     val ctx = metrics.writeTime.timerContext()
     metrics.writeProcessingTime.time {
@@ -157,12 +236,13 @@ class HBaseStorage(tableName: String,
           writeKv(kvl)
           kvl.size
         }
-        Future.reduce(Seq(delayedFuture, writeComplete)){(a, b) =>
-          ctx.stop
-          a+b
+        (delayedFuture zip writeComplete).map {
+          case (a, b) =>
+            ctx.stop
+            (a + b).toLong
         }
       } else {
-        writeComplete.map { a => ctx.stop; a}
+        writeComplete.map {a => ctx.stop; a.toLong}
       }
     }
   }
@@ -221,7 +301,7 @@ class HBaseStorage(tableName: String,
     val delta: Short = (point.getTimestamp % HBaseStorage.MAX_TIMESPAN).toShort
     val ndelta = delta << HBaseStorage.FLAG_BITS
     if (point.hasFloatValue)
-      (Bytes.toBytes((0xffff & (HBaseStorage.FLAG_FLOAT | 0x3) & ndelta).toShort),
+      (Bytes.toBytes(((0xffff & (HBaseStorage.FLAG_FLOAT | 0x3)) | ndelta).toShort),
         Bytes.toBytes(point.getFloatValue))
     else if (point.hasIntValue)
       (Bytes.toBytes((0xffff & ndelta).toShort), Bytes.toBytes(point.getIntValue))

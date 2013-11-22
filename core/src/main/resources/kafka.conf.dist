@@ -19,8 +19,8 @@ popeye.pipeline {
   }
 
   sinks = {
-//    opentsdb-sink: hbase
-    bh: blackhole
+    opentsdb-sink: hbase
+//    bh: blackhole
   }
 
   opentsdb-sink = {
@@ -28,6 +28,15 @@ popeye.pipeline {
     topic = "popeye-points"
   }
 
+  query = {
+    db = {
+      zk.quorum = "localhost:2182"
+    }
+    http = {
+      server.http.listen="localhost:8080"
+      server.http.backlog=100
+    }
+  }
   sources = {
     opentsdb-source: telnet
   }
