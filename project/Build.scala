@@ -45,8 +45,8 @@ object Tests {
 }
 
 object Version {
-  val Scala = "2.10.1"
-  val Akka = "2.2.1"
+  val Scala = "2.10.3"
+  val Akka = "2.2.3"
   val Spray = "1.2-RC2"
   val ScalaTest = "1.9.1"
   val Mockito = "1.9.0"
