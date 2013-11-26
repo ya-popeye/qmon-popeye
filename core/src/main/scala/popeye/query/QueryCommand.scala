@@ -22,9 +22,11 @@ class QueryCommand extends PopeyeCommand with Logging {
   }
 
   def run(actorSystem: ActorSystem, metrics: MetricRegistry, config: Config, mainConfig: MainConfig): Unit = {
-    val popeyeConfig = config.getConfig("popeye.pipeline")
-    val hbaseConfig = ConfigUtil.mergeDefaults(popeyeConfig, "hbase", "query.db")
-    val serverConfig = popeyeConfig.getConfig("query.http")
+    val queryConfig = config.getConfig("popeye.query")
+    val storagesConfig = config.getConfig("popeye.storages")
+    val storageName = queryConfig.getString("db.storage")
+    val hbaseConfig = queryConfig.getConfig("db").withFallback(storagesConfig.getConfig(storageName))
+    val serverConfig = queryConfig.getConfig("http")
     val ectx = ExecutionContext.global
     val hbaseStorage = new HBaseStorageConfigured(
       new HBaseStorageConfig(

@@ -12,7 +12,7 @@ trait PipelineSourceFactory {
 }
 
 trait PipelineSinkFactory {
-  def startSink(sinkName: String, channel: PipelineChannel, config: Config, ect:ExecutionContext): Unit
+  def startSink(sinkName: String, channel: PipelineChannel, config: Config, storagesConfig: Config, ect: ExecutionContext): Unit
 }
 
 trait PipelineChannelFactory {

@@ -40,6 +40,7 @@ class PipelineCommand extends PopeyeCommand {
   def run(actorSystem: ActorSystem, metrics: MetricRegistry, config: Config, mainConfig: MainConfig): Unit = {
 
     val pc = config.getConfig("popeye.pipeline")
+    val storageConfig = config.getConfig("popeye.storages")
     val idGenerator = new IdGenerator(config.getInt("generator.id"), config.getInt("generator.datacenter"))
     val channel = pc.getString("channel.type") match {
       case "kafka" =>
@@ -59,7 +60,7 @@ class PipelineCommand extends PopeyeCommand {
 
     ConfigUtil.foreachKeyValue(pc, "sinks") { (typeName, confName) =>
       val sinkConfig = ConfigUtil.mergeDefaults(pc, typeName, confName)
-      PipelineCommand.sinkForType(typeName).startSink(confName, channel, sinkConfig, ectx)
+      PipelineCommand.sinkForType(typeName).startSink(confName, channel, sinkConfig, storageConfig, ectx)
     }
 
     ConfigUtil.foreachKeyValue(pc, "sources") { (typeName, confName) =>
