@@ -12,12 +12,12 @@ import popeye.test.PopeyeTestUtils._
 import popeye.test.{PopeyeTestUtils, MockitoStubs}
 import popeye.pipeline.test.AkkaTestKitSpec
 import scala.collection.JavaConversions.iterableAsScalaIterable
-import scala.concurrent.Await
+import scala.concurrent.{Future, Await}
 import scala.concurrent.duration._
-import popeye.proto.{PackedPoints, Message}
-import org.scalatest.exceptions.TestFailedException
-import com.codahale.metrics.{ConsoleReporter, MetricRegistry}
+import popeye.proto.PackedPoints
+import com.codahale.metrics.MetricRegistry
 import nl.grons.metrics.scala.Meter
+import popeye.proto.Message.{Attribute, Point}
 
 /**
  * @author Andrey Stepachev
@@ -98,5 +98,39 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
       uniq
     }
   }
+
+  it should "perform time range queries" in {
+    println(hTable.getConfiguration().getStrings("io.serializations").toList)
+    val state = new State
+    val points = (0 to 6).map {
+      i =>
+        Point.newBuilder()
+          .setTimestamp(i * 1200)
+          .setIntValue(i)
+          .setMetric("my.metric1")
+          .addAttributes(Attribute.newBuilder()
+          .setName("host")
+          .setValue("localhost")
+        ).build()
+    }
+    state.storage.writePoints(PackedPoints(points))
+    val future = state.storage.getPoints("my.metric1", (1200, 4801), List("host" -> "localhost"))
+    val filteredPoints = pointsStreamToList(future)
+    filteredPoints should contain((1200, "1"))
+    filteredPoints should (not contain((0, "0")))
+    filteredPoints should (not contain((6000, "5")))
+  }
+
+  def pointsStreamToList(streamFuture: Future[PointsStream]) = {
+    def streamToFutureList(stream: PointsStream): Future[Seq[(Int, String)]] = {
+      val nextListFuture = stream.next match {
+        case Some(nextFuture) => nextFuture().flatMap(streamToFutureList)
+        case None => Future.successful(Nil)
+      }
+      nextListFuture.map {nextList => stream.points ++ nextList}
+    }
+    Await.result(streamFuture.flatMap(streamToFutureList), 5 seconds)
+  }
+
 
 }

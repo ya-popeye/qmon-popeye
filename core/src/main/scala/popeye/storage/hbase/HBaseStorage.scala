@@ -101,6 +101,15 @@ case class HBaseStorageMetrics(name: String, override val metricRegistry: Metric
   val delayedPointsMeter = metrics.meter(s"$name.storage.delayed.points")
 }
 
+case class PointsStream(points: Seq[(Int, String)], next: Option[() => Future[PointsStream]])
+
+object PointsStream {
+  def apply(points: Seq[(Int, String)]): PointsStream = PointsStream(points, None)
+
+  def apply(points: Seq[(Int, String)], nextStream: => Future[PointsStream]): PointsStream =
+    PointsStream(points, Some(() => nextStream))
+}
+
 class HBaseStorage(tableName: String,
                    hTablePool_ : HTablePool,
                    metricNames: UniqueId,
@@ -113,42 +122,67 @@ class HBaseStorage(tableName: String,
 
   val tableBytes = tableName.getBytes(Encoding)
 
-  def getPoints(metric: String, timeRange: (Int, Int), attributes: List[(String, String)]): Future[Seq[(Int, String)]] = {
+  val readChunkSize: Int = 10
+
+  def getPoints(metric: String, timeRange: (Int, Int), attributes: List[(String, String)]): Future[PointsStream] = {
     val attrFutures = attributes.sortBy(_._1).map {
       case (name, value) =>
         val nameIdFuture = attributeNames.resolveIdByName(name, create = false)(resolveTimeout)
         val valueIdFuture = attributeValues.resolveIdByName(value, create = false)(resolveTimeout)
         nameIdFuture.map(_.bytes) zip valueIdFuture.map(_.bytes)
     }
+    def toPointsStream(rowsQuery: PointRowsQuery): PointsStream = {
+      val (results, nextResults) = rowsQuery.getRows()
+      val pointsSeq = parseTimeValuePoints(results, timeRange)
+      val nextStream = nextResults.map {
+        query => () => Future {toPointsStream(query)}
+      }
+      PointsStream(pointsSeq, nextStream)
+    }
     for {
       metricId <- metricNames.resolveIdByName(metric, create = false)(resolveTimeout)
       attrs <- Future.sequence(attrFutures)
     } yield {
-      val rawResults = withHTable(tableName) {
-        table => queryRows(table, metricId, timeRange, attrs)
-      }
-      parseTimeValuePoints(rawResults, timeRange)
+      val pointRowsQuery = createRowsQuery(metricId, timeRange, attrs, readChunkSize)
+      toPointsStream(pointRowsQuery)
     }
   }
 
-  def queryRows(table: HTableInterface,
-                metricId: Array[Byte],
-                timeRange: (Int, Int),
-                attributes: Seq[(Array[Byte], Array[Byte])]): Array[Result] = {
+  def createRowsQuery(metricId: Array[Byte],
+                      timeRange: (Int, Int),
+                      attributes: Seq[(Array[Byte], Array[Byte])],
+                      chunkSize: Int) = {
     val (startTime, endTime) = timeRange
     val baseStartTime = startTime - (startTime % 3600)
     val startRow = metricId ++ Bytes.toBytes(baseStartTime)
     val stopRow = metricId ++ Bytes.toBytes(endTime)
-    val scan: Scan = new Scan()
-    scan.setStartRow(startRow)
-    scan.setStopRow(stopRow)
-    scan.addFamily(PointsFamily)
     val regex = HBaseUtils.createRowRegexp(7, attributeNames.width + attributeValues.width, attributes)
-    val comparator = new RegexStringComparator(regex)
-    comparator.setCharset(HBaseUtils.CHARSET)
-    scan.setFilter(new RowFilter(CompareFilter.CompareOp.EQUAL, comparator))
-    val scanner = table.getScanner(scan)
-    scanner.next(10000)
+    new PointRowsQuery(regex, startRow, stopRow, chunkSize)
+  }
+
+  class PointRowsQuery(rowRegex: String, startRow: Array[Byte], stopRow: Array[Byte], chunkSize: Int) {
+    require(chunkSize > 0, "chunksize must be greater than 0")
+
+    def getRows(): (Array[Result], Option[PointRowsQuery]) = withHTable(tableName) {
+      table =>
+        val scan: Scan = new Scan()
+        scan.setStartRow(startRow)
+        scan.setStopRow(stopRow)
+        scan.addFamily(PointsFamily)
+        val comparator = new RegexStringComparator(rowRegex)
+        comparator.setCharset(HBaseUtils.CHARSET)
+        scan.setFilter(new RowFilter(CompareFilter.CompareOp.EQUAL, comparator))
+        val scanner = table.getScanner(scan)
+        val results = scanner.next(chunkSize)
+        val nextQuery =
+          if (results.length < chunkSize) {
+            None
+          } else {
+            val lastRow = results(results.length - 2).getRow
+            Some(new PointRowsQuery(rowRegex, lastRow, stopRow, chunkSize))
+          }
+        (results, nextQuery)
+    }
   }
 
   private def parseTimeValuePoints(results: Array[Result], timeRange: (Int, Int)): Seq[(Int, String)] = {

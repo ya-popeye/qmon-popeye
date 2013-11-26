@@ -2,8 +2,6 @@ import sbt._
 import sbt.ExclusionRule
 import sbt.Keys._
 import QMonDistPlugin._
-import com.typesafe.sbt.SbtScalariform
-import com.typesafe.sbt.SbtScalariform.ScalariformKeys
 import net.virtualvoid.sbt.graph.{Plugin => Dep}
 import scala._
 
@@ -59,6 +57,7 @@ object Version {
   val Guava = "11.0.2"
   val FakeHBase = "0.1.2"
   val Scopt = "3.1.0"
+  val Avro = "1.7.5"
 
   val slf4jDependencies: Seq[ModuleID] = Seq(
     "org.slf4j" % "jcl-over-slf4j" % Version.Slf4j,
@@ -149,7 +148,8 @@ object PopeyeBuild extends Build {
       "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
       "org.mockito" % "mockito-core" % Version.Mockito % "test",
       "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test",
-      "org.kiji.testing" %% "fake-hbase" % Version.FakeHBase % "test"
+      "org.kiji.testing" %% "fake-hbase" % Version.FakeHBase % "test",
+      "org.apache.avro" % "avro" % Version.Avro % "test"
     ).excluding(Version.slf4jExclusions :_*)
      .excluding(Version.commonExclusions :_*)
   )
