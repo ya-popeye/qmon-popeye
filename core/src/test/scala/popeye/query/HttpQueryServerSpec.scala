@@ -21,7 +21,8 @@ class HttpQueryServerSpec extends AkkaTestKitSpec("http-query") {
 
   type Points = Seq[(Int, String)]
 
-  implicit val timeout = Timeout(5)
+  implicit val timeout = Timeout(5 seconds)
+
   behavior of "HttpQueryServer"
 
   it should "return points in one chunk" in {
@@ -89,7 +90,7 @@ class HttpQueryServerSpec extends AkkaTestKitSpec("http-query") {
 
   def createPointsStorage(chunks: Seq[Points]) = new PointsStorage {
     def getPoints(metric: String, timeRange: (Int, Int), attributes: List[(String, String)]) =
-      Future {toPointsStream(chunks)}
+      Future.successful(toPointsStream(chunks))
   }
 
   def toPointsStream(chunks: Seq[Points]) = {
@@ -103,7 +104,6 @@ class HttpQueryServerSpec extends AkkaTestKitSpec("http-query") {
   def createUri(metricName: String, timeRange: (Int, Int), attributes: List[(String, String)]) = {
     val (start, end) = timeRange
     val attrsString = attributes.map {case (name, value) => f"$name->$value"}.mkString(";")
-    println(f"/points/$metricName?start=$start&end=$end&attrs=$attrsString")
     Uri(f"/points/$metricName?start=$start&end=$end&attrs=$attrsString")
   }
 }
