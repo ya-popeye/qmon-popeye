@@ -1,3 +1,9 @@
+qmon-popeye (0.8.1) precise; urgency=low
+
+  * simple http interface for points retrieval
+
+ -- Vasliy Kolpakov <quasi@quasi-nb-ub>  Wed, 27 Nov 2013 19:06:10 +0400
+
 qmon-popeye (0.8.0) unstable; urgency=low
 
   * huge refactoring, single 'bus' like architecture implemented
