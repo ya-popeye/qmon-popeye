@@ -32,9 +32,6 @@ class HttpQueryServer(storage: PointsStorage) extends Actor with Logging {
   def receive: Actor.Receive = {
     case x: Http.Connected => sender ! Http.Register(self)
 
-    case HttpRequest(GET, Uri.Path("/"), _, _, _) =>
-      sender ! index
-
     case request@HttpRequest(GET, Uri.Path(pointsPathPattern(metricName)), _, _, _) =>
       val savedClient = sender
       val query = request.uri.query
@@ -88,28 +85,6 @@ class HttpQueryServer(storage: PointsStorage) extends Actor with Logging {
     }
   }
 
-  val index = HttpResponse(
-    entity = HttpEntity(`text/html`,
-      <html>
-        <body>
-          <h1>Say hello to
-            <i>Popeye</i>
-            !</h1>
-          <ul>
-            <li>
-              <a href="/points">Read points</a>
-            </li>
-            <li>
-              <a href="/write">Write points</a>
-            </li>
-            <li>
-              <a href="/q">Query</a>
-            </li>
-          </ul>
-        </body>
-      </html>.toString()
-    )
-  )
 }
 
 object HttpQueryServer {
