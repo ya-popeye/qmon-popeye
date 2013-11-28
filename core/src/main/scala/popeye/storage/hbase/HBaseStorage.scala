@@ -205,9 +205,11 @@ class HBaseStorage(tableName: String,
       }
     }
     val (startTime, endTime) = timeRange
-    pointsLists(0) = pointsLists(0).filter(point => point.timestamp >= startTime)
-    val lastIndex = pointsLists.length - 1
-    pointsLists(lastIndex) = pointsLists(lastIndex).filter(point => point.timestamp < endTime)
+    if (pointsLists.nonEmpty) {
+      pointsLists(0) = pointsLists(0).filter(point => point.timestamp >= startTime)
+      val lastIndex = pointsLists.length - 1
+      pointsLists(lastIndex) = pointsLists(lastIndex).filter(point => point.timestamp < endTime)
+    }
     pointsLists.toSeq.flatten
   }
 
