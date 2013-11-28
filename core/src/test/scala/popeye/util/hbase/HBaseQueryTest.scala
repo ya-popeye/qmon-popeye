@@ -13,8 +13,8 @@ object HBaseQueryTest {
     val hTablePool = new HTablePool(hbaseConfiguration, 1)
     val tsdbTable = hTablePool.getTable("tsdb")
     val scan = new Scan()
-    val scanner = tsdbTable.getScanner(scan)
-    val results = scanner.next(10)
+    val scanner = try {tsdbTable.getScanner(scan)} finally tsdbTable.close()
+    val results = try {scanner.next(10)} finally scanner.close()
     for (result <- results) {
       println(result.getRow.toList)
     }

@@ -101,12 +101,14 @@ case class HBaseStorageMetrics(name: String, override val metricRegistry: Metric
   val delayedPointsMeter = metrics.meter(s"$name.storage.delayed.points")
 }
 
-case class PointsStream(points: Seq[(Int, String)], next: Option[() => Future[PointsStream]])
+case class PointsStream(points: Seq[Point], next: Option[() => Future[PointsStream]])
+
+case class Point(timestamp: Int, value: Number)
 
 object PointsStream {
-  def apply(points: Seq[(Int, String)]): PointsStream = PointsStream(points, None)
+  def apply(points: Seq[Point]): PointsStream = PointsStream(points, None)
 
-  def apply(points: Seq[(Int, String)], nextStream: => Future[PointsStream]): PointsStream =
+  def apply(points: Seq[Point], nextStream: => Future[PointsStream]): PointsStream =
     PointsStream(points, Some(() => nextStream))
 }
 
@@ -173,7 +175,9 @@ class HBaseStorage(tableName: String,
         comparator.setCharset(HBaseUtils.CHARSET)
         scan.setFilter(new RowFilter(CompareFilter.CompareOp.EQUAL, comparator))
         val scanner = table.getScanner(scan)
-        val results = scanner.next(chunkSize)
+        val results =
+          try {scanner.next(chunkSize)}
+          finally {scanner.close()}
         val nextQuery =
           if (results.length < chunkSize) {
             None
@@ -185,7 +189,7 @@ class HBaseStorage(tableName: String,
     }
   }
 
-  private def parseTimeValuePoints(results: Array[Result], timeRange: (Int, Int)): Seq[(Int, String)] = {
+  private def parseTimeValuePoints(results: Array[Result], timeRange: (Int, Int)): Seq[Point] = {
     val baseTimeBuffer = new Array[Byte](HBaseStorage.TIMESTAMP_BYTES)
 
     val pointsLists = for (result <- results) yield {
@@ -197,26 +201,26 @@ class HBaseStorage(tableName: String,
       columns.map {
         case (qualifierBytes, valueBytes) =>
           val (delta, value) = parseValue(qualifierBytes, valueBytes)
-          (baseTime + delta, value)
+          Point(baseTime + delta, value)
       }
     }
     val (startTime, endTime) = timeRange
-    pointsLists(0) = pointsLists(0).filter {case (time, _) => time >= startTime}
+    pointsLists(0) = pointsLists(0).filter(point => point.timestamp >= startTime)
     val lastIndex = pointsLists.length - 1
-    pointsLists(lastIndex) = pointsLists(lastIndex).filter {case (time, _) => time < endTime}
+    pointsLists(lastIndex) = pointsLists(lastIndex).filter(point => point.timestamp < endTime)
     pointsLists.toSeq.flatten
   }
 
-  private def parseValue(qualifierBytes: Array[Byte], valueBytes: Array[Byte]): (Short, String) = {
+  private def parseValue(qualifierBytes: Array[Byte], valueBytes: Array[Byte]): (Short, Number) = {
     val qualifier = Bytes.toShort(qualifierBytes)
     val deltaShort = delta(qualifier)
     val floatFlag: Int = HBaseStorage.FLAG_FLOAT | 0x3.toShort
     val isFloatValue = (qualifier & floatFlag) == floatFlag
     val isIntValue = (qualifier & 0xf) == 0
     if (isFloatValue) {
-      (deltaShort, Bytes.toFloat(valueBytes).toString)
+      (deltaShort, Bytes.toFloat(valueBytes))
     } else if (isIntValue) {
-      (deltaShort, Bytes.toLong(valueBytes).toString)
+      (deltaShort, Bytes.toLong(valueBytes))
     } else {
       throw new IllegalArgumentException("Neither int nor float values set on point")
     }
