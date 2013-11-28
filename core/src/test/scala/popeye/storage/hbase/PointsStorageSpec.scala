@@ -17,7 +17,7 @@ import scala.concurrent.duration._
 import popeye.proto.PackedPoints
 import com.codahale.metrics.MetricRegistry
 import nl.grons.metrics.scala.Meter
-import popeye.proto.Message.{Attribute, Point}
+import popeye.proto.Message
 
 /**
  * @author Andrey Stepachev
@@ -100,15 +100,14 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
   }
 
   it should "perform time range queries" in {
-    println(hTable.getConfiguration().getStrings("io.serializations").toList)
     val state = new State
     val points = (0 to 6).map {
       i =>
-        Point.newBuilder()
+        Message.Point.newBuilder()
           .setTimestamp(i * 1200)
           .setIntValue(i)
           .setMetric("my.metric1")
-          .addAttributes(Attribute.newBuilder()
+          .addAttributes(Message.Attribute.newBuilder()
           .setName("host")
           .setValue("localhost")
         ).build()
@@ -116,13 +115,13 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
     state.storage.writePoints(PackedPoints(points))
     val future = state.storage.getPoints("my.metric1", (1200, 4801), List("host" -> "localhost"))
     val filteredPoints = pointsStreamToList(future)
-    filteredPoints should contain((1200, "1"))
-    filteredPoints should (not contain((0, "0")))
-    filteredPoints should (not contain((6000, "5")))
+    filteredPoints should contain(Point(1200, 1))
+    filteredPoints should (not contain Point(0, 0))
+    filteredPoints should (not contain Point(6000, 5))
   }
 
   def pointsStreamToList(streamFuture: Future[PointsStream]) = {
-    def streamToFutureList(stream: PointsStream): Future[Seq[(Int, String)]] = {
+    def streamToFutureList(stream: PointsStream): Future[Seq[Point]] = {
       val nextListFuture = stream.next match {
         case Some(nextFuture) => nextFuture().flatMap(streamToFutureList)
         case None => Future.successful(Nil)

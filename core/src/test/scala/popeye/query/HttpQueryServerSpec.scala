@@ -9,7 +9,7 @@ import akka.testkit.TestActorRef
 import akka.actor.{ActorRef, Actor, Props}
 import akka.pattern.ask
 import spray.http.HttpRequest
-import popeye.storage.hbase.PointsStream
+import popeye.storage.hbase.{Point, PointsStream}
 import spray.http.HttpResponse
 import akka.util.Timeout
 import scala.concurrent.duration._
@@ -19,23 +19,18 @@ import java.nio.charset.Charset
 
 class HttpQueryServerSpec extends AkkaTestKitSpec("http-query") {
 
-  type Points = Seq[(Int, String)]
-
   implicit val timeout = Timeout(5 seconds)
 
   behavior of "HttpQueryServer"
 
   it should "return points in one chunk" in {
-    val points = Seq((123, "321"), (0, "0"))
+    val points = Seq(Point(0, 111), Point(1, 222))
     val storage = createPointsStorage(Seq(points))
     val serverRef = TestActorRef(Props.apply(new HttpQueryServer(storage)))
     val uri = createUri("dummy", (0, 0), List())
     val future = (serverRef ? HttpRequest(GET, uri)).map {
       case response: HttpResponse =>
-        val responseString = response.entity.asString
-        println(responseString)
-        responseString must include("321")
-        responseString must include("0")
+        response.entity.asString must (include("111") and include("222"))
 
       case x => fail(f"wrong response type: $x")
     }
@@ -43,8 +38,8 @@ class HttpQueryServerSpec extends AkkaTestKitSpec("http-query") {
   }
 
   it should "return points in multiple chunks" in {
-    val chunks = Seq((123, "first"), (0, "middle"), (2, "last")).grouped(1).toSeq
-    val chunkMatchers = Seq(include("first"), include("middle"), include("last")).toIndexedSeq
+    val chunks = Seq(Point(0, 111), Point(1, 222), Point(2, 333)).grouped(1).toSeq
+    val chunkMatchers = Seq(include("111"), include("222"), include("333")).toIndexedSeq
 
     val storage = createPointsStorage(chunks)
     val serverRef = TestActorRef(Props.apply(new HttpQueryServer(storage)))
@@ -87,6 +82,8 @@ class HttpQueryServerSpec extends AkkaTestKitSpec("http-query") {
       }
     }
   }
+
+  type Points = Seq[Point]
 
   def createPointsStorage(chunks: Seq[Points]) = new PointsStorage {
     def getPoints(metric: String, timeRange: (Int, Int), attributes: List[(String, String)]) =
