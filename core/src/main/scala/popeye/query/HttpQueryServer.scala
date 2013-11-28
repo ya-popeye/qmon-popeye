@@ -58,7 +58,7 @@ class HttpQueryServer(storage: PointsStorage) extends Actor with Logging {
       sender ! f"invalid path: $path"
 
     case SendNextPoints(client: ActorRef, pointsStream: PointsStream) =>
-      client ! MessageChunk(pointsStream.points.mkString("\n"))
+      client ! MessageChunk(pointsStream.points.mkString("\n", "\n", ""))
       if (pointsStream.next.isDefined) {
         val future = pointsStream.next.get()
         processNextPoints(client, future)
