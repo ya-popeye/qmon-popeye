@@ -39,6 +39,7 @@ class PipelineCommand extends PopeyeCommand {
 
   def run(actorSystem: ActorSystem, metrics: MetricRegistry, config: Config, mainConfig: MainConfig): Unit = {
 
+    val ectx = ExecutionContext.global
     val pc = config.getConfig("popeye.pipeline")
     val storageConfig = config.getConfig("popeye.storages")
     val idGenerator = new IdGenerator(config.getInt("generator.id"), config.getInt("generator.datacenter"))
@@ -46,7 +47,7 @@ class PipelineCommand extends PopeyeCommand {
       case "kafka" =>
         new KafkaPipelineChannel(
           ConfigUtil.mergeDefaults(pc, "kafka", "channel.kafka"),
-          actorSystem, metrics, idGenerator)
+          actorSystem, ectx, metrics, idGenerator)
       case "memory" =>
         new MemoryPipelineChannel(
           ConfigUtil.mergeDefaults(pc, "memory", "channel.memory"),
@@ -56,7 +57,6 @@ class PipelineCommand extends PopeyeCommand {
 
     }
 
-    val ectx = ExecutionContext.global
 
     ConfigUtil.foreachKeyValue(pc, "sinks") { (typeName, confName) =>
       val sinkConfig = ConfigUtil.mergeDefaults(pc, typeName, confName)

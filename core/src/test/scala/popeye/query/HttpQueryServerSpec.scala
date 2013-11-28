@@ -13,11 +13,11 @@ import popeye.storage.hbase.{Point, PointsStream}
 import spray.http.HttpResponse
 import akka.util.Timeout
 import scala.concurrent.duration._
-import scala.concurrent.ExecutionContext.Implicits.global
 import org.scalatest.matchers.Matcher
 import java.nio.charset.Charset
 
 class HttpQueryServerSpec extends AkkaTestKitSpec("http-query") {
+  implicit val executionContext = system.dispatcher
 
   implicit val timeout = Timeout(5 seconds)
 
@@ -26,7 +26,7 @@ class HttpQueryServerSpec extends AkkaTestKitSpec("http-query") {
   it should "return points in one chunk" in {
     val points = Seq(Point(0, 111), Point(1, 222))
     val storage = createPointsStorage(Seq(points))
-    val serverRef = TestActorRef(Props.apply(new HttpQueryServer(storage)))
+    val serverRef = TestActorRef(Props.apply(new HttpQueryServer(storage, executionContext)))
     val uri = createUri("dummy", (0, 0), List())
     val future = (serverRef ? HttpRequest(GET, uri)).map {
       case response: HttpResponse =>
@@ -42,7 +42,7 @@ class HttpQueryServerSpec extends AkkaTestKitSpec("http-query") {
     val chunkMatchers = Seq(include("111"), include("222"), include("333")).toIndexedSeq
 
     val storage = createPointsStorage(chunks)
-    val serverRef = TestActorRef(Props.apply(new HttpQueryServer(storage)))
+    val serverRef = TestActorRef(Props.apply(new HttpQueryServer(storage, executionContext)))
     val uri = createUri("dummy", (0, 0), List())
     val requestMessage = HttpRequest(GET, uri)
     val clientRef = TestActorRef(Props.apply(new ChunkedResponseTester(chunkMatchers, serverRef, requestMessage)))

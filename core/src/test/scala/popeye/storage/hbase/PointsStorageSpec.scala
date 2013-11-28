@@ -24,7 +24,7 @@ import popeye.proto.Message
  */
 class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMatchers with MustMatchers with MockitoStubs {
 
-  import scala.concurrent.ExecutionContext.Implicits.global
+  implicit val executionContext = system.dispatcher
 
   implicit val metricRegistry = new MetricRegistry()
   implicit val pointsStorageMetrics = new HBaseStorageMetrics("hbase", metricRegistry)
@@ -128,7 +128,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
       }
       nextListFuture.map {nextList => stream.points ++ nextList}
     }
-    Await.result(streamFuture.flatMap(streamToFutureList), 5 seconds)
+    Await.result(streamFuture.flatMap(streamToFutureList), 5000000 seconds)
   }
 
 

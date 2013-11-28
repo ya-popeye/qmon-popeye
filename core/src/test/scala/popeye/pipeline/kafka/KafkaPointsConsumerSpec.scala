@@ -1,16 +1,16 @@
 package popeye.pipeline.kafka
 
-import akka.actor.{Actor, Props}
+import akka.actor.Props
 import akka.testkit.TestActorRef
 import com.codahale.metrics.MetricRegistry
-import com.typesafe.config.{ConfigValueFactory, ConfigFactory, Config}
+import com.typesafe.config.{ConfigFactory, Config}
 import java.util.Random
 import java.util.concurrent.{TimeUnit, CountDownLatch}
 import org.scalatest.matchers.ShouldMatchers
 import org.scalatest.mock.MockitoSugar
 import popeye.pipeline.{PointsSource, PointsSink, AtomicList}
 import popeye.test.{PopeyeTestUtils, MockitoStubs}
-import popeye.proto.{PackedPoints}
+import popeye.proto.PackedPoints
 import popeye.pipeline.test.AkkaTestKitSpec
 import scala.concurrent.Future
 
@@ -45,7 +45,7 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
       if (me.sinkedBatches.size == 1 && me.droppedBatches.size == 1) latch.countDown()
     })
     val actor: TestActorRef[KafkaPointsConsumer] = TestActorRef(
-      Props.apply(new KafkaPointsConsumer(dconf, metrics, consumer, listener.sinkPipe, listener.dropPipe)))
+      Props.apply(new KafkaPointsConsumer(dconf, metrics, consumer, listener.sinkPipe, listener.dropPipe, ectx)))
     latch.await(3000, TimeUnit.MILLISECONDS) should be (true)
   }
 

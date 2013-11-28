@@ -18,7 +18,6 @@ import java.util.concurrent.TimeUnit
 import popeye.util.hbase.{HBaseUtils, HBaseConfigured}
 import popeye.pipeline.{PipelineSinkFactory, PointsSink}
 import java.nio.charset.Charset
-import scala.concurrent.ExecutionContext.Implicits.global
 import org.apache.hadoop.hbase.filter.{RegexStringComparator, CompareFilter, RowFilter}
 
 object HBaseStorage {
@@ -126,14 +125,16 @@ class HBaseStorage(tableName: String,
 
   val readChunkSize: Int = 10
 
-  def getPoints(metric: String, timeRange: (Int, Int), attributes: List[(String, String)]): Future[PointsStream] = {
+  def getPoints(metric: String,
+                timeRange: (Int, Int),
+                attributes: List[(String, String)])(implicit eCtx: ExecutionContext): Future[PointsStream] = {
     val attrFutures = attributes.sortBy(_._1).map {
       case (name, value) =>
         val nameIdFuture = attributeNames.resolveIdByName(name, create = false)(resolveTimeout)
         val valueIdFuture = attributeValues.resolveIdByName(value, create = false)(resolveTimeout)
         nameIdFuture.map(_.bytes) zip valueIdFuture.map(_.bytes)
     }
-    def toPointsStream(rowsQuery: PointRowsQuery): PointsStream = {
+    def toPointsStream(rowsQuery: PointRowsQuery)(implicit eCtx: ExecutionContext): PointsStream = {
       val (results, nextResults) = rowsQuery.getRows()
       val pointsSeq = parseTimeValuePoints(results, timeRange)
       val nextStream = nextResults.map {

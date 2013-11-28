@@ -12,9 +12,8 @@ import spray.can.Http
 import com.typesafe.config.Config
 import akka.util.Timeout
 import scala.concurrent.duration._
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 import popeye.storage.hbase.HBaseStorage
-import scala.concurrent.ExecutionContext.Implicits.global
 import spray.http.HttpRequest
 import popeye.storage.hbase.PointsStream
 import spray.http.ChunkedResponseStart
@@ -24,7 +23,8 @@ import popeye.query.HttpQueryServer.PointsStorage
 import scala.util.Try
 
 
-class HttpQueryServer(storage: PointsStorage) extends Actor with Logging {
+class HttpQueryServer(storage: PointsStorage, executionContext: ExecutionContext) extends Actor with Logging {
+  implicit val eCtx = executionContext
   val pointsPathPattern = """/points/([^/]+)""".r
 
   case class SendNextPoints(client: ActorRef, points: PointsStream)
@@ -93,20 +93,20 @@ object HttpQueryServer {
     def getPoints(metric: String, timeRange: (Int, Int), attributes: List[(String, String)]): Future[PointsStream]
   }
 
-  def runServer(config: Config, storage: HBaseStorage)(implicit system: ActorSystem) = {
+  def runServer(config: Config, storage: HBaseStorage, system: ActorSystem, executionContext: ExecutionContext) = {
     implicit val timeout: Timeout = 5 seconds
     val pointsStorage = new PointsStorage {
       def getPoints(metric: String, timeRange: (Int, Int), attributes: List[(String, String)]) =
-        storage.getPoints(metric, timeRange, attributes)
+        storage.getPoints(metric, timeRange, attributes)(executionContext)
     }
 
     val handler = system.actorOf(
-      Props.apply(new HttpQueryServer(pointsStorage)),
+      Props.apply(new HttpQueryServer(pointsStorage, executionContext)),
       name = "server-http")
 
     val hostport = config.getString("server.http.listen").split(":")
     val addr = new InetSocketAddress(hostport(0), hostport(1).toInt)
-    IO(Http) ? Http.Bind(
+    IO(Http)(system) ? Http.Bind(
       listener = handler,
       endpoint = addr,
       backlog = config.getInt("server.http.backlog"),

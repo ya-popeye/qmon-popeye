@@ -36,6 +36,6 @@ class QueryCommand extends PopeyeCommand with Logging {
       )(ectx))
     hbaseStorage.storage.ping()
 
-    HttpQueryServer.runServer(serverConfig, hbaseStorage.storage)(actorSystem)
+    HttpQueryServer.runServer(serverConfig, hbaseStorage.storage, actorSystem, ectx)
   }
 }
