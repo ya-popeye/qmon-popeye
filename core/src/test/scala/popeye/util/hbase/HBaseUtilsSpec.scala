@@ -7,75 +7,121 @@ import java.util.regex.Pattern
 import scala.util.Random
 import java.nio.CharBuffer
 import scala.Array
+import popeye.util.hbase.HBaseUtils.{Multiple, Single}
 
 class HBaseUtilsSpec extends FlatSpec with ShouldMatchers with MustMatchers with MockitoStubs {
 
   behavior of "HBaseUtils"
 
   it should "handle a simple case" in {
-    val orderedAttributes: Seq[(Array[Byte], Array[Byte])] = Seq((Array[Byte](0, 0, 1), Array[Byte](0, 0, 1)))
-    val regexp = HBaseUtils.createRowRegexp(offset = 7, attrLength = 6, orderedAttributes)
+    val attributes = Seq((array(0, 0, 1), Single(array(0, 0, 1))))
+    val regexp = HBaseUtils.createRowRegexp(offset = 7, attrNameLength = 3, attrValueLength = 3, attributes)
     val pattern = Pattern.compile(regexp)
 
-    val validRow = bytesToString(Array[Byte](0, 0, 2, 76, -45, -71, -128, 0, 0, 1, 0, 0, 1))
+    val validRow = bytesToString(array(0, 0, 2, 76, -45, -71, -128, 0, 0, 1, 0, 0, 1))
     pattern.matcher(validRow).matches() should be(true)
 
-    val invalidRow = bytesToString(Array[Byte](0, 0, 2, 76, -45, -71, -128, 0, 0, 1, 0, 0, 3))
+    val invalidRow = bytesToString(array(0, 0, 2, 76, -45, -71, -128, 0, 0, 1, 0, 0, 3))
     pattern.matcher(invalidRow).matches() should be(false)
   }
 
-  it should "check attribute length" in {
-    val orderedAttributes: Seq[(Array[Byte], Array[Byte])] = Seq((Array[Byte](0), Array[Byte](0)))
+  it should "check attribute name length" in {
+    val attributes = Seq((array(0), Single(array(0))))
     val exception = intercept[IllegalArgumentException] {
-      HBaseUtils.createRowRegexp(offset = 7, attrLength = 3, orderedAttributes)
+      HBaseUtils.createRowRegexp(offset = 7, attrNameLength = 3, attrValueLength = 1, attributes)
     }
-    exception.getMessage should (include("3") and include("2"))
+    exception.getMessage should (include("3") and include("1") and include("name"))
   }
 
-  it should "check that attribute length is greater than zero" in {
-    val wrongAttrLength = 0
+  it should "check attribute value length" in {
+    val attributes = Seq((array(0), Single(array(0))))
     val exception = intercept[IllegalArgumentException] {
-      HBaseUtils.createRowRegexp(offset = 7, wrongAttrLength, orderedAttributes = Seq((Array[Byte](0), Array[Byte](0))))
+      HBaseUtils.createRowRegexp(offset = 7, attrNameLength = 1, attrValueLength = 3, attributes)
     }
-    exception.getMessage should include(wrongAttrLength.toString)
+    exception.getMessage should (include("3") and include("1") and include("value"))
+  }
+
+  it should "check that attribute name and value length is greater than zero" in {
+    intercept[IllegalArgumentException] {
+      HBaseUtils.createRowRegexp(offset = 7, attrNameLength = 0, attrValueLength = 1, attributes = Seq((array(0), Single(array(0)))))
+    }.getMessage should (include("0") and include("name"))
+    intercept[IllegalArgumentException] {
+      HBaseUtils.createRowRegexp(offset = 7, attrNameLength = 1, attrValueLength = 0, attributes = Seq((array(0), Single(array(0)))))
+    }.getMessage should (include("0") and include("value"))
   }
 
   it should "check that attribute list is not empty" in {
     val exception = intercept[IllegalArgumentException] {
-      HBaseUtils.createRowRegexp(offset = 7, attrLength = 2, orderedAttributes = Seq())
+      HBaseUtils.createRowRegexp(offset = 7, attrNameLength = 1, attrValueLength = 2, attributes = Seq())
     }
     exception.getMessage should include("empty")
   }
 
   it should "escape regex escaping sequences symbols" in {
-    val badString = "aaa\\Ebbb"
-    val badAttr = (stringToBytes(badString), stringToBytes(badString))
-    val badAttrLength = stringToBytes(badString).length * 2
-    val regexp = HBaseUtils.createRowRegexp(offset = 0, badAttrLength, Seq(badAttr))
-    val row = createRow(prefix = Array[Byte](), List(badAttr))
-    val rowString = bytesToString(row)
-    rowString should fullyMatch regex (regexp)
+    val badStringBytes = stringToBytes("aaa\\Ebbb")
+    val attrName = badStringBytes
+    val attrValue = badStringBytes
+    val rowRegexp = HBaseUtils.createRowRegexp(offset = 0, attrName.length, attrValue.length, Seq((attrName, Single(attrValue))))
+    val rowString = createRowString(attrs = List((attrName, attrValue)))
+    rowString should fullyMatch regex rowRegexp
+  }
+
+  it should "escape regex escaping sequences symbols (non-trivial case)" in {
+    val attrName = stringToBytes("aaa\\")
+    val attrValue = stringToBytes("Eaaa")
+    val regexp = HBaseUtils.createRowRegexp(offset = 0, attrName.length, attrValue.length, Seq((attrName, Single(attrValue))))
+    val rowString = createRowString(attrs = List((attrName, attrValue)))
+    rowString should fullyMatch regex regexp
   }
 
   it should "handle newline characters" in {
-    val attr = (stringToBytes("attrName"), Array[Byte]())
-    val attrLength = attr._1.length
-    val regexp = HBaseUtils.createRowRegexp(offset = 1, attrLength, Seq(attr))
-    val row = createRow(prefix = stringToBytes("\n"), List(attr))
+    val attrName = stringToBytes("attrName")
+    val attrValue = stringToBytes("attrValue")
+    val rowRegexp = HBaseUtils.createRowRegexp(offset = 1, attrName.length, attrValue.length, Seq((attrName, Single(attrValue))))
+    val row = createRow(prefix = stringToBytes("\n"), List((attrName, attrValue)))
     val rowString = bytesToString(row)
-    rowString should fullyMatch regex (regexp)
+    rowString should fullyMatch regex rowRegexp
+  }
+
+  it should "create regexp for multiple value filtering" in {
+    val attrName = stringToBytes("attrName")
+    val attrValues = List(array(1), array(2))
+    val rowRegexp = HBaseUtils.createRowRegexp(
+      offset = 0,
+      attrName.length,
+      attrValueLength = 1,
+      Seq((attrName, Multiple(attrValues)))
+    )
+
+    createRowString(attrs = List((attrName, array(1)))) should fullyMatch regex rowRegexp
+    createRowString(attrs = List((attrName, array(2)))) should fullyMatch regex rowRegexp
+    createRowString(attrs = List((attrName, array(3)))) should not(fullyMatch regex rowRegexp)
+  }
+
+  it should "create regexp for any value filtering" in {
+    val attrName = stringToBytes("attrName")
+    val rowRegexp = HBaseUtils.createRowRegexp(
+      offset = 0,
+      attrName.length,
+      attrValueLength = 1,
+      Seq((attrName, HBaseUtils.All))
+    )
+
+    createRowString(attrs = List((attrName, array(1)))) should fullyMatch regex rowRegexp
+    createRowString(attrs = List((attrName, array(100)))) should fullyMatch regex rowRegexp
+    createRowString(attrs = List((stringToBytes("ATTRNAME"), array(1)))) should not(fullyMatch regex rowRegexp)
   }
 
   it should "pass randomized test" in {
-    implicit val random = new Random(0)
+    implicit val random = deterministicRandom
     for (_ <- 0 to 100) {
       val offset = random.nextInt(10)
       val attrNameLength = random.nextInt(5) + 1
       val attrValueLength = random.nextInt(5) + 1
-      val attrLength = attrNameLength + attrValueLength
       val searchAttrs = randomAttributes(attrNameLength, attrValueLength)
-      val searchAttrsSet = searchAttrs.map {case (n, v) => (n.toList, v.toList)}.toSet
-      val regexp = HBaseUtils.createRowRegexp(offset, attrLength, searchAttrs)
+      val attrsForRegexp = searchAttrs.map { case (n, v) => (n, Single(v))}
+      val searchAttrsSet = searchAttrs.map { case (n, v) => (n.toList, v.toList)}.toSet
+      val rowRegexp = HBaseUtils.createRowRegexp(offset, attrNameLength, attrValueLength, attrsForRegexp)
       def createJunkAttrs() = randomAttributes(attrNameLength, attrValueLength).filter {
         case (n, v) => !searchAttrsSet((n.toList, v.toList))
       }
@@ -83,18 +129,24 @@ class HBaseUtilsSpec extends FlatSpec with ShouldMatchers with MustMatchers with
         val junkAttrs = createJunkAttrs()
         val allAttrs = randomListMerge(searchAttrs, junkAttrs)
         val rowString = bytesToString(createRow(offset, allAttrs))
-        if (!Pattern.matches(regexp, rowString)) {
-          println(HBaseUtils.CHARSET.encode(regexp).array().toList)
+        if (!Pattern.matches(rowRegexp, rowString)) {
+          println(HBaseUtils.CHARSET.encode(rowRegexp).array().toList)
           println(HBaseUtils.CHARSET.encode(rowString).array().toList)
         }
-        rowString should fullyMatch regex (regexp)
+        rowString should fullyMatch regex rowRegexp
 
         val anotherJunkAttrs = createJunkAttrs()
         val anotherAllAattrs = randomListMerge(anotherJunkAttrs, junkAttrs)
         val anotherRowString = bytesToString(createRow(offset, anotherAllAattrs))
-        anotherRowString should not fullyMatch regex(regexp)
+        anotherRowString should not (fullyMatch regex rowRegexp)
       }
     }
+  }
+
+  def array(bytes: Byte*) = Array[Byte](bytes: _*)
+
+  def deterministicRandom: Random = {
+    new Random(0)
   }
 
   def randomBytes(nBytes: Int)(implicit random: Random): List[Byte] = {
@@ -129,6 +181,9 @@ class HBaseUtilsSpec extends FlatSpec with ShouldMatchers with MustMatchers with
 
   def createRow(offset: Int, attrs: List[(Array[Byte], Array[Byte])])(implicit random: Random): Array[Byte] =
     createRow(randomBytes(offset).toArray, attrs)
+
+  def createRowString(prefix: Array[Byte] = Array.empty[Byte], attrs: List[(Array[Byte], Array[Byte])]) =
+    bytesToString(createRow(prefix, attrs))
 
   private def bytesToString(array: Array[Byte]) = new String(array, HBaseUtils.CHARSET)
 

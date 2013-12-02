@@ -159,7 +159,12 @@ class HBaseStorage(tableName: String,
     val baseStartTime = startTime - (startTime % 3600)
     val startRow = metricId ++ Bytes.toBytes(baseStartTime)
     val stopRow = metricId ++ Bytes.toBytes(endTime)
-    val regex = HBaseUtils.createRowRegexp(7, attributeNames.width + attributeValues.width, attributes)
+    val regex = HBaseUtils.createRowRegexp(
+      offset = 7,
+      attributeNames.width,
+      attributeValues.width,
+      attributes.map(p => (p._1, HBaseUtils.Single(p._2)))
+    )
     new PointRowsQuery(regex, startRow, stopRow, chunkSize)
   }
 
