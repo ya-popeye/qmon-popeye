@@ -11,9 +11,9 @@ object PointsLoaderUtils {
 
   object ValueIdFilterCondition {
 
-    case class Single(id: Array[Byte]) extends ValueIdFilterCondition
+    case class Single(id: BytesKey) extends ValueIdFilterCondition
 
-    case class Multiple(ids: Seq[Array[Byte]]) extends ValueIdFilterCondition {
+    case class Multiple(ids: Seq[BytesKey]) extends ValueIdFilterCondition {
       require(ids.size > 1, "must be more than one value id")
     }
 
@@ -36,10 +36,11 @@ object PointsLoaderUtils {
   def createRowRegexp(offset: Int,
                       attrNameLength: Int,
                       attrValueLength: Int,
-                      attributes: Seq[((Array[Byte], ValueIdFilterCondition))]): String = {
+                      attributes: Map[BytesKey, ValueIdFilterCondition]): String = {
     require(attrNameLength > 0, f"attribute name length must be greater than 0, not $attrNameLength")
     require(attrValueLength > 0, f"attribute value length must be greater than 0, not $attrValueLength")
-    require(attributes.nonEmpty, "attribute list is empty")
+    require(attributes.nonEmpty, "attribute map is empty")
+    val sortedAttributes = attributes.toList.sortBy(_._1)
     def checkAttrNameLength(name: Array[Byte]) =
       require(name.length == attrNameLength,
         f"invalid attribute name length: expected $attrNameLength, actual ${name.length}")
@@ -47,11 +48,11 @@ object PointsLoaderUtils {
     def checkAttrValueLength(value: Array[Byte]) = require(value.length == attrValueLength,
       f"invalid attribute value length: expected $attrValueLength, actual ${value.length}")
 
-    val anyAttributeRegex = f"(?:.{${attrNameLength + attrValueLength}})*"
-    val prefix = f"(?s)^.{$offset}" + anyAttributeRegex
-    val suffix = anyAttributeRegex + "$"
+    val anyNumberOfAnyAttributesRegex = f"(?:.{${attrNameLength + attrValueLength}})*"
+    val prefix = f"(?s)^.{$offset}" + anyNumberOfAnyAttributesRegex
+    val suffix = anyNumberOfAnyAttributesRegex + "$"
     import ValueIdFilterCondition._
-    val infix = attributes.map {
+    val infix = sortedAttributes.map {
       case (attrNameId, valueCondition) =>
         checkAttrNameLength(attrNameId)
         valueCondition match {
@@ -70,7 +71,7 @@ object PointsLoaderUtils {
             val nameRegex = escapeRegexp(decodeBytes(attrNameId))
             nameRegex + f".{$attrValueLength}"
         }
-    }.mkString(anyAttributeRegex)
+    }.mkString(anyNumberOfAnyAttributesRegex)
     prefix + infix + suffix
   }
 

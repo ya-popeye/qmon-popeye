@@ -99,9 +99,9 @@ object HttpQueryServer {
       import popeye.storage.hbase.PointsLoaderUtils.ValueNameFilterCondition
 
       def getPoints(metric: String, timeRange: (Int, Int), attributes: List[(String, String)]) = {
-        val valueFilters: List[(String, ValueNameFilterCondition)] = attributes.map {
+        val valueFilters: Map[String, ValueNameFilterCondition] = attributes.map {
           case (name, value) => (name, ValueNameFilterCondition.Single(value))
-        }
+        }.toMap
         storage.getPoints(metric, timeRange, valueFilters)(executionContext)
       }
     }

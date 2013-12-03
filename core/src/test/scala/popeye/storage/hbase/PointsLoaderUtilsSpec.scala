@@ -14,19 +14,19 @@ class PointsLoaderUtilsSpec extends FlatSpec with ShouldMatchers with MustMatche
   behavior of "PointsLoaderUtils"
 
   it should "handle a simple case" in {
-    val attributes = Seq((array(0, 0, 1), Single(array(0, 0, 1))))
+    val attributes = Map(bytesKey(0, 0, 1) -> Single(bytesKey(0, 0, 1)))
     val regexp = PointsLoaderUtils.createRowRegexp(offset = 7, attrNameLength = 3, attrValueLength = 3, attributes)
     val pattern = Pattern.compile(regexp)
 
-    val validRow = bytesToString(array(0, 0, 2, 76, -45, -71, -128, 0, 0, 1, 0, 0, 1))
+    val validRow = bytesToString(bytesKey(0, 0, 2, 76, -45, -71, -128, 0, 0, 1, 0, 0, 1))
     pattern.matcher(validRow).matches() should be(true)
 
-    val invalidRow = bytesToString(array(0, 0, 2, 76, -45, -71, -128, 0, 0, 1, 0, 0, 3))
+    val invalidRow = bytesToString(bytesKey(0, 0, 2, 76, -45, -71, -128, 0, 0, 1, 0, 0, 3))
     pattern.matcher(invalidRow).matches() should be(false)
   }
 
   it should "check attribute name length" in {
-    val attributes = Seq((array(0), Single(array(0))))
+    val attributes = Map(bytesKey(0) -> Single(bytesKey(0)))
     val exception = intercept[IllegalArgumentException] {
       PointsLoaderUtils.createRowRegexp(offset = 7, attrNameLength = 3, attrValueLength = 1, attributes)
     }
@@ -34,7 +34,7 @@ class PointsLoaderUtilsSpec extends FlatSpec with ShouldMatchers with MustMatche
   }
 
   it should "check attribute value length" in {
-    val attributes = Seq((array(0), Single(array(0))))
+    val attributes = Map(bytesKey(0) -> Single(bytesKey(0)))
     val exception = intercept[IllegalArgumentException] {
       PointsLoaderUtils.createRowRegexp(offset = 7, attrNameLength = 1, attrValueLength = 3, attributes)
     }
@@ -43,16 +43,26 @@ class PointsLoaderUtilsSpec extends FlatSpec with ShouldMatchers with MustMatche
 
   it should "check that attribute name and value length is greater than zero" in {
     intercept[IllegalArgumentException] {
-      PointsLoaderUtils.createRowRegexp(offset = 7, attrNameLength = 0, attrValueLength = 1, attributes = Seq((array(0), Single(array(0)))))
+      PointsLoaderUtils.createRowRegexp(
+        offset = 7,
+        attrNameLength = 0,
+        attrValueLength = 1,
+        attributes = Map(bytesKey(0) -> Single(bytesKey(0)))
+      )
     }.getMessage should (include("0") and include("name"))
     intercept[IllegalArgumentException] {
-      PointsLoaderUtils.createRowRegexp(offset = 7, attrNameLength = 1, attrValueLength = 0, attributes = Seq((array(0), Single(array(0)))))
+      PointsLoaderUtils.createRowRegexp(
+        offset = 7,
+        attrNameLength = 1,
+        attrValueLength = 0,
+        attributes = Map(bytesKey(0) -> Single(bytesKey(0)))
+      )
     }.getMessage should (include("0") and include("value"))
   }
 
   it should "check that attribute list is not empty" in {
     val exception = intercept[IllegalArgumentException] {
-      PointsLoaderUtils.createRowRegexp(offset = 7, attrNameLength = 1, attrValueLength = 2, attributes = Seq())
+      PointsLoaderUtils.createRowRegexp(offset = 7, attrNameLength = 1, attrValueLength = 2, attributes = Map())
     }
     exception.getMessage should include("empty")
   }
@@ -61,7 +71,7 @@ class PointsLoaderUtilsSpec extends FlatSpec with ShouldMatchers with MustMatche
     val badStringBytes = stringToBytes("aaa\\Ebbb")
     val attrName = badStringBytes
     val attrValue = badStringBytes
-    val rowRegexp = PointsLoaderUtils.createRowRegexp(offset = 0, attrName.length, attrValue.length, Seq((attrName, Single(attrValue))))
+    val rowRegexp = PointsLoaderUtils.createRowRegexp(offset = 0, attrName.length, attrValue.length, Map(attrName -> Single(attrValue)))
     val rowString = createRowString(attrs = List((attrName, attrValue)))
     rowString should fullyMatch regex rowRegexp
   }
@@ -69,7 +79,7 @@ class PointsLoaderUtilsSpec extends FlatSpec with ShouldMatchers with MustMatche
   it should "escape regex escaping sequences symbols (non-trivial case)" in {
     val attrName = stringToBytes("aaa\\")
     val attrValue = stringToBytes("Eaaa")
-    val regexp = PointsLoaderUtils.createRowRegexp(offset = 0, attrName.length, attrValue.length, Seq((attrName, Single(attrValue))))
+    val regexp = PointsLoaderUtils.createRowRegexp(offset = 0, attrName.length, attrValue.length, Map(attrName -> Single(attrValue)))
     val rowString = createRowString(attrs = List((attrName, attrValue)))
     rowString should fullyMatch regex regexp
   }
@@ -77,7 +87,7 @@ class PointsLoaderUtilsSpec extends FlatSpec with ShouldMatchers with MustMatche
   it should "handle newline characters" in {
     val attrName = stringToBytes("attrName")
     val attrValue = stringToBytes("attrValue")
-    val rowRegexp = PointsLoaderUtils.createRowRegexp(offset = 1, attrName.length, attrValue.length, Seq((attrName, Single(attrValue))))
+    val rowRegexp = PointsLoaderUtils.createRowRegexp(offset = 1, attrName.length, attrValue.length, Map(attrName -> Single(attrValue)))
     val row = createRow(prefix = stringToBytes("\n"), List((attrName, attrValue)))
     val rowString = bytesToString(row)
     rowString should fullyMatch regex rowRegexp
@@ -85,17 +95,17 @@ class PointsLoaderUtilsSpec extends FlatSpec with ShouldMatchers with MustMatche
 
   it should "create regexp for multiple value filtering" in {
     val attrName = stringToBytes("attrName")
-    val attrValues = List(array(1), array(2))
+    val attrValues = List(bytesKey(1), bytesKey(2))
     val rowRegexp = PointsLoaderUtils.createRowRegexp(
       offset = 0,
       attrName.length,
       attrValueLength = 1,
-      Seq((attrName, Multiple(attrValues)))
+      Map((attrName, Multiple(attrValues)))
     )
 
-    createRowString(attrs = List((attrName, array(1)))) should fullyMatch regex rowRegexp
-    createRowString(attrs = List((attrName, array(2)))) should fullyMatch regex rowRegexp
-    createRowString(attrs = List((attrName, array(3)))) should not(fullyMatch regex rowRegexp)
+    createRowString(attrs = List((attrName, bytesKey(1)))) should fullyMatch regex rowRegexp
+    createRowString(attrs = List((attrName, bytesKey(2)))) should fullyMatch regex rowRegexp
+    createRowString(attrs = List((attrName, bytesKey(3)))) should not(fullyMatch regex rowRegexp)
   }
 
   it should "create regexp for any value filtering" in {
@@ -104,12 +114,12 @@ class PointsLoaderUtilsSpec extends FlatSpec with ShouldMatchers with MustMatche
       offset = 0,
       attrName.length,
       attrValueLength = 1,
-      Seq((attrName, All))
+      Map(attrName -> All)
     )
 
-    createRowString(attrs = List((attrName, array(1)))) should fullyMatch regex rowRegexp
-    createRowString(attrs = List((attrName, array(100)))) should fullyMatch regex rowRegexp
-    createRowString(attrs = List((stringToBytes("ATTRNAME"), array(1)))) should not(fullyMatch regex rowRegexp)
+    createRowString(attrs = List((attrName, bytesKey(1)))) should fullyMatch regex rowRegexp
+    createRowString(attrs = List((attrName, bytesKey(100)))) should fullyMatch regex rowRegexp
+    createRowString(attrs = List((stringToBytes("ATTRNAME"), bytesKey(1)))) should not(fullyMatch regex rowRegexp)
   }
 
   it should "pass randomized test" in {
@@ -119,31 +129,31 @@ class PointsLoaderUtilsSpec extends FlatSpec with ShouldMatchers with MustMatche
       val attrNameLength = random.nextInt(5) + 1
       val attrValueLength = random.nextInt(5) + 1
       val searchAttrs = randomAttributes(attrNameLength, attrValueLength)
-      val attrsForRegexp = searchAttrs.map { case (n, v) => (n, Single(v))}
-      val searchAttrsSet = searchAttrs.map { case (n, v) => (n.toList, v.toList)}.toSet
+      val attrsForRegexp = searchAttrs.map { case (n, v) => (n, Single(v))}.toMap
+      val searchAttrNamesSet = searchAttrs.map { case (name, _) => name.bytes.toList}.toSet
       val rowRegexp = PointsLoaderUtils.createRowRegexp(offset, attrNameLength, attrValueLength, attrsForRegexp)
       def createJunkAttrs() = randomAttributes(attrNameLength, attrValueLength).filter {
-        case (n, v) => !searchAttrsSet((n.toList, v.toList))
+        case (name, _) => !searchAttrNamesSet(name.bytes.toList)
       }
       for (_ <- 0 to 10) {
         val junkAttrs = createJunkAttrs()
-        val allAttrs = randomListMerge(searchAttrs, junkAttrs)
-        val rowString = bytesToString(createRow(offset, allAttrs))
+        val rowString = arrayToString(createRow(offset, searchAttrs ++ junkAttrs))
         if (!Pattern.matches(rowRegexp, rowString)) {
-          println(stringToBytes(rowRegexp).toList)
-          println(stringToBytes(rowString).toList)
+          println(attrNameLength)
+          println(attrValueLength)
+          println(stringToBytes(rowRegexp).bytes.toList)
+          println(stringToBytes(rowString).bytes.toList)
         }
         rowString should fullyMatch regex rowRegexp
 
         val anotherJunkAttrs = createJunkAttrs()
-        val anotherAllAattrs = randomListMerge(anotherJunkAttrs, junkAttrs)
-        val anotherRowString = bytesToString(createRow(offset, anotherAllAattrs))
+        val anotherRowString = arrayToString(createRow(offset, anotherJunkAttrs ++ junkAttrs))
         anotherRowString should not (fullyMatch regex rowRegexp)
       }
     }
   }
 
-  def array(bytes: Byte*) = Array[Byte](bytes: _*)
+  def bytesKey(bytes: Byte*) = new BytesKey(Array[Byte](bytes: _*))
 
   def deterministicRandom: Random = {
     new Random(0)
@@ -161,34 +171,29 @@ class PointsLoaderUtilsSpec extends FlatSpec with ShouldMatchers with MustMatche
       yield {
         (randomBytes(attrNameLength), randomBytes(attrValueLength))
       }
-    randomAttrs.toList.distinct.map {
-      case (attrName, attrValue) => (attrName.toArray, attrValue.toArray)
+    // uniquify attribute names
+    randomAttrs.toMap.toList.map {
+      case (attrName, attrValue) => (new BytesKey(attrName.toArray), new BytesKey(attrValue.toArray))
     }
   }
 
-  def randomListMerge[T](left: List[T], right: List[T])(implicit random: Random): List[T] = (left, right) match {
-    case (Nil, xs) => xs
-    case (xs, Nil) => xs
-    case (x :: xs, y :: ys) =>
-      if (random.nextBoolean())
-        x :: randomListMerge(xs, y :: ys)
-      else
-        y :: randomListMerge(x :: xs, ys)
+  def createRow(prefix: Array[Byte], attrs: List[(BytesKey, BytesKey)]) = {
+    val sorted = attrs.sortBy(_._1)
+    prefix ++ sorted.map(pair => pair._1.bytes ++ pair._2.bytes).foldLeft(Array[Byte]())(_ ++ _)
   }
 
-  def createRow(prefix: Array[Byte], attrs: List[(Array[Byte], Array[Byte])]) =
-    prefix ++ attrs.map(pair => pair._1 ++ pair._2).foldLeft(Array[Byte]())(_ ++ _)
-
-  def createRow(offset: Int, attrs: List[(Array[Byte], Array[Byte])])(implicit random: Random): Array[Byte] =
+  def createRow(offset: Int, attrs: List[(BytesKey, BytesKey)])(implicit random: Random): Array[Byte] =
     createRow(randomBytes(offset).toArray, attrs)
 
-  def createRowString(prefix: Array[Byte] = Array.empty[Byte], attrs: List[(Array[Byte], Array[Byte])]) =
+  def createRowString(prefix: Array[Byte] = Array.empty[Byte], attrs: List[(BytesKey, BytesKey)]) =
     bytesToString(createRow(prefix, attrs))
 
-  private def bytesToString(array: Array[Byte]) = new String(array, PointsLoaderUtils.ROW_REGEX_FILTER_ENCODING)
+  private def bytesToString(bKey: BytesKey) = arrayToString(bKey.bytes)
 
-  private def stringToBytes(string: String): Array[Byte] = {
+  private def arrayToString(array: Array[Byte]) = new String(array, PointsLoaderUtils.ROW_REGEX_FILTER_ENCODING)
+
+  private def stringToBytes(string: String): BytesKey = {
     val charBuffer = CharBuffer.wrap(string)
-    PointsLoaderUtils.ROW_REGEX_FILTER_ENCODING.encode(charBuffer).array()
+    new BytesKey(PointsLoaderUtils.ROW_REGEX_FILTER_ENCODING.encode(charBuffer).array())
   }
 }

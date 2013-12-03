@@ -128,12 +128,12 @@ class HBaseStorage(tableName: String,
 
   def getPoints(metric: String,
                 timeRange: (Int, Int),
-                attributes: List[(String, ValueNameFilterCondition)])(implicit eCtx: ExecutionContext): Future[PointsStream] = {
-    val attrFutures = attributes.sortBy(_._1).map {
+                attributes: Map[String, ValueNameFilterCondition])(implicit eCtx: ExecutionContext): Future[PointsStream] = {
+    val attrFutures = attributes.toList.map {
       case (name, valueFilterCondition) =>
         val nameIdFuture = attributeNames.resolveIdByName(name, create = false)(resolveTimeout)
         val valueIdFilterFuture = resolveFilterCondition(valueFilterCondition)
-        nameIdFuture.map(_.bytes) zip valueIdFilterFuture
+        nameIdFuture zip valueIdFilterFuture
     }
     def toPointsStream(rowsQuery: PointRowsQuery)(implicit eCtx: ExecutionContext): PointsStream = {
       val (results, nextResults) = rowsQuery.getRows()
@@ -147,7 +147,7 @@ class HBaseStorage(tableName: String,
       metricId <- metricNames.resolveIdByName(metric, create = false)(resolveTimeout)
       attrs <- Future.sequence(attrFutures)
     } yield {
-      val pointRowsQuery = createRowsQuery(metricId, timeRange, attrs, readChunkSize)
+      val pointRowsQuery = createRowsQuery(metricId, timeRange, attrs.toMap, readChunkSize)
       toPointsStream(pointRowsQuery)
     }
   }
@@ -158,19 +158,19 @@ class HBaseStorage(tableName: String,
     nameCondition match {
       case Single(valueName) =>
         attributeValues.resolveIdByName(valueName, create = false)(resolveTimeout)
-          .map(ValueIdFilterCondition.Single(_))
+          .map(ValueIdFilterCondition.Single)
       case Multiple(valueNames) =>
         val valueIdFutures = valueNames.map {
           valueName => attributeValues.resolveIdByName(valueName, create = false)(resolveTimeout)
         }
-        Future.sequence(valueIdFutures).map(ids => ValueIdFilterCondition.Multiple(ids.map(_.bytes)))
+        Future.sequence(valueIdFutures).map(ids => ValueIdFilterCondition.Multiple(ids))
       case All => Future.successful(ValueIdFilterCondition.All)
     }
   }
 
   def createRowsQuery(metricId: Array[Byte],
                       timeRange: (Int, Int),
-                      attributes: Seq[(Array[Byte], ValueIdFilterCondition)],
+                      attributes: Map[BytesKey, ValueIdFilterCondition],
                       chunkSize: Int) = {
     val (startTime, endTime) = timeRange
     val baseStartTime = startTime - (startTime % 3600)
@@ -345,7 +345,8 @@ class HBaseStorage(tableName: String,
     var off = 0
     off = copyBytes(metric, row, off)
     off = copyBytes(Bytes.toBytes(baseTime.toInt), row, off)
-    for (attr <- attrs) {
+    val sortedAttributes = attrs.sortBy(_._1)
+    for (attr <- sortedAttributes) {
       off = copyBytes(attr._1, row, off)
       off = copyBytes(attr._2, row, off)
     }
