@@ -27,7 +27,9 @@ object PointsLoaderUtils {
 
     case class Single(name: String) extends ValueNameFilterCondition
 
-    case class Multiple(names: Seq[String]) extends ValueNameFilterCondition
+    case class Multiple(names: Seq[String]) extends ValueNameFilterCondition {
+      require(names.size > 1, "must be more than one value name")
+    }
 
     case object All extends ValueNameFilterCondition
 

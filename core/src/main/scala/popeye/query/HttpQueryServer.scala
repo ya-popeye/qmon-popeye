@@ -13,13 +13,15 @@ import akka.util.Timeout
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 import popeye.storage.hbase.HBaseStorage
-import spray.http.HttpRequest
 import popeye.storage.hbase.PointsStream
+import popeye.query.HttpQueryServer.PointsStorage
+import scala.util.Try
+import popeye.storage.hbase.PointsLoaderUtils.ValueNameFilterCondition
+import spray.http.HttpRequest
 import spray.http.ChunkedResponseStart
 import scala.Some
 import spray.http.HttpResponse
-import popeye.query.HttpQueryServer.PointsStorage
-import scala.util.Try
+import java.io.{PrintWriter, StringWriter}
 
 
 class HttpQueryServer(storage: PointsStorage, executionContext: ExecutionContext) extends Actor with Logging {
@@ -40,12 +42,20 @@ class HttpQueryServer(storage: PointsStorage, executionContext: ExecutionContext
         attributesString <- query.get("attrs").toRight("attributes are not set").right
         attributes <- parseAttributes(attributesString).right
       } yield {
-        storage.getPoints(metricName, (startTime.toInt, endTime.toInt), attributes).onSuccess {
+        val pointStreamFuture = storage.getPoints(metricName, (startTime.toInt, endTime.toInt), attributes)
+        pointStreamFuture.onSuccess {
           case PointsStream(points, None) => savedClient ! HttpResponse(entity = HttpEntity(points.mkString("\n")))
           case PointsStream(points, Some(nextPointsFuture)) =>
             savedClient ! ChunkedResponseStart(HttpResponse(entity = HttpEntity(points.mkString("\n"))))
             val future = nextPointsFuture()
             processNextPoints(savedClient, future)
+        }
+        pointStreamFuture.onFailure {
+          case t: Throwable =>
+            val sw = new StringWriter()
+            t.printStackTrace(new PrintWriter(sw))
+            val errMessage = sw.toString
+            savedClient ! ChunkedResponseStart(HttpResponse(entity = HttpEntity(errMessage)))
         }
       }
 
@@ -67,13 +77,25 @@ class HttpQueryServer(storage: PointsStorage, executionContext: ExecutionContext
 
   }
 
-  def parseAttributes(attributes: String): Either[String, List[(String, String)]] = Try {
-    attributes.split(";").toList.filter(!_.isEmpty).map {
-      attrPair =>
-        val Array(name, value) = attrPair.split("->")
-        (name, value)
-    }
-  }.toOption.toRight("incorrect attributes format; example: \"?attrs=host->foo;host->bar\"")
+  def parseAttributes(attributesString: String): Either[String, Map[String, ValueNameFilterCondition]] =
+    Try {
+      import ValueNameFilterCondition._
+      val attributes = attributesString.split(";").toList.filter(!_.isEmpty)
+      val valueFilters = attributes.map {
+        attrPair =>
+          val Array(name, valuesString) = attrPair.split("->")
+          val valueFilterCondition =
+            if (valuesString == "*") {
+              All
+            } else if (valuesString.contains(" ")) {
+              Multiple(valuesString.split(" "))
+            } else {
+              Single(valuesString)
+            }
+          (name, valueFilterCondition)
+      }
+      valueFilters.toMap
+    }.toOption.toRight("incorrect attributes format; example: \"?attrs=host->foo;type->bar+foo;port->*\"")
 
   def processNextPoints(savedClient: ActorRef, future: Future[PointsStream]) = {
     future.onSuccess {case pointsStream: PointsStream => self ! SendNextPoints(savedClient, pointsStream)}
@@ -89,21 +111,19 @@ class HttpQueryServer(storage: PointsStorage, executionContext: ExecutionContext
 object HttpQueryServer {
 
   trait PointsStorage {
-    def getPoints(metric: String, timeRange: (Int, Int), attributes: List[(String, String)]): Future[PointsStream]
+    def getPoints(metric: String,
+                  timeRange: (Int, Int),
+                  attributes: Map[String, ValueNameFilterCondition]): Future[PointsStream]
   }
 
   def runServer(config: Config, storage: HBaseStorage, system: ActorSystem, executionContext: ExecutionContext) = {
     implicit val timeout: Timeout = 5 seconds
     val pointsStorage = new PointsStorage {
+      def getPoints(metric: String,
+                    timeRange: (Int, Int),
+                    attributes: Map[String, ValueNameFilterCondition]) =
+        storage.getPoints(metric, timeRange, attributes)(executionContext)
 
-      import popeye.storage.hbase.PointsLoaderUtils.ValueNameFilterCondition
-
-      def getPoints(metric: String, timeRange: (Int, Int), attributes: List[(String, String)]) = {
-        val valueFilters: Map[String, ValueNameFilterCondition] = attributes.map {
-          case (name, value) => (name, ValueNameFilterCondition.Single(value))
-        }.toMap
-        storage.getPoints(metric, timeRange, valueFilters)(executionContext)
-      }
     }
 
     val handler = system.actorOf(
