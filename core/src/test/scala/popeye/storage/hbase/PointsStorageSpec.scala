@@ -146,6 +146,81 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
     filteredPoints should contain(Point(0, 1))
   }
 
+  it should "perform multiple attribute value queries" in {
+    val state = new State(
+      metricNames = Seq("metric"),
+      attributeNames = Seq("type"),
+      attributeValues = Seq("foo", "bar", "junk")
+    )
+    val fooPoint = point(
+      metricName = "metric",
+      timestamp = 0,
+      value = 1,
+      attrs = Seq("type" -> "foo")
+    )
+    val barPoint = point(
+      metricName = "metric",
+      timestamp = 0,
+      value = 2,
+      attrs = Seq("type" -> "bar")
+    )
+    val junkPoint = point(
+      metricName = "metric",
+      timestamp = 0,
+      value = 3,
+      attrs = Seq("type" -> "junk")
+    )
+    state.storage.writePoints(PackedPoints(Seq(fooPoint, barPoint, junkPoint)))
+    import PointsLoaderUtils.ValueNameFilterCondition._
+    val future = state.storage.getPoints("metric", (0, 1), Map("type" -> Multiple(Seq("foo", "bar"))))
+    val filteredPoints = pointsStreamToList(future)
+    filteredPoints should (contain(Point(0, 1)) and contain(Point(0, 2)))
+    filteredPoints should (not contain Point(0, 3))
+  }
+
+  it should "perform multiple attribute value queries (All filter)" in {
+    val state = new State(
+      metricNames = Seq("metric"),
+      attributeNames = Seq("type", "attr"),
+      attributeValues = Seq("foo", "bar")
+    )
+    val fooPoint = point(
+      metricName = "metric",
+      timestamp = 0,
+      value = 1,
+      attrs = Seq("type" -> "foo", "attr" -> "foo")
+    )
+    val barPoint = point(
+      metricName = "metric",
+      timestamp = 0,
+      value = 2,
+      attrs = Seq("type" -> "bar", "attr" -> "foo")
+    )
+    val junkPoint = point(
+      metricName = "metric",
+      timestamp = 0,
+      value = 3,
+      attrs = Seq("type" -> "foo", "attr" -> "bar")
+    )
+    state.storage.writePoints(PackedPoints(Seq(fooPoint, barPoint, junkPoint)))
+    import PointsLoaderUtils.ValueNameFilterCondition._
+    val future = state.storage.getPoints("metric", (0, 1), Map("type" -> All, "attr" -> Single("foo")))
+    val filteredPoints = pointsStreamToList(future)
+    filteredPoints should (contain(Point(0, 1)) and contain(Point(0, 2)))
+    filteredPoints should (not contain Point(0, 3))
+  }
+
+  def point(metricName: String, timestamp: Long, value: Long, attrs: Seq[(String, String)]) = {
+    val builder = Message.Point.newBuilder()
+      .setMetric(metricName)
+      .setTimestamp(timestamp)
+      .setIntValue(value)
+    for ((name, value) <- attrs) {
+      builder.addAttributes(attribute(name, value))
+    }
+    builder.build()
+  }
+
   def attribute(name: String, value: String) =
     Message.Attribute.newBuilder().setName(name).setValue(value).build()
 
