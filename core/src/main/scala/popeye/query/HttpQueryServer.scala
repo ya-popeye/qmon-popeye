@@ -4,7 +4,6 @@ import akka.actor.{ActorRef, ActorSystem, Props, Actor}
 import popeye.Logging
 import spray.http._
 import spray.http.HttpMethods._
-import spray.http.MediaTypes._
 import akka.pattern.ask
 import java.net.InetSocketAddress
 import akka.io.IO
@@ -96,8 +95,15 @@ object HttpQueryServer {
   def runServer(config: Config, storage: HBaseStorage, system: ActorSystem, executionContext: ExecutionContext) = {
     implicit val timeout: Timeout = 5 seconds
     val pointsStorage = new PointsStorage {
-      def getPoints(metric: String, timeRange: (Int, Int), attributes: List[(String, String)]) =
-        storage.getPoints(metric, timeRange, attributes)(executionContext)
+
+      import popeye.storage.hbase.PointsLoaderUtils.ValueNameFilterCondition
+
+      def getPoints(metric: String, timeRange: (Int, Int), attributes: List[(String, String)]) = {
+        val valueFilters: List[(String, ValueNameFilterCondition)] = attributes.map {
+          case (name, value) => (name, ValueNameFilterCondition.Single(value))
+        }
+        storage.getPoints(metric, timeRange, valueFilters)(executionContext)
+      }
     }
 
     val handler = system.actorOf(

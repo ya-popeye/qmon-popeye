@@ -113,7 +113,8 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
         ).build()
     }
     state.storage.writePoints(PackedPoints(points))
-    val future = state.storage.getPoints("my.metric1", (1200, 4801), List("host" -> "localhost"))
+    import PointsLoaderUtils.ValueNameFilterCondition._
+    val future = state.storage.getPoints("my.metric1", (1200, 4801), List("host" -> Single("localhost")))
     val filteredPoints = pointsStreamToList(future)
     filteredPoints should contain(Point(1200, 1))
     filteredPoints should (not contain Point(0, 0))

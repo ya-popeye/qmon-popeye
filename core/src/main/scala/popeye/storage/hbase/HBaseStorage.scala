@@ -19,6 +19,7 @@ import popeye.util.hbase.{HBaseUtils, HBaseConfigured}
 import popeye.pipeline.{PipelineSinkFactory, PointsSink}
 import java.nio.charset.Charset
 import org.apache.hadoop.hbase.filter.{RegexStringComparator, CompareFilter, RowFilter}
+import popeye.storage.hbase.PointsLoaderUtils.{ValueIdFilterCondition, ValueNameFilterCondition}
 
 object HBaseStorage {
   final val Encoding = Charset.forName("UTF-8")
@@ -127,12 +128,12 @@ class HBaseStorage(tableName: String,
 
   def getPoints(metric: String,
                 timeRange: (Int, Int),
-                attributes: List[(String, String)])(implicit eCtx: ExecutionContext): Future[PointsStream] = {
+                attributes: List[(String, ValueNameFilterCondition)])(implicit eCtx: ExecutionContext): Future[PointsStream] = {
     val attrFutures = attributes.sortBy(_._1).map {
-      case (name, value) =>
+      case (name, valueFilterCondition) =>
         val nameIdFuture = attributeNames.resolveIdByName(name, create = false)(resolveTimeout)
-        val valueIdFuture = attributeValues.resolveIdByName(value, create = false)(resolveTimeout)
-        nameIdFuture.map(_.bytes) zip valueIdFuture.map(_.bytes)
+        val valueIdFilterFuture = resolveFilterCondition(valueFilterCondition)
+        nameIdFuture.map(_.bytes) zip valueIdFilterFuture
     }
     def toPointsStream(rowsQuery: PointRowsQuery)(implicit eCtx: ExecutionContext): PointsStream = {
       val (results, nextResults) = rowsQuery.getRows()
@@ -151,19 +152,35 @@ class HBaseStorage(tableName: String,
     }
   }
 
+  def resolveFilterCondition(nameCondition: ValueNameFilterCondition)
+                            (implicit eCtx: ExecutionContext): Future[ValueIdFilterCondition] = {
+    import ValueNameFilterCondition._
+    nameCondition match {
+      case Single(valueName) =>
+        attributeValues.resolveIdByName(valueName, create = false)(resolveTimeout)
+          .map(ValueIdFilterCondition.Single(_))
+      case Multiple(valueNames) =>
+        val valueIdFutures = valueNames.map {
+          valueName => attributeValues.resolveIdByName(valueName, create = false)(resolveTimeout)
+        }
+        Future.sequence(valueIdFutures).map(ids => ValueIdFilterCondition.Multiple(ids.map(_.bytes)))
+      case All => Future.successful(ValueIdFilterCondition.All)
+    }
+  }
+
   def createRowsQuery(metricId: Array[Byte],
                       timeRange: (Int, Int),
-                      attributes: Seq[(Array[Byte], Array[Byte])],
+                      attributes: Seq[(Array[Byte], ValueIdFilterCondition)],
                       chunkSize: Int) = {
     val (startTime, endTime) = timeRange
     val baseStartTime = startTime - (startTime % 3600)
     val startRow = metricId ++ Bytes.toBytes(baseStartTime)
     val stopRow = metricId ++ Bytes.toBytes(endTime)
-    val regex = HBaseUtils.createRowRegexp(
+    val regex = PointsLoaderUtils.createRowRegexp(
       offset = 7,
       attributeNames.width,
       attributeValues.width,
-      attributes.map(p => (p._1, HBaseUtils.Single(p._2)))
+      attributes
     )
     new PointRowsQuery(regex, startRow, stopRow, chunkSize)
   }
@@ -178,7 +195,7 @@ class HBaseStorage(tableName: String,
         scan.setStopRow(stopRow)
         scan.addFamily(PointsFamily)
         val comparator = new RegexStringComparator(rowRegex)
-        comparator.setCharset(HBaseUtils.CHARSET)
+        comparator.setCharset(PointsLoaderUtils.ROW_REGEX_FILTER_ENCODING)
         scan.setFilter(new RowFilter(CompareFilter.CompareOp.EQUAL, comparator))
         val scanner = table.getScanner(scan)
         val results =

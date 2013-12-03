@@ -1,4 +1,4 @@
-package popeye.util.hbase
+package popeye.storage.hbase
 
 import org.scalatest.matchers.{MustMatchers, ShouldMatchers}
 import popeye.test.MockitoStubs
@@ -7,15 +7,15 @@ import java.util.regex.Pattern
 import scala.util.Random
 import java.nio.CharBuffer
 import scala.Array
-import popeye.util.hbase.HBaseUtils.{Multiple, Single}
+import PointsLoaderUtils.ValueIdFilterCondition._
 
-class HBaseUtilsSpec extends FlatSpec with ShouldMatchers with MustMatchers with MockitoStubs {
+class PointsLoaderUtilsSpec extends FlatSpec with ShouldMatchers with MustMatchers with MockitoStubs {
 
-  behavior of "HBaseUtils"
+  behavior of "PointsLoaderUtils"
 
   it should "handle a simple case" in {
     val attributes = Seq((array(0, 0, 1), Single(array(0, 0, 1))))
-    val regexp = HBaseUtils.createRowRegexp(offset = 7, attrNameLength = 3, attrValueLength = 3, attributes)
+    val regexp = PointsLoaderUtils.createRowRegexp(offset = 7, attrNameLength = 3, attrValueLength = 3, attributes)
     val pattern = Pattern.compile(regexp)
 
     val validRow = bytesToString(array(0, 0, 2, 76, -45, -71, -128, 0, 0, 1, 0, 0, 1))
@@ -28,7 +28,7 @@ class HBaseUtilsSpec extends FlatSpec with ShouldMatchers with MustMatchers with
   it should "check attribute name length" in {
     val attributes = Seq((array(0), Single(array(0))))
     val exception = intercept[IllegalArgumentException] {
-      HBaseUtils.createRowRegexp(offset = 7, attrNameLength = 3, attrValueLength = 1, attributes)
+      PointsLoaderUtils.createRowRegexp(offset = 7, attrNameLength = 3, attrValueLength = 1, attributes)
     }
     exception.getMessage should (include("3") and include("1") and include("name"))
   }
@@ -36,23 +36,23 @@ class HBaseUtilsSpec extends FlatSpec with ShouldMatchers with MustMatchers with
   it should "check attribute value length" in {
     val attributes = Seq((array(0), Single(array(0))))
     val exception = intercept[IllegalArgumentException] {
-      HBaseUtils.createRowRegexp(offset = 7, attrNameLength = 1, attrValueLength = 3, attributes)
+      PointsLoaderUtils.createRowRegexp(offset = 7, attrNameLength = 1, attrValueLength = 3, attributes)
     }
     exception.getMessage should (include("3") and include("1") and include("value"))
   }
 
   it should "check that attribute name and value length is greater than zero" in {
     intercept[IllegalArgumentException] {
-      HBaseUtils.createRowRegexp(offset = 7, attrNameLength = 0, attrValueLength = 1, attributes = Seq((array(0), Single(array(0)))))
+      PointsLoaderUtils.createRowRegexp(offset = 7, attrNameLength = 0, attrValueLength = 1, attributes = Seq((array(0), Single(array(0)))))
     }.getMessage should (include("0") and include("name"))
     intercept[IllegalArgumentException] {
-      HBaseUtils.createRowRegexp(offset = 7, attrNameLength = 1, attrValueLength = 0, attributes = Seq((array(0), Single(array(0)))))
+      PointsLoaderUtils.createRowRegexp(offset = 7, attrNameLength = 1, attrValueLength = 0, attributes = Seq((array(0), Single(array(0)))))
     }.getMessage should (include("0") and include("value"))
   }
 
   it should "check that attribute list is not empty" in {
     val exception = intercept[IllegalArgumentException] {
-      HBaseUtils.createRowRegexp(offset = 7, attrNameLength = 1, attrValueLength = 2, attributes = Seq())
+      PointsLoaderUtils.createRowRegexp(offset = 7, attrNameLength = 1, attrValueLength = 2, attributes = Seq())
     }
     exception.getMessage should include("empty")
   }
@@ -61,7 +61,7 @@ class HBaseUtilsSpec extends FlatSpec with ShouldMatchers with MustMatchers with
     val badStringBytes = stringToBytes("aaa\\Ebbb")
     val attrName = badStringBytes
     val attrValue = badStringBytes
-    val rowRegexp = HBaseUtils.createRowRegexp(offset = 0, attrName.length, attrValue.length, Seq((attrName, Single(attrValue))))
+    val rowRegexp = PointsLoaderUtils.createRowRegexp(offset = 0, attrName.length, attrValue.length, Seq((attrName, Single(attrValue))))
     val rowString = createRowString(attrs = List((attrName, attrValue)))
     rowString should fullyMatch regex rowRegexp
   }
@@ -69,7 +69,7 @@ class HBaseUtilsSpec extends FlatSpec with ShouldMatchers with MustMatchers with
   it should "escape regex escaping sequences symbols (non-trivial case)" in {
     val attrName = stringToBytes("aaa\\")
     val attrValue = stringToBytes("Eaaa")
-    val regexp = HBaseUtils.createRowRegexp(offset = 0, attrName.length, attrValue.length, Seq((attrName, Single(attrValue))))
+    val regexp = PointsLoaderUtils.createRowRegexp(offset = 0, attrName.length, attrValue.length, Seq((attrName, Single(attrValue))))
     val rowString = createRowString(attrs = List((attrName, attrValue)))
     rowString should fullyMatch regex regexp
   }
@@ -77,7 +77,7 @@ class HBaseUtilsSpec extends FlatSpec with ShouldMatchers with MustMatchers with
   it should "handle newline characters" in {
     val attrName = stringToBytes("attrName")
     val attrValue = stringToBytes("attrValue")
-    val rowRegexp = HBaseUtils.createRowRegexp(offset = 1, attrName.length, attrValue.length, Seq((attrName, Single(attrValue))))
+    val rowRegexp = PointsLoaderUtils.createRowRegexp(offset = 1, attrName.length, attrValue.length, Seq((attrName, Single(attrValue))))
     val row = createRow(prefix = stringToBytes("\n"), List((attrName, attrValue)))
     val rowString = bytesToString(row)
     rowString should fullyMatch regex rowRegexp
@@ -86,7 +86,7 @@ class HBaseUtilsSpec extends FlatSpec with ShouldMatchers with MustMatchers with
   it should "create regexp for multiple value filtering" in {
     val attrName = stringToBytes("attrName")
     val attrValues = List(array(1), array(2))
-    val rowRegexp = HBaseUtils.createRowRegexp(
+    val rowRegexp = PointsLoaderUtils.createRowRegexp(
       offset = 0,
       attrName.length,
       attrValueLength = 1,
@@ -100,11 +100,11 @@ class HBaseUtilsSpec extends FlatSpec with ShouldMatchers with MustMatchers with
 
   it should "create regexp for any value filtering" in {
     val attrName = stringToBytes("attrName")
-    val rowRegexp = HBaseUtils.createRowRegexp(
+    val rowRegexp = PointsLoaderUtils.createRowRegexp(
       offset = 0,
       attrName.length,
       attrValueLength = 1,
-      Seq((attrName, HBaseUtils.All))
+      Seq((attrName, All))
     )
 
     createRowString(attrs = List((attrName, array(1)))) should fullyMatch regex rowRegexp
@@ -121,7 +121,7 @@ class HBaseUtilsSpec extends FlatSpec with ShouldMatchers with MustMatchers with
       val searchAttrs = randomAttributes(attrNameLength, attrValueLength)
       val attrsForRegexp = searchAttrs.map { case (n, v) => (n, Single(v))}
       val searchAttrsSet = searchAttrs.map { case (n, v) => (n.toList, v.toList)}.toSet
-      val rowRegexp = HBaseUtils.createRowRegexp(offset, attrNameLength, attrValueLength, attrsForRegexp)
+      val rowRegexp = PointsLoaderUtils.createRowRegexp(offset, attrNameLength, attrValueLength, attrsForRegexp)
       def createJunkAttrs() = randomAttributes(attrNameLength, attrValueLength).filter {
         case (n, v) => !searchAttrsSet((n.toList, v.toList))
       }
@@ -130,8 +130,8 @@ class HBaseUtilsSpec extends FlatSpec with ShouldMatchers with MustMatchers with
         val allAttrs = randomListMerge(searchAttrs, junkAttrs)
         val rowString = bytesToString(createRow(offset, allAttrs))
         if (!Pattern.matches(rowRegexp, rowString)) {
-          println(HBaseUtils.CHARSET.encode(rowRegexp).array().toList)
-          println(HBaseUtils.CHARSET.encode(rowString).array().toList)
+          println(stringToBytes(rowRegexp).toList)
+          println(stringToBytes(rowString).toList)
         }
         rowString should fullyMatch regex rowRegexp
 
@@ -185,10 +185,10 @@ class HBaseUtilsSpec extends FlatSpec with ShouldMatchers with MustMatchers with
   def createRowString(prefix: Array[Byte] = Array.empty[Byte], attrs: List[(Array[Byte], Array[Byte])]) =
     bytesToString(createRow(prefix, attrs))
 
-  private def bytesToString(array: Array[Byte]) = new String(array, HBaseUtils.CHARSET)
+  private def bytesToString(array: Array[Byte]) = new String(array, PointsLoaderUtils.ROW_REGEX_FILTER_ENCODING)
 
   private def stringToBytes(string: String): Array[Byte] = {
     val charBuffer = CharBuffer.wrap(string)
-    HBaseUtils.CHARSET.encode(charBuffer).array()
+    PointsLoaderUtils.ROW_REGEX_FILTER_ENCODING.encode(charBuffer).array()
   }
 }
