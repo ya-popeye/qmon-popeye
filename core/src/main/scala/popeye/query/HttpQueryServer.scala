@@ -13,10 +13,10 @@ import akka.util.Timeout
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 import popeye.storage.hbase.HBaseStorage
+import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition
 import popeye.storage.hbase.PointsStream
 import popeye.query.HttpQueryServer.PointsStorage
 import scala.util.Try
-import popeye.storage.hbase.PointsLoaderUtils.ValueNameFilterCondition
 import spray.http.HttpRequest
 import spray.http.ChunkedResponseStart
 import scala.Some

@@ -10,12 +10,12 @@ import akka.actor.{ActorRef, Actor, Props}
 import akka.pattern.ask
 import spray.http.HttpRequest
 import popeye.storage.hbase.{Point, PointsStream}
+import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition
 import spray.http.HttpResponse
 import akka.util.Timeout
 import scala.concurrent.duration._
 import org.scalatest.matchers.Matcher
 import java.nio.charset.Charset
-import popeye.storage.hbase.PointsLoaderUtils.ValueNameFilterCondition
 import org.scalatest.mock.MockitoSugar
 import org.mockito.Mockito._
 import org.mockito.Matchers._
@@ -67,7 +67,7 @@ class HttpQueryServerSpec extends AkkaTestKitSpec("http-query") with MockitoSuga
 
     val future = serverRef ? HttpRequest(GET, Uri(uriString))
     Await.result(future, 5 seconds)
-    import popeye.storage.hbase.PointsLoaderUtils.ValueNameFilterCondition._
+    import ValueNameFilterCondition._
     val attrs = Map(
       "single" -> Single("foo"),
       "multiple" -> Multiple(Seq("foo", "bar")),
