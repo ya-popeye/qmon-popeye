@@ -5,10 +5,11 @@ import popeye.pipeline._
 import scala.concurrent.ExecutionContext
 
 class HBasePipelineSinkFactory extends PipelineSinkFactory {
-  def startSink(sinkName: String, channel: PipelineChannel, config: Config, ectx:ExecutionContext): Unit = {
+  def startSink(sinkName: String, channel: PipelineChannel, config: Config, storagesConfig: Config, ectx: ExecutionContext): Unit = {
+    val storageName = config.getString("storage")
     val hbaseStorage = new HBaseStorageConfigured(
       new HBaseStorageConfig(
-        config,
+        config.withFallback(storagesConfig.getConfig(storageName)),
         channel.actorSystem,
         channel.metrics,
         sinkName

@@ -3,7 +3,7 @@ package popeye.storage.hbase
 import com.codahale.metrics.MetricRegistry
 import java.util
 import org.apache.hadoop.hbase.KeyValue
-import org.apache.hadoop.hbase.client.{Put, HTablePool}
+import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.util.Bytes
 import popeye.storage.hbase.HBaseStorage._
 import popeye.proto.{PackedPoints, Message}
@@ -15,9 +15,12 @@ import scala.concurrent.{Await, ExecutionContext, Future}
 import com.typesafe.config.Config
 import akka.actor.{ActorRef, Props, ActorSystem}
 import java.util.concurrent.TimeUnit
-import popeye.util.hbase.HBaseConfigured
-import popeye.pipeline.{PointsSinkFactory, PipelineSinkFactory, PointsSink}
+import popeye.util.hbase.{HBaseUtils, HBaseConfigured}
+import popeye.pipeline.{PipelineSinkFactory, PointsSink}
 import java.nio.charset.Charset
+import org.apache.hadoop.hbase.filter.{RegexStringComparator, CompareFilter, RowFilter}
+import java.nio.ByteBuffer
+import HBaseStorage.ValueIdFilterCondition
 
 object HBaseStorage {
   final val Encoding = Charset.forName("UTF-8")
@@ -78,12 +81,93 @@ object HBaseStorage {
 
   sealed case class QualifiedId(kind: String, id: BytesKey)
 
+
+  val ROW_REGEX_FILTER_ENCODING = Charset.forName("ISO-8859-1")
+
+  sealed trait ValueIdFilterCondition
+
+  object ValueIdFilterCondition {
+
+    case class Single(id: BytesKey) extends ValueIdFilterCondition
+
+    case class Multiple(ids: Seq[BytesKey]) extends ValueIdFilterCondition {
+      require(ids.size > 1, "must be more than one value id")
+    }
+
+    case object All extends ValueIdFilterCondition
+
+  }
+
+  sealed trait ValueNameFilterCondition
+
+  object ValueNameFilterCondition {
+
+    case class Single(name: String) extends ValueNameFilterCondition
+
+    case class Multiple(names: Seq[String]) extends ValueNameFilterCondition {
+      require(names.size > 1, "must be more than one value name")
+    }
+
+    case object All extends ValueNameFilterCondition
+
+  }
+
+  def createRowRegexp(offset: Int,
+                      attrNameLength: Int,
+                      attrValueLength: Int,
+                      attributes: Map[BytesKey, ValueIdFilterCondition]): String = {
+    require(attrNameLength > 0, f"attribute name length must be greater than 0, not $attrNameLength")
+    require(attrValueLength > 0, f"attribute value length must be greater than 0, not $attrValueLength")
+    require(attributes.nonEmpty, "attribute map is empty")
+    val sortedAttributes = attributes.toList.sortBy(_._1)
+    def checkAttrNameLength(name: Array[Byte]) =
+      require(name.length == attrNameLength,
+        f"invalid attribute name length: expected $attrNameLength, actual ${name.length}")
+
+    def checkAttrValueLength(value: Array[Byte]) = require(value.length == attrValueLength,
+      f"invalid attribute value length: expected $attrValueLength, actual ${value.length}")
+
+    val anyNumberOfAnyAttributesRegex = f"(?:.{${attrNameLength + attrValueLength}})*"
+    val prefix = f"(?s)^.{$offset}" + anyNumberOfAnyAttributesRegex
+    val suffix = anyNumberOfAnyAttributesRegex + "$"
+    import ValueIdFilterCondition._
+    val infix = sortedAttributes.map {
+      case (attrNameId, valueCondition) =>
+        checkAttrNameLength(attrNameId)
+        valueCondition match {
+          case Single(attrValue) =>
+            checkAttrValueLength(attrValue)
+            escapeRegexp(decodeBytes(attrNameId) + decodeBytes(attrValue))
+          case Multiple(attrValues) =>
+            val nameRegex = escapeRegexp(decodeBytes(attrNameId))
+            val attrsRegexps = attrValues.map {
+              value =>
+                checkAttrValueLength(value)
+                escapeRegexp(decodeBytes(value))
+            }
+            nameRegex + attrsRegexps.mkString("(?:", "|", ")")
+          case All =>
+            val nameRegex = escapeRegexp(decodeBytes(attrNameId))
+            nameRegex + f".{$attrValueLength}"
+        }
+    }.mkString(anyNumberOfAnyAttributesRegex)
+    prefix + infix + suffix
+  }
+
+  private def escapeRegexp(string: String) = f"\\Q${string.replace("\\E", "\\E\\\\E\\Q")}\\E"
+
+  private def decodeBytes(bytes: Array[Byte]) = {
+    val byteBuffer = ByteBuffer.wrap(bytes)
+    ROW_REGEX_FILTER_ENCODING.decode(byteBuffer).toString
+  }
+
+
   def sinkFactory(): PipelineSinkFactory = new HBasePipelineSinkFactory
 }
 
 class HBasePointsSink(config: Config, storage: HBaseStorage)(implicit eCtx: ExecutionContext) extends PointsSink {
   def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] = {
-    storage.writePoints(points)(eCtx).mapTo[Long]
+    storage.writePoints(points)(eCtx)
   }
 }
 
@@ -99,15 +183,154 @@ case class HBaseStorageMetrics(name: String, override val metricRegistry: Metric
   val delayedPointsMeter = metrics.meter(s"$name.storage.delayed.points")
 }
 
+case class PointsStream(points: Seq[Point], next: Option[() => Future[PointsStream]])
+
+case class Point(timestamp: Int, value: Number)
+
+object PointsStream {
+  def apply(points: Seq[Point]): PointsStream = PointsStream(points, None)
+
+  def apply(points: Seq[Point], nextStream: => Future[PointsStream]): PointsStream =
+    PointsStream(points, Some(() => nextStream))
+}
+
 class HBaseStorage(tableName: String,
-                    hTablePool: HTablePool,
-                    metricNames: UniqueId,
-                    attributeNames: UniqueId,
-                    attributeValues: UniqueId,
-                    metrics: HBaseStorageMetrics,
-                    resolveTimeout: Duration = 15 seconds) extends Logging {
+                   hTablePool_ : HTablePool,
+                   metricNames: UniqueId,
+                   attributeNames: UniqueId,
+                   attributeValues: UniqueId,
+                   metrics: HBaseStorageMetrics,
+                   resolveTimeout: Duration = 15 seconds,
+                   readChunkSize: Int) extends Logging with HBaseUtils {
+
+  def hTablePool: HTablePool = hTablePool_
 
   val tableBytes = tableName.getBytes(Encoding)
+
+  def getPoints(metric: String,
+                timeRange: (Int, Int),
+                attributes: Map[String, ValueNameFilterCondition])(implicit eCtx: ExecutionContext): Future[PointsStream] = {
+    val attrFutures = attributes.toList.map {
+      case (name, valueFilterCondition) =>
+        val nameIdFuture = attributeNames.resolveIdByName(name, create = false)(resolveTimeout)
+        val valueIdFilterFuture = resolveFilterCondition(valueFilterCondition)
+        nameIdFuture zip valueIdFilterFuture
+    }
+    def toPointsStream(rowsQuery: PointRowsQuery)(implicit eCtx: ExecutionContext): PointsStream = {
+      val (results, nextResults) = rowsQuery.getRows()
+      val pointsSeq = parseTimeValuePoints(results, timeRange)
+      val nextStream = nextResults.map {
+        query => () => Future {toPointsStream(query)}
+      }
+      PointsStream(pointsSeq, nextStream)
+    }
+    for {
+      metricId <- metricNames.resolveIdByName(metric, create = false)(resolveTimeout)
+      attrs <- Future.sequence(attrFutures)
+    } yield {
+      val pointRowsQuery = createRowsQuery(metricId, timeRange, attrs.toMap, readChunkSize)
+      toPointsStream(pointRowsQuery)
+    }
+  }
+
+  def resolveFilterCondition(nameCondition: ValueNameFilterCondition)
+                            (implicit eCtx: ExecutionContext): Future[ValueIdFilterCondition] = {
+    import ValueNameFilterCondition._
+    nameCondition match {
+      case Single(valueName) =>
+        attributeValues.resolveIdByName(valueName, create = false)(resolveTimeout)
+          .map(ValueIdFilterCondition.Single)
+      case Multiple(valueNames) =>
+        val valueIdFutures = valueNames.map {
+          valueName => attributeValues.resolveIdByName(valueName, create = false)(resolveTimeout)
+        }
+        Future.sequence(valueIdFutures).map(ids => ValueIdFilterCondition.Multiple(ids))
+      case All => Future.successful(ValueIdFilterCondition.All)
+    }
+  }
+
+  def createRowsQuery(metricId: Array[Byte],
+                      timeRange: (Int, Int),
+                      attributes: Map[BytesKey, ValueIdFilterCondition],
+                      chunkSize: Int) = {
+    val (startTime, endTime) = timeRange
+    val baseStartTime = startTime - (startTime % MAX_TIMESPAN)
+    val startRow = metricId ++ Bytes.toBytes(baseStartTime)
+    val stopRow = metricId ++ Bytes.toBytes(endTime)
+    val regex = createRowRegexp(
+      offset = 7,
+      attributeNames.width,
+      attributeValues.width,
+      attributes
+    )
+    new PointRowsQuery(regex, startRow, stopRow, chunkSize)
+  }
+
+  class PointRowsQuery(rowRegex: String, startRow: Array[Byte], stopRow: Array[Byte], chunkSize: Int) {
+    require(chunkSize > 0, "chunksize must be greater than 0")
+
+    def getRows(): (Array[Result], Option[PointRowsQuery]) = withHTable(tableName) {
+      table =>
+        val scan: Scan = new Scan()
+        scan.setStartRow(startRow)
+        scan.setStopRow(stopRow)
+        scan.addFamily(PointsFamily)
+        val comparator = new RegexStringComparator(rowRegex)
+        comparator.setCharset(ROW_REGEX_FILTER_ENCODING)
+        scan.setFilter(new RowFilter(CompareFilter.CompareOp.EQUAL, comparator))
+        val scanner = table.getScanner(scan)
+        val results =
+          try {scanner.next(chunkSize)}
+          finally {scanner.close()}
+        val nextQuery =
+          if (results.length < chunkSize) {
+            None
+          } else {
+            val lastRow = results(results.length - 2).getRow
+            Some(new PointRowsQuery(rowRegex, lastRow, stopRow, chunkSize))
+          }
+        (results, nextQuery)
+    }
+  }
+
+  private def parseTimeValuePoints(results: Array[Result], timeRange: (Int, Int)): Seq[Point] = {
+    val baseTimeBuffer = new Array[Byte](HBaseStorage.TIMESTAMP_BYTES)
+
+    val pointsLists = for (result <- results) yield {
+      import scala.collection.JavaConverters.mapAsScalaMapConverter
+      val row = result.getRow
+      System.arraycopy(row, metricNames.width, baseTimeBuffer, 0, HBaseStorage.TIMESTAMP_BYTES)
+      val baseTime = Bytes.toInt(baseTimeBuffer)
+      val columns = result.getFamilyMap(PointsFamily).asScala.toList
+      columns.map {
+        case (qualifierBytes, valueBytes) =>
+          val (delta, value) = parseValue(qualifierBytes, valueBytes)
+          Point(baseTime + delta, value)
+      }
+    }
+    val (startTime, endTime) = timeRange
+    if (pointsLists.nonEmpty) {
+      pointsLists(0) = pointsLists(0).filter(point => point.timestamp >= startTime)
+      val lastIndex = pointsLists.length - 1
+      pointsLists(lastIndex) = pointsLists(lastIndex).filter(point => point.timestamp < endTime)
+    }
+    pointsLists.toSeq.flatten
+  }
+
+  private def parseValue(qualifierBytes: Array[Byte], valueBytes: Array[Byte]): (Short, Number) = {
+    val qualifier = Bytes.toShort(qualifierBytes)
+    val deltaShort = delta(qualifier)
+    val floatFlag: Int = HBaseStorage.FLAG_FLOAT | 0x3.toShort
+    val isFloatValue = (qualifier & floatFlag) == floatFlag
+    val isIntValue = (qualifier & 0xf) == 0
+    if (isFloatValue) {
+      (deltaShort, Bytes.toFloat(valueBytes))
+    } else if (isIntValue) {
+      (deltaShort, Bytes.toLong(valueBytes))
+    } else {
+      throw new IllegalArgumentException("Neither int nor float values set on point")
+    }
+  }
 
   def ping(): Unit = {
     Await.result(metricNames.resolveIdByName("_.ping", create = true)(resolveTimeout), resolveTimeout)
@@ -117,7 +340,7 @@ class HBaseStorage(tableName: String,
    * @param points what to write
    * @return number of written points
    */
-  def writePoints(points: PackedPoints)(implicit eCtx: ExecutionContext): Future[Int] = {
+  def writePoints(points: PackedPoints)(implicit eCtx: ExecutionContext): Future[Long] = {
 
     val ctx = metrics.writeTime.timerContext()
     metrics.writeProcessingTime.time {
@@ -157,12 +380,13 @@ class HBaseStorage(tableName: String,
           writeKv(kvl)
           kvl.size
         }
-        Future.reduce(Seq(delayedFuture, writeComplete)){(a, b) =>
-          ctx.stop
-          a+b
+        (delayedFuture zip writeComplete).map {
+          case (a, b) =>
+            ctx.stop
+            (a + b).toLong
         }
       } else {
-        writeComplete.map { a => ctx.stop; a}
+        writeComplete.map {a => ctx.stop; a.toLong}
       }
     }
   }
@@ -202,7 +426,8 @@ class HBaseStorage(tableName: String,
     var off = 0
     off = copyBytes(metric, row, off)
     off = copyBytes(Bytes.toBytes(baseTime.toInt), row, off)
-    for (attr <- attrs) {
+    val sortedAttributes = attrs.sortBy(_._1)
+    for (attr <- sortedAttributes) {
       off = copyBytes(attr._1, row, off)
       off = copyBytes(attr._2, row, off)
     }
@@ -221,7 +446,7 @@ class HBaseStorage(tableName: String,
     val delta: Short = (point.getTimestamp % HBaseStorage.MAX_TIMESPAN).toShort
     val ndelta = delta << HBaseStorage.FLAG_BITS
     if (point.hasFloatValue)
-      (Bytes.toBytes((0xffff & (HBaseStorage.FLAG_FLOAT | 0x3) & ndelta).toShort),
+      (Bytes.toBytes(((0xffff & (HBaseStorage.FLAG_FLOAT | 0x3)) | ndelta).toShort),
         Bytes.toBytes(point.getFloatValue))
     else if (point.hasIntValue)
       (Bytes.toBytes((0xffff & ndelta).toShort), Bytes.toBytes(point.getIntValue))
@@ -357,6 +582,7 @@ class HBaseStorageConfig(val config: Config,
   val poolSize = config.getInt("pool.max")
   val zkQuorum = config.getString("zk.quorum")
   val resolveTimeout = new FiniteDuration(config.getMilliseconds(s"uids.resolve-timeout"), TimeUnit.MILLISECONDS)
+  val readChunkSize = config.getInt("read-chunk-size")
   val uidsConfig = config.getConfig("uids")
 }
 
@@ -384,7 +610,7 @@ class HBaseStorageConfigured(config: HBaseStorageConfig) {
       config.resolveTimeout)
     new HBaseStorage(
       config.pointsTableName, hbase.hTablePool, metrics, attrNames, attrValues,
-      new HBaseStorageMetrics(config.storageName, config.metricRegistry), config.resolveTimeout)
+      new HBaseStorageMetrics(config.storageName, config.metricRegistry), config.resolveTimeout, config.readChunkSize)
   }
 
   private def makeUniqueIdCache(config: Config, kind: String, resolver: ActorRef,

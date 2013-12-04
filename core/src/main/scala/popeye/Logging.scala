@@ -57,9 +57,14 @@ trait Logging {
       log.debug(logIdent, e)
   }
 
-  def debug(msg: => String, e: => Throwable) = {
+  def debugThrowable(msg: => String, e: => Throwable) = {
     if (log.isDebugEnabled())
       log.debug(msgWithLogIdent(msg), e)
+  }
+
+  def debug(format: => String, arg1: => Any) = {
+    if (log.isDebugEnabled())
+      log.debug(msgWithLogIdent(format), arg1)
   }
 
   def debug(format: => String, arg1: => Any, arg2: => Any) = {

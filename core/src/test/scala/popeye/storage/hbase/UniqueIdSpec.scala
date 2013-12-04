@@ -18,7 +18,7 @@ import popeye.storage.hbase.HBaseStorage.{ResolvedName, QualifiedId, QualifiedNa
  */
 class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
 
-  import scala.concurrent.ExecutionContext.Implicits.global
+  implicit val executionContext = system.dispatcher
 
   val metric = "test.metric.1"
   val qname = QualifiedName(HBaseStorage.MetricKind, metric)

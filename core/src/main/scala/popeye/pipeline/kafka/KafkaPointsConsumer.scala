@@ -1,6 +1,6 @@
 package popeye.pipeline.kafka
 
-import akka.actor.{FSM, Props, Actor}
+import akka.actor.{FSM, Props}
 import com.codahale.metrics.MetricRegistry
 import com.google.protobuf.InvalidProtocolBufferException
 import com.typesafe.config.Config
@@ -8,7 +8,7 @@ import java.util.concurrent.TimeUnit
 import kafka.consumer.{Consumer, ConsumerConfig}
 import popeye.pipeline.{PointsSource, PointsSink}
 import popeye.proto.PackedPoints
-import popeye.{ConfigUtil, Instrumented, Logging}
+import popeye.{ConfigUtil, Instrumented}
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration.FiniteDuration
 import popeye.pipeline.kafka.KafkaPointsConsumerProto._
@@ -16,6 +16,7 @@ import scala.util.Failure
 import scala.Some
 import scala.util.Success
 import scala.annotation.tailrec
+import scala.concurrent.ExecutionContext
 
 class KafkaPointsConsumerConfig(val topic: String, val group: String, config: Config) {
   val tick = new FiniteDuration(config.getMilliseconds("tick"), TimeUnit.MILLISECONDS)
@@ -39,13 +40,19 @@ object KafkaPointsConsumer {
     new ConsumerConfig(consumerProps)
   }
 
-  def props(topic: String, group: String, config: Config, metrics: MetricRegistry, sink: PointsSink, drop: PointsSink): Props = {
+  def props(topic: String,
+            group: String,
+            config: Config,
+            metrics: MetricRegistry,
+            sink: PointsSink,
+            drop: PointsSink,
+            executionContext: ExecutionContext): Props = {
     val pc = new KafkaPointsConsumerConfig(topic, group, config.getConfig("consumer").withFallback(config))
     val m = new KafkaPointsConsumerMetrics(s"kafka.$topic.$group", metrics)
     val consumerConfig = KafkaPointsConsumer.consumerConfig(group, config, pc)
     val consumerConnector = Consumer.create(consumerConfig)
     val pointsSource = new KafkaPointsSourceImpl(consumerConnector, pc.topic)
-    Props.apply(new KafkaPointsConsumer(pc, m, pointsSource, sink, drop))
+    Props.apply(new KafkaPointsConsumer(pc, m, pointsSource, sink, drop, executionContext))
   }
 }
 
@@ -72,8 +79,11 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
                           val metrics: KafkaPointsConsumerMetrics,
                           val pointsConsumer: PointsSource,
                           val sinkPipe: PointsSink,
-                          val dropPipe: PointsSink)
+                          val dropPipe: PointsSink,
+                          executionContext: ExecutionContext)
   extends FSM[State, PointsState] {
+
+  implicit val eCtx = executionContext
 
   startWith(Idle, PointsState())
 
@@ -128,8 +138,6 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
   }
 
   private def sendPoints(p: PointsState) = {
-    import scala.concurrent.ExecutionContext.Implicits.global
-
     val me = self
     val myBatches = p.batches
     sinkPipe.send(myBatches, p.points) onComplete {
@@ -137,14 +145,12 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
         log.debug(s"Batches: ${myBatches.mkString(",")} committed")
         me ! Ok
       case Failure(x: Throwable) =>
-        log.error(s"Failed to send batches $myBatches", x)
+        log.error(x, s"Failed to send batches $myBatches")
         me ! Failed
     }
   }
 
   private def dropPoints(p: PointsState) = {
-    import scala.concurrent.ExecutionContext.Implicits.global
-
     val me = self
     val batches = p.batches.mkString(",")
     dropPipe.send(p.batches, p.points) onComplete {

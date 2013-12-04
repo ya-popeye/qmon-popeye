@@ -15,7 +15,7 @@ class BlackHole {
 }
 
 class BlackHolePipelineSinkFactory extends PipelineSinkFactory with Logging {
-  def startSink(sinkName: String, channel: PipelineChannel, config: Config, ect: ExecutionContext): Unit = {
+  def startSink(sinkName: String, channel: PipelineChannel, config: Config, storagesConfig: Config, ect: ExecutionContext): Unit = {
     channel.startReader(sinkName, new PointsSink {
       def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] = {
         debug(s"Blackhole: ${batchIds.mkString}, ${points.pointsCount} points")

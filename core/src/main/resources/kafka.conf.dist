@@ -19,8 +19,8 @@ popeye.pipeline {
   }
 
   sinks = {
-//    opentsdb-sink: hbase
-    bh: blackhole
+    opentsdb-sink: hbase
+//    bh: blackhole
   }
 
   opentsdb-sink = {
@@ -36,6 +36,21 @@ popeye.pipeline {
     port = 4444
   }
 }
+
+popeye.query = {
+  db = {
+    pool.max = 25
+    read-chunk-size = 10
+    zk.quorum = "localhost:2182"
+    storage = hbaseStorage
+  }
+  http = {
+    server.http.listen="localhost:8080"
+    server.http.backlog=100
+  }
+}
+
+
 
 akka {
 

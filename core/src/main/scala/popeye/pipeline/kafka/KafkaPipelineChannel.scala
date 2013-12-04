@@ -6,7 +6,7 @@ import com.typesafe.config.Config
 import popeye.IdGenerator
 import popeye.pipeline._
 import popeye.proto.PackedPoints
-import scala.concurrent.{Promise, Future}
+import scala.concurrent.{ExecutionContext, Promise, Future}
 import akka.routing.FromConfig
 
 /**
@@ -14,6 +14,7 @@ import akka.routing.FromConfig
  */
 class KafkaPipelineChannel(val config: Config,
                            val actorSystem: ActorSystem,
+                           executionContext: ExecutionContext,
                            val metrics: MetricRegistry,
                            val idGenerator: IdGenerator)
   extends PipelineChannel {
@@ -45,6 +46,6 @@ class KafkaPipelineChannel(val config: Config,
       def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] = {
         throw new IllegalStateException("Drop not enabled")
       }
-    }).withDispatcher(config.getString("consumer.dispatcher")), s"kafka-consumer-$group-$consumerId")
+    }, executionContext).withDispatcher(config.getString("consumer.dispatcher")), s"kafka-consumer-$group-$consumerId")
   }
 }
