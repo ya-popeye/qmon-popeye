@@ -200,13 +200,12 @@ class HBaseStorage(tableName: String,
                    attributeNames: UniqueId,
                    attributeValues: UniqueId,
                    metrics: HBaseStorageMetrics,
-                   resolveTimeout: Duration = 15 seconds) extends Logging with HBaseUtils {
+                   resolveTimeout: Duration = 15 seconds,
+                   readChunkSize: Int) extends Logging with HBaseUtils {
 
   def hTablePool: HTablePool = hTablePool_
 
   val tableBytes = tableName.getBytes(Encoding)
-
-  val readChunkSize: Int = 10
 
   def getPoints(metric: String,
                 timeRange: (Int, Int),
@@ -583,6 +582,7 @@ class HBaseStorageConfig(val config: Config,
   val poolSize = config.getInt("pool.max")
   val zkQuorum = config.getString("zk.quorum")
   val resolveTimeout = new FiniteDuration(config.getMilliseconds(s"uids.resolve-timeout"), TimeUnit.MILLISECONDS)
+  val readChunkSize = config.getInt("read-chunk-size")
   val uidsConfig = config.getConfig("uids")
 }
 
@@ -610,7 +610,7 @@ class HBaseStorageConfigured(config: HBaseStorageConfig) {
       config.resolveTimeout)
     new HBaseStorage(
       config.pointsTableName, hbase.hTablePool, metrics, attrNames, attrValues,
-      new HBaseStorageMetrics(config.storageName, config.metricRegistry), config.resolveTimeout)
+      new HBaseStorageMetrics(config.storageName, config.metricRegistry), config.resolveTimeout, config.readChunkSize)
   }
 
   private def makeUniqueIdCache(config: Config, kind: String, resolver: ActorRef,

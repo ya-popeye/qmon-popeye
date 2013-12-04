@@ -97,7 +97,15 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
     val metrics = setup(uniqActor, HBaseStorage.MetricKind, metricNames)
     val attrNames = setup(uniqActor, HBaseStorage.AttrNameKind, attributeNames)
     val attrValues = setup(uniqActor, HBaseStorage.AttrValueKind, attributeValues)
-    val storage = new HBaseStorage(tableName, hTablePool, metrics, attrNames, attrValues, pointsStorageMetrics)
+    val storage = new HBaseStorage(
+      tableName,
+      hTablePool,
+      metrics,
+      attrNames,
+      attrValues,
+      pointsStorageMetrics,
+      readChunkSize = 10
+    )
 
     def setup(actor: TestActorRef[FixedUniqueIdActor], kind: String, seq: Seq[String]): UniqueId = {
       val uniq = new UniqueIdImpl(HBaseStorage.UniqueIdMapping.get(kind).get, kind, actor)
