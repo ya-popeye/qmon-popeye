@@ -64,6 +64,27 @@ class PointAggregationSpec extends FlatSpec with ShouldMatchers {
     }
   }
 
+  ignore should "have reasonable performance" in {
+    def series = (0 to 1000000).iterator.map {
+      i => (i, i.toDouble)
+    }
+
+    val input = (1 to 50).map(_ => series)
+    val outputIterator = PointAggregation.linearInterpolation(input, _.sum)
+    val workTime = time {
+      while(outputIterator.hasNext) {
+        outputIterator.next()
+      }
+    }
+    println(f"time in seconds = ${workTime * 0.001}")
+  }
+
+  def time[T](body: => Unit) = {
+    val startTime = System.currentTimeMillis()
+    body
+    System.currentTimeMillis() - startTime
+  }
+
   private def maxAggregator(seq: Seq[Double]): Double = seq.max
 
   private def randomInput(random: Random): Seq[Point] = {

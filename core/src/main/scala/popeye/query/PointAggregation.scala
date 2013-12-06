@@ -9,8 +9,13 @@ object PointAggregation {
 
   case class IdleSeries(firstLineStart: Int, series: BufferedIterator[Line])
 
-  private implicit val activeSeriesOrdering = Ordering.by[ActiveSeries, Int](span => span.currentLineEnd).reverse
-  private implicit val idleSeriesOrdering = Ordering.by[IdleSeries, Int](span => span.firstLineStart).reverse
+  private implicit val activeSeriesOrdering = new Ordering[ActiveSeries] {
+    def compare(x: ActiveSeries, y: ActiveSeries): Int = Integer.compare(y.currentLineEnd, x.currentLineEnd)
+  }
+
+  private implicit val idleSeriesOrdering = new Ordering[IdleSeries] {
+    def compare(x: IdleSeries, y: IdleSeries): Int = Integer.compare(y.firstLineStart, x.firstLineStart)
+  }
 
   case class Line(x1: Int, y1: Double, x2: Int, y2: Double) {
     require(x1 <= x2)
@@ -114,4 +119,6 @@ object PointAggregation {
       }
     }
   }
+
+  //def downsample(points:Iterator[])
 }
