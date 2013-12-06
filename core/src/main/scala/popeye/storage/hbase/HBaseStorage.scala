@@ -185,7 +185,7 @@ case class HBaseStorageMetrics(name: String, override val metricRegistry: Metric
 
 case class PointsStream(points: Seq[Point], next: Option[() => Future[PointsStream]])
 
-case class Point(timestamp: Int, value: Number)
+case class Point(timestamp: Int, value: Number, attributes: BytesKey)
 
 object PointsStream {
   def apply(points: Seq[Point]): PointsStream = PointsStream(points, None)
@@ -294,18 +294,19 @@ class HBaseStorage(tableName: String,
   }
 
   private def parseTimeValuePoints(results: Array[Result], timeRange: (Int, Int)): Seq[Point] = {
-    val baseTimeBuffer = new Array[Byte](HBaseStorage.TIMESTAMP_BYTES)
+    val baseTimeBuffer = new Array[Byte](TIMESTAMP_BYTES)
 
     val pointsLists = for (result <- results) yield {
       import scala.collection.JavaConverters.mapAsScalaMapConverter
       val row = result.getRow
-      System.arraycopy(row, metricNames.width, baseTimeBuffer, 0, HBaseStorage.TIMESTAMP_BYTES)
+      System.arraycopy(row, metricNames.width, baseTimeBuffer, 0, TIMESTAMP_BYTES)
+      val attributes = getAttributesBytes(row)
       val baseTime = Bytes.toInt(baseTimeBuffer)
       val columns = result.getFamilyMap(PointsFamily).asScala.toList
       columns.map {
         case (qualifierBytes, valueBytes) =>
           val (delta, value) = parseValue(qualifierBytes, valueBytes)
-          Point(baseTime + delta, value)
+          Point(baseTime + delta, value, attributes)
       }
     }
     val (startTime, endTime) = timeRange
@@ -315,6 +316,13 @@ class HBaseStorage(tableName: String,
       pointsLists(lastIndex) = pointsLists(lastIndex).filter(point => point.timestamp < endTime)
     }
     pointsLists.toSeq.flatten
+  }
+
+  def getAttributesBytes(row: Array[Byte]) = {
+    val attributesLength = row.length - (metricNames.width + TIMESTAMP_BYTES)
+    val attributesBuffer = new Array[Byte](attributesLength)
+    System.arraycopy(row, metricNames.width + TIMESTAMP_BYTES, attributesBuffer, 0, attributesLength)
+    new BytesKey(attributesBuffer)
   }
 
   private def parseValue(qualifierBytes: Array[Byte], valueBytes: Array[Byte]): (Short, Number) = {

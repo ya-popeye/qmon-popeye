@@ -9,7 +9,7 @@ import akka.testkit.TestActorRef
 import akka.actor.{ActorRef, Actor, Props}
 import akka.pattern.ask
 import spray.http.HttpRequest
-import popeye.storage.hbase.{Point, PointsStream}
+import popeye.storage.hbase.{BytesKey, Point, PointsStream}
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition
 import spray.http.HttpResponse
 import akka.util.Timeout
@@ -28,7 +28,7 @@ class HttpQueryServerSpec extends AkkaTestKitSpec("http-query") with MockitoSuga
   behavior of "HttpQueryServer"
 
   it should "return points in one chunk" in {
-    val points = Seq(Point(0, 111), Point(1, 222))
+    val points = Seq(point(0, 111), point(1, 222))
     val storage = createPointsStorage(Seq(points))
     val serverRef = TestActorRef(Props.apply(new HttpQueryServer(storage, executionContext)))
     val uri = createUri("dummy", (0, 0), List())
@@ -42,7 +42,7 @@ class HttpQueryServerSpec extends AkkaTestKitSpec("http-query") with MockitoSuga
   }
 
   it should "return points in multiple chunks" in {
-    val chunks = Seq(Point(0, 111), Point(1, 222), Point(2, 333)).grouped(1).toSeq
+    val chunks = Seq(point(0, 111), point(1, 222), point(2, 333)).grouped(1).toSeq
     val chunkMatchers = Seq(include("111"), include("222"), include("333")).toIndexedSeq
 
     val storage = createPointsStorage(chunks)
@@ -74,6 +74,10 @@ class HttpQueryServerSpec extends AkkaTestKitSpec("http-query") with MockitoSuga
       "all" -> All
     )
     verify(storage).getPoints("metricId", (0, 1), attrs)
+  }
+
+  def point(time: Int, value: Number): Point = {
+    Point(time, value, attributes = new BytesKey(Array()))
   }
 
   class ChunkedResponseTester(chunkMatchers: IndexedSeq[Matcher[String]], server: TestActorRef[_], testMessage: Any) extends Actor {

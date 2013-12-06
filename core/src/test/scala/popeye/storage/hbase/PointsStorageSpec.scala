@@ -133,9 +133,9 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
     import HBaseStorage.ValueNameFilterCondition._
     val future = state.storage.getPoints("my.metric1", (1200, 4801), Map("host" -> Single("localhost")))
     val filteredPoints = pointsStreamToList(future)
-    filteredPoints should contain(Point(1200, 1))
-    filteredPoints should (not contain Point(0, 0))
-    filteredPoints should (not contain Point(6000, 5))
+    filteredPoints should contain(point(1200, 1))
+    filteredPoints should (not contain point(0, 0))
+    filteredPoints should (not contain point(6000, 5))
   }
 
   it should "perform multiple attributes queries" in {
@@ -145,7 +145,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
       attributeNames = Seq("b", "a"),
       attributeValues = Seq("foo")
     )
-    val point = Message.Point.newBuilder()
+    val messagePoint = Message.Point.newBuilder()
       .setTimestamp(0)
       .setIntValue(1)
       .setMetric("metric")
@@ -153,11 +153,11 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
       .addAttributes(attribute("b", "foo"))
       .build()
 
-    state.storage.writePoints(PackedPoints(Seq(point)))
+    state.storage.writePoints(PackedPoints(Seq(messagePoint)))
     import HBaseStorage.ValueNameFilterCondition._
     val future = state.storage.getPoints("metric", (0, 1), Map("a" -> Single("foo"), "b" -> Single("foo")))
     val filteredPoints = pointsStreamToList(future)
-    filteredPoints should contain(Point(0, 1))
+    filteredPoints should contain(point(0, 1))
   }
 
   it should "perform multiple attribute value queries" in {
@@ -166,19 +166,19 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
       attributeNames = Seq("type"),
       attributeValues = Seq("foo", "bar", "junk")
     )
-    val fooPoint = point(
+    val fooPoint = messagePoint(
       metricName = "metric",
       timestamp = 0,
       value = 1,
       attrs = Seq("type" -> "foo")
     )
-    val barPoint = point(
+    val barPoint = messagePoint(
       metricName = "metric",
       timestamp = 0,
       value = 2,
       attrs = Seq("type" -> "bar")
     )
-    val junkPoint = point(
+    val junkPoint = messagePoint(
       metricName = "metric",
       timestamp = 0,
       value = 3,
@@ -188,8 +188,8 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
     import HBaseStorage.ValueNameFilterCondition._
     val future = state.storage.getPoints("metric", (0, 1), Map("type" -> Multiple(Seq("foo", "bar"))))
     val filteredPoints = pointsStreamToList(future)
-    filteredPoints should (contain(Point(0, 1)) and contain(Point(0, 2)))
-    filteredPoints should (not contain Point(0, 3))
+    filteredPoints should (contain(point(0, 1)) and contain(point(0, 2)))
+    filteredPoints should (not contain point(0, 3))
   }
 
   it should "perform multiple attribute value queries (All filter)" in {
@@ -198,19 +198,19 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
       attributeNames = Seq("type", "attr"),
       attributeValues = Seq("foo", "bar")
     )
-    val fooPoint = point(
+    val fooPoint = messagePoint(
       metricName = "metric",
       timestamp = 0,
       value = 1,
       attrs = Seq("type" -> "foo", "attr" -> "foo")
     )
-    val barPoint = point(
+    val barPoint = messagePoint(
       metricName = "metric",
       timestamp = 0,
       value = 2,
       attrs = Seq("type" -> "bar", "attr" -> "foo")
     )
-    val junkPoint = point(
+    val junkPoint = messagePoint(
       metricName = "metric",
       timestamp = 0,
       value = 3,
@@ -220,11 +220,15 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
     import HBaseStorage.ValueNameFilterCondition._
     val future = state.storage.getPoints("metric", (0, 1), Map("type" -> All, "attr" -> Single("foo")))
     val filteredPoints = pointsStreamToList(future)
-    filteredPoints should (contain(Point(0, 1)) and contain(Point(0, 2)))
-    filteredPoints should (not contain Point(0, 3))
+    filteredPoints should (contain(point(0, 1)) and contain(point(0, 2)))
+    filteredPoints should (not contain point(0, 3))
   }
 
-  def point(metricName: String, timestamp: Long, value: Long, attrs: Seq[(String, String)]) = {
+  def point(time: Int, value: Number): Point = {
+    Point(time, value, attributes = new BytesKey(Array()))
+  }
+
+  def messagePoint(metricName: String, timestamp: Long, value: Long, attrs: Seq[(String, String)]) = {
     val builder = Message.Point.newBuilder()
       .setMetric(metricName)
       .setTimestamp(timestamp)
