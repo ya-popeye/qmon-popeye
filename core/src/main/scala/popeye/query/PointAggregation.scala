@@ -10,14 +10,6 @@ object PointAggregation {
 
   case class IdleSeries(firstLineStart: Int, series: BufferedIterator[Line])
 
-  private implicit val activeSeriesOrdering = new Ordering[ActiveSeries] {
-    def compare(x: ActiveSeries, y: ActiveSeries): Int = Integer.compare(y.currentLineEnd, x.currentLineEnd)
-  }
-
-  private implicit val idleSeriesOrdering = new Ordering[IdleSeries] {
-    def compare(x: IdleSeries, y: IdleSeries): Int = Integer.compare(y.firstLineStart, x.firstLineStart)
-  }
-
   case class Line(x1: Int, y1: Double, x2: Int, y2: Double) {
     require(x1 <= x2)
 
@@ -48,9 +40,11 @@ object PointAggregation {
                             aggregateFunction: Seq[Double] => Double) extends Iterator[PlotPoint] {
     var idleSeries = {
       val series = nonEmptySpans.map(it => IdleSeries(it.head.x1, it))
-      mutable.PriorityQueue(series: _*)
+      series.sortBy(_.firstLineStart)
     }
-    var activeSeries = mutable.PriorityQueue[ActiveSeries]()
+    var activeSeries = mutable.PriorityQueue[ActiveSeries]()(new Ordering[ActiveSeries] {
+      def compare(x: ActiveSeries, y: ActiveSeries): Int = Integer.compare(y.currentLineEnd, x.currentLineEnd)
+    })
 
     def hasNext: Boolean = activeSeries.nonEmpty || idleSeries.nonEmpty
 
@@ -98,9 +92,9 @@ object PointAggregation {
     }
 
     private def activateIdleSeries(currentX: Int) {
-      def nextIdleSpanStart = idleSeries.head.firstLineStart
-      while(idleSeries.nonEmpty && nextIdleSpanStart == currentX) {
-        val IdleSeries(_, series) = idleSeries.dequeue()
+      val seriesToActivate = idleSeries.takeWhile(_.firstLineStart == currentX)
+      idleSeries = idleSeries.dropWhile(_.firstLineStart == currentX)
+      for (IdleSeries(_, series) <- seriesToActivate) {
         val line = series.head
         activeSeries.enqueue(ActiveSeries(line.x2, series))
       }
