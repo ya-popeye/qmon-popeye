@@ -117,7 +117,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
   }
 
   it should "perform time range queries" in {
-    val state = new State
+    implicit val state = new State
     val points = (0 to 6).map {
       i =>
         Message.Point.newBuilder()
@@ -133,13 +133,13 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
     import HBaseStorage.ValueNameFilterCondition._
     val future = state.storage.getPoints("my.metric1", (1200, 4801), Map("host" -> Single("localhost")))
     val filteredPoints = pointsStreamToList(future)
-    filteredPoints should contain(point(1200, 1))
-    filteredPoints should (not contain point(0, 0))
-    filteredPoints should (not contain point(6000, 5))
+    filteredPoints should contain(point(1200, 1, Seq("host" -> "localhost")))
+    filteredPoints should (not contain point(0, 0, Seq("host" -> "localhost")))
+    filteredPoints should (not contain point(6000, 5, Seq("host" -> "localhost")))
   }
 
   it should "perform multiple attributes queries" in {
-    val state = new State(
+    implicit val state = new State(
       metricNames = Seq("metric"),
       //order of attribute names is important
       attributeNames = Seq("b", "a"),
@@ -157,11 +157,11 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
     import HBaseStorage.ValueNameFilterCondition._
     val future = state.storage.getPoints("metric", (0, 1), Map("a" -> Single("foo"), "b" -> Single("foo")))
     val filteredPoints = pointsStreamToList(future)
-    filteredPoints should contain(point(0, 1))
+    filteredPoints should contain(point(0, 1, Seq("a" -> "foo", "b" -> "foo")))
   }
 
   it should "perform multiple attribute value queries" in {
-    val state = new State(
+    implicit val state = new State(
       metricNames = Seq("metric"),
       attributeNames = Seq("type"),
       attributeValues = Seq("foo", "bar", "junk")
@@ -188,12 +188,13 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
     import HBaseStorage.ValueNameFilterCondition._
     val future = state.storage.getPoints("metric", (0, 1), Map("type" -> Multiple(Seq("foo", "bar"))))
     val filteredPoints = pointsStreamToList(future)
-    filteredPoints should (contain(point(0, 1)) and contain(point(0, 2)))
-    filteredPoints should (not contain point(0, 3))
+    filteredPoints should contain(point(0, 1, Seq("type" -> "foo")))
+    filteredPoints should contain(point(0, 2, Seq("type" -> "bar")))
+    filteredPoints should (not contain point(0, 3, Seq("type" -> "junk")))
   }
 
   it should "perform multiple attribute value queries (All filter)" in {
-    val state = new State(
+    implicit val state = new State(
       metricNames = Seq("metric"),
       attributeNames = Seq("type", "attr"),
       attributeValues = Seq("foo", "bar")
@@ -220,12 +221,24 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
     import HBaseStorage.ValueNameFilterCondition._
     val future = state.storage.getPoints("metric", (0, 1), Map("type" -> All, "attr" -> Single("foo")))
     val filteredPoints = pointsStreamToList(future)
-    filteredPoints should (contain(point(0, 1)) and contain(point(0, 2)))
-    filteredPoints should (not contain point(0, 3))
+    filteredPoints should contain(point(0, 1, Seq("type" -> "foo", "attr" -> "foo")))
+    filteredPoints should contain(point(0, 1, Seq("type" -> "foo", "attr" -> "foo")))
+    filteredPoints should (not contain point(0, 3, Seq("type" -> "foo", "attr" -> "bar")))
   }
 
-  def point(time: Int, value: Number): Point = {
-    Point(time, value, attributes = new BytesKey(Array()))
+  def point(time: Int, value: Number, attrs: Seq[(String, String)])(implicit state: State): Point = {
+
+    val byteAttrs = attrs.map {
+      case (attrName, attrValue) =>
+        val byteName = Await.result(state.attrNames.resolveIdByName(attrName, create = false)(5 seconds), 5 seconds)
+        val byteValue = Await.result(state.attrValues.resolveIdByName(attrValue, create = false)(5 seconds), 5 seconds)
+        (byteName, byteValue)
+    }.sortBy(_._1)
+    val attrsArray =
+      byteAttrs
+        .map { case (attrName, attrValue) => attrName.bytes ++ attrValue.bytes}
+        .foldLeft(Array[Byte]())(_ ++ _)
+    Point(time, value, new BytesKey(attrsArray))
   }
 
   def messagePoint(metricName: String, timestamp: Long, value: Long, attrs: Seq[(String, String)]) = {
