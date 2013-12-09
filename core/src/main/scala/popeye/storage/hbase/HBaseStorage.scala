@@ -124,34 +124,37 @@ object HBaseStorage {
       require(name.length == attrNameLength,
         f"invalid attribute name length: expected $attrNameLength, actual ${name.length}")
 
-    def checkAttrValueLength(value: Array[Byte]) = require(value.length == attrValueLength,
-      f"invalid attribute value length: expected $attrValueLength, actual ${value.length}")
-
     val anyNumberOfAnyAttributesRegex = f"(?:.{${attrNameLength + attrValueLength}})*"
     val prefix = f"(?s)^.{$offset}" + anyNumberOfAnyAttributesRegex
     val suffix = anyNumberOfAnyAttributesRegex + "$"
-    import ValueIdFilterCondition._
     val infix = sortedAttributes.map {
       case (attrNameId, valueCondition) =>
         checkAttrNameLength(attrNameId)
-        valueCondition match {
-          case Single(attrValue) =>
-            checkAttrValueLength(attrValue)
-            escapeRegexp(decodeBytes(attrNameId) + decodeBytes(attrValue))
-          case Multiple(attrValues) =>
-            val nameRegex = escapeRegexp(decodeBytes(attrNameId))
-            val attrsRegexps = attrValues.map {
-              value =>
-                checkAttrValueLength(value)
-                escapeRegexp(decodeBytes(value))
-            }
-            nameRegex + attrsRegexps.mkString("(?:", "|", ")")
-          case All =>
-            val nameRegex = escapeRegexp(decodeBytes(attrNameId))
-            nameRegex + f".{$attrValueLength}"
-        }
+        renderAttributeRegexp(attrNameId, valueCondition, attrValueLength)
     }.mkString(anyNumberOfAnyAttributesRegex)
     prefix + infix + suffix
+  }
+
+  private def renderAttributeRegexp(attrNameId: BytesKey, valueCondition: ValueIdFilterCondition, attrValueLength: Int) = {
+    import ValueIdFilterCondition._
+    def checkAttrValueLength(value: Array[Byte]) = require(value.length == attrValueLength,
+      f"invalid attribute value length: expected $attrValueLength, actual ${value.length}")
+    valueCondition match {
+      case Single(attrValue) =>
+        checkAttrValueLength(attrValue)
+        escapeRegexp(decodeBytes(attrNameId) + decodeBytes(attrValue))
+      case Multiple(attrValues) =>
+        val nameRegex = escapeRegexp(decodeBytes(attrNameId))
+        val attrsRegexps = attrValues.map {
+          value =>
+            checkAttrValueLength(value)
+            escapeRegexp(decodeBytes(value))
+        }
+        nameRegex + attrsRegexps.mkString("(?:", "|", ")")
+      case All =>
+        val nameRegex = escapeRegexp(decodeBytes(attrNameId))
+        nameRegex + f".{$attrValueLength}"
+    }
   }
 
   private def escapeRegexp(string: String) = f"\\Q${string.replace("\\E", "\\E\\\\E\\Q")}\\E"
