@@ -26,14 +26,15 @@ object PointAggregation {
   type PlotPoint = (Int, Double)
   type Plot = Iterator[PlotPoint]
 
-  def linearInterpolation(spans: Seq[Plot], aggregateFunction: Seq[Double] => Double): Iterator[PlotPoint] = {
-    val nonEmptySpans =
-      spans
+  def linearInterpolation(series: Seq[Plot], aggregateFunction: Seq[Double] => Double): Iterator[PlotPoint] = {
+    val nonEmptySeries =
+      series
         .map(toLines)
         .filter(_.hasNext)
         .map(_.buffered)
-    require(nonEmptySpans.nonEmpty)
-    new AggregatingIterator(nonEmptySpans, aggregateFunction)
+    require(series.nonEmpty, "input is empty")
+    require(nonEmptySeries.nonEmpty, "all series are empty")
+    new AggregatingIterator(nonEmptySeries, aggregateFunction)
   }
 
   class AggregatingIterator(nonEmptySpans: Seq[BufferedIterator[Line]],
