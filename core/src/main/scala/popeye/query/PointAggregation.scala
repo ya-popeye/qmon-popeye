@@ -1,6 +1,7 @@
 package popeye.query
 
 import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 
 
 object PointAggregation {
@@ -30,10 +31,10 @@ object PointAggregation {
     }
   }
 
-  type Point = (Int, Double)
-  type Graph = Iterator[Point]
+  type PlotPoint = (Int, Double)
+  type Plot = Iterator[PlotPoint]
 
-  def linearInterpolation(spans: Seq[Graph], aggregateFunction: Seq[Double] => Double) = {
+  def linearInterpolation(spans: Seq[Plot], aggregateFunction: Seq[Double] => Double): Iterator[PlotPoint] = {
     val nonEmptySpans =
       spans
         .map(toLines)
@@ -44,7 +45,7 @@ object PointAggregation {
   }
 
   class AggregatingIterator(nonEmptySpans: Seq[BufferedIterator[Line]],
-                            aggregateFunction: Seq[Double] => Double) extends Iterator[Point] {
+                            aggregateFunction: Seq[Double] => Double) extends Iterator[PlotPoint] {
     var idleSeries = {
       val series = nonEmptySpans.map(it => IdleSeries(it.head.x1, it))
       mutable.PriorityQueue(series: _*)
@@ -53,7 +54,7 @@ object PointAggregation {
 
     def hasNext: Boolean = activeSeries.nonEmpty || idleSeries.nonEmpty
 
-    def next(): Point = {
+    def next(): PlotPoint = {
       val currentX = nextX()
       if (idleSeries.nonEmpty) {
         activateIdleSeries(currentX)
@@ -107,7 +108,7 @@ object PointAggregation {
 
   }
 
-  def toLines(points: Iterator[Point]): Iterator[Line] = {
+  def toLines(points: Iterator[PlotPoint]): Iterator[Line] = {
     val firstTwoPoints = points.take(2).toList
     if (firstTwoPoints.size != 2) {
       Iterator.empty
@@ -120,5 +121,58 @@ object PointAggregation {
     }
   }
 
-  //def downsample(points:Iterator[])
+  def downsample(source: Iterator[PlotPoint],
+                 intervalLength: Int,
+                 aggregator: Seq[Double] => Double): Iterator[PlotPoint] = {
+    new DownsamplingIterator(source, intervalLength, aggregator)
+  }
+
+  class DownsamplingIterator(source: Iterator[PlotPoint],
+                             intervalLength: Int,
+                             aggregator: Seq[Double] => Double) extends Iterator[PlotPoint] {
+    var currentIntervalStart = 0
+    val buffer = {
+      val buf = ArrayBuffer[Double]()
+      if (source.hasNext) {
+        val (firstTimestamp, firstValue) = source.next()
+        currentIntervalStart = firstTimestamp
+        buf += firstValue
+      }
+      buf
+    }
+
+    def hasNext: Boolean = buffer.nonEmpty
+
+    def next(): PointAggregation.PlotPoint = {
+      if (!source.hasNext) {
+        val point = (currentIntervalStart + intervalLength / 2, aggregator(buffer))
+        buffer.clear()
+        return point
+      }
+      var newPoint = source.next()
+      while(source.hasNext && newPoint._1 < (currentIntervalStart + intervalLength)) {
+        buffer += newPoint._2
+        newPoint = source.next()
+      }
+      val aggregatedValue =
+        if (source.hasNext || newPoint._1 >= (currentIntervalStart + intervalLength)) {
+          val value = aggregator(buffer)
+          buffer.clear()
+          buffer += newPoint._2
+          value
+        }
+        else {
+          buffer += newPoint._2
+          val value = aggregator(buffer)
+          buffer.clear()
+          value
+        }
+      val intervalTime = currentIntervalStart + intervalLength / 2
+      currentIntervalStart += intervalLength * ((newPoint._1 - currentIntervalStart) / intervalLength)
+
+      (intervalTime, aggregatedValue)
+    }
+
+  }
+
 }

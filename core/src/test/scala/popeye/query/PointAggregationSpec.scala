@@ -2,7 +2,7 @@ package popeye.query
 
 import org.scalatest.FlatSpec
 import org.scalatest.matchers.ShouldMatchers
-import popeye.query.PointAggregation.{Point, Line}
+import popeye.query.PointAggregation.{PlotPoint, Line}
 import scala.collection.SortedMap
 import scala.util.Random
 
@@ -79,15 +79,84 @@ class PointAggregationSpec extends FlatSpec with ShouldMatchers {
     println(f"time in seconds = ${workTime * 0.001}")
   }
 
-  def time[T](body: => Unit) = {
+  behavior of "PointAggregation.downsample"
+
+  it should "behave as no-op when interval == 1" in {
+    val input = (0 to 5).map(i => (i, i.toDouble))
+    val output = PointAggregation.downsample(input.iterator, 1, maxAggregator).toList
+    output should equal(input)
+  }
+
+  it should "handle simple case" in {
+    val values = (0 until 5).flatMap {
+      i =>
+        val value = i.toDouble
+        Seq.fill(5)(value)
+    }
+    val timestamps = 0 until 25
+    val input = timestamps zip values
+    val output = PointAggregation.downsample(input.iterator, 5, maxAggregator).toList
+    val expectedOutputValues = (0 until 5).map(i => i.toDouble)
+    output.map(_._2) should equal(expectedOutputValues)
+  }
+
+  it should "pass randomized test" in {
+    val random = new Random(0)
+    val input = randomInput(random)
+    val intervalLength = 1 + random.nextInt(10)
+    val output = PointAggregation.downsample(input.iterator, intervalLength, maxAggregator).toList
+    val expectedOutput = slowDownsampling(input, intervalLength, maxAggregator)
+    if (output != expectedOutput) {
+      println(output)
+      println(expectedOutput)
+    }
+    output should equal(expectedOutput)
+  }
+
+  ignore should "have reasonable performance" in {
+    val series = (0 to 10000000).iterator.map {
+      i => (i, i.toDouble)
+    }
+
+    val outputIterator = PointAggregation.downsample(series, 100, maxAggregator)
+    val workTime = time {
+      while(outputIterator.hasNext) {
+        outputIterator.next()
+      }
+    }
+    println(f"time in seconds = ${workTime * 0.001}")
+  }
+
+  private def time[T](body: => Unit) = {
     val startTime = System.currentTimeMillis()
     body
     System.currentTimeMillis() - startTime
   }
 
+  private def slowDownsampling(source: Seq[PlotPoint],
+                               intervalLength: Int,
+                               aggregator: Seq[Double] => Double,
+                               currentIntervalStartOption: Option[Int] = None): List[PlotPoint] = {
+    if (source.isEmpty) return Nil
+    val currentIntervalStart = currentIntervalStartOption.getOrElse(source.head._1)
+    val (currentIntervalPoints, rest) = source.span(_._1 < (currentIntervalStart + intervalLength))
+    val nextStart: Option[Int] = rest.headOption.map {
+      head => currentIntervalStart + intervalLength * ((head._1 - currentIntervalStart) / intervalLength)
+    }
+    if (currentIntervalPoints.isEmpty) {
+      slowDownsampling(rest, intervalLength, aggregator, nextStart)
+    } else {
+      val intervalTimestamp = currentIntervalStart + intervalLength / 2
+      val intervalValue = aggregator(currentIntervalPoints.map(_._2))
+      (intervalTimestamp, intervalValue) :: slowDownsampling(rest, intervalLength, aggregator, nextStart)
+    }
+  }
+
   private def maxAggregator(seq: Seq[Double]): Double = seq.max
 
-  private def randomInput(random: Random): Seq[Point] = {
+  private def avgAggregator(seq: Seq[Double]): Double = seq.sum / seq.size
+
+  private def randomInput(random: Random): Seq[PlotPoint] = {
     val inputSize = 2 + random.nextInt(50)
     val xs = {
       var xsSet = Set[Int]()
@@ -100,7 +169,7 @@ class PointAggregationSpec extends FlatSpec with ShouldMatchers {
     xs.toList.sorted zip ys
   }
 
-  private def slowInterpolation(graphs: Seq[Seq[Point]], aggregationFunction: Seq[Double] => Double) = {
+  private def slowInterpolation(graphs: Seq[Seq[PlotPoint]], aggregationFunction: Seq[Double] => Double) = {
     val xs = {
       val allXs =
         for {
@@ -116,7 +185,6 @@ class PointAggregationSpec extends FlatSpec with ShouldMatchers {
         (x, aggregationFunction(interpolations))
     }
   }
-
 
   private def interpolate(graph: Seq[(Int, Double)], x: Int): Option[Double] = {
     if (graph.size < 2) return None
