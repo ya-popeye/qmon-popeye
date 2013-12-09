@@ -271,12 +271,10 @@ class HBaseStorage(tableName: String,
       } else {
         None
       }
-    new PointRowsQuery(regex, startRow, stopRow, chunkSize)
+    new PointRowsQuery(regex, startRow, stopRow)
   }
 
-  class PointRowsQuery(rowRegexOption: Option[String], startRow: Array[Byte], stopRow: Array[Byte], chunkSize: Int) {
-    require(chunkSize > 0, "chunksize must be greater than 0")
-
+  class PointRowsQuery(rowRegexOption: Option[String], startRow: Array[Byte], stopRow: Array[Byte]) {
     def getRows(): (Array[Result], Option[PointRowsQuery]) = withHTable(tableName) {
       table =>
         val scan: Scan = new Scan()
@@ -290,14 +288,14 @@ class HBaseStorage(tableName: String,
         }
         val scanner = table.getScanner(scan)
         val results =
-          try {scanner.next(chunkSize)}
+          try {scanner.next(readChunkSize)}
           finally {scanner.close()}
         val nextQuery =
-          if (results.length < chunkSize) {
+          if (results.length < readChunkSize) {
             None
           } else {
             val lastRow = results(results.length - 2).getRow
-            Some(new PointRowsQuery(rowRegexOption, lastRow, stopRow, chunkSize))
+            Some(new PointRowsQuery(rowRegexOption, lastRow, stopRow))
           }
         (results, nextQuery)
     }
