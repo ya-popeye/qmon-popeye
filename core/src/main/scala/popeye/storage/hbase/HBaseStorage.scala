@@ -260,16 +260,21 @@ class HBaseStorage(tableName: String,
     val baseStartTime = startTime - (startTime % MAX_TIMESPAN)
     val startRow = metricId ++ Bytes.toBytes(baseStartTime)
     val stopRow = metricId ++ Bytes.toBytes(endTime)
-    val regex = createRowRegexp(
-      offset = 7,
-      attributeNames.width,
-      attributeValues.width,
-      attributes
-    )
+    val regex =
+      if (attributes.nonEmpty) {
+        Some(createRowRegexp(
+          offset = 7,
+          attributeNames.width,
+          attributeValues.width,
+          attributes
+        ))
+      } else {
+        None
+      }
     new PointRowsQuery(regex, startRow, stopRow, chunkSize)
   }
 
-  class PointRowsQuery(rowRegex: String, startRow: Array[Byte], stopRow: Array[Byte], chunkSize: Int) {
+  class PointRowsQuery(rowRegexOption: Option[String], startRow: Array[Byte], stopRow: Array[Byte], chunkSize: Int) {
     require(chunkSize > 0, "chunksize must be greater than 0")
 
     def getRows(): (Array[Result], Option[PointRowsQuery]) = withHTable(tableName) {
@@ -278,9 +283,11 @@ class HBaseStorage(tableName: String,
         scan.setStartRow(startRow)
         scan.setStopRow(stopRow)
         scan.addFamily(PointsFamily)
-        val comparator = new RegexStringComparator(rowRegex)
-        comparator.setCharset(ROW_REGEX_FILTER_ENCODING)
-        scan.setFilter(new RowFilter(CompareFilter.CompareOp.EQUAL, comparator))
+        for (rowRegex <- rowRegexOption) {
+          val comparator = new RegexStringComparator(rowRegex)
+          comparator.setCharset(ROW_REGEX_FILTER_ENCODING)
+          scan.setFilter(new RowFilter(CompareFilter.CompareOp.EQUAL, comparator))
+        }
         val scanner = table.getScanner(scan)
         val results =
           try {scanner.next(chunkSize)}
@@ -290,7 +297,7 @@ class HBaseStorage(tableName: String,
             None
           } else {
             val lastRow = results(results.length - 2).getRow
-            Some(new PointRowsQuery(rowRegex, lastRow, stopRow, chunkSize))
+            Some(new PointRowsQuery(rowRegexOption, lastRow, stopRow, chunkSize))
           }
         (results, nextQuery)
     }
