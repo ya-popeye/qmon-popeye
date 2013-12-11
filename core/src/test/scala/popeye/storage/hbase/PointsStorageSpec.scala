@@ -20,6 +20,9 @@ import java.util.regex.Pattern
 import scala.util.Random
 import java.nio.CharBuffer
 import popeye.storage.hbase.HBaseStorage.ValueIdFilterCondition._
+import popeye.storage.hbase.HBaseStorage._
+import popeye.storage.hbase.HBaseStorage.Point
+import scala.collection.immutable.SortedMap
 
 /**
  * @author Andrey Stepachev
@@ -120,22 +123,23 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
     val state = new State
     val points = (0 to 6).map {
       i =>
-        Message.Point.newBuilder()
-          .setTimestamp(i * 1200)
-          .setIntValue(i)
-          .setMetric("my.metric1")
-          .addAttributes(Message.Attribute.newBuilder()
-          .setName("host")
-          .setValue("localhost"))
-          .build()
+        messagePoint(
+          metricName = "my.metric1",
+          timestamp = i * 1200,
+          value = i,
+          attrs = Seq("host" -> "localhost")
+        )
     }
-    state.storage.writePoints(PackedPoints(points))
+    writePoints(state, points)
     import HBaseStorage.ValueNameFilterCondition._
     val future = state.storage.getPoints("my.metric1", (1200, 4801), Map("host" -> Single("localhost")))
-    val filteredPoints = pointsStreamToList(future)
-    filteredPoints should contain(Point(1200, 1))
-    filteredPoints should (not contain Point(0, 0))
-    filteredPoints should (not contain Point(6000, 5))
+    val groupsMap = toGroupsMap(future)
+    val group = groupsMap(SortedMap())
+    group.size should equal(1)
+    val series = group(SortedMap("host" -> "localhost"))
+    series should contain(Point(1200, 1))
+    series should (not contain Point(0, 0))
+    series should (not contain Point(6000, 5))
   }
 
   it should "perform multiple attributes queries" in {
@@ -145,86 +149,108 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
       attributeNames = Seq("b", "a"),
       attributeValues = Seq("foo")
     )
-    val point = Message.Point.newBuilder()
-      .setTimestamp(0)
-      .setIntValue(1)
-      .setMetric("metric")
-      .addAttributes(attribute("a", "foo"))
-      .addAttributes(attribute("b", "foo"))
-      .build()
+    val point = messagePoint(
+      metricName = "metric",
+      timestamp = 0,
+      value = 1,
+      attrs = Seq("a" -> "foo", "b" -> "foo")
+    )
 
-    state.storage.writePoints(PackedPoints(Seq(point)))
+    writePoints(state, Seq(point))
     import HBaseStorage.ValueNameFilterCondition._
     val future = state.storage.getPoints("metric", (0, 1), Map("a" -> Single("foo"), "b" -> Single("foo")))
-    val filteredPoints = pointsStreamToList(future)
-    filteredPoints should contain(Point(0, 1))
+    val groupsMap = toGroupsMap(future)
+    val group = groupsMap(SortedMap())
+    group.size should equal(1)
+    val series = group(SortedMap("a" -> "foo", "b" -> "foo"))
+
+    series should contain(Point(0, 1))
   }
 
+
   it should "perform multiple attribute value queries" in {
-    val state = new State(
+    implicit val state = new State(
       metricNames = Seq("metric"),
       attributeNames = Seq("type"),
       attributeValues = Seq("foo", "bar", "junk")
     )
-    val fooPoint = point(
+    val fooPoint = messagePoint(
       metricName = "metric",
       timestamp = 0,
       value = 1,
       attrs = Seq("type" -> "foo")
     )
-    val barPoint = point(
+    val barPoint = messagePoint(
       metricName = "metric",
       timestamp = 0,
       value = 2,
       attrs = Seq("type" -> "bar")
     )
-    val junkPoint = point(
+    val junkPoint = messagePoint(
       metricName = "metric",
       timestamp = 0,
       value = 3,
       attrs = Seq("type" -> "junk")
     )
-    state.storage.writePoints(PackedPoints(Seq(fooPoint, barPoint, junkPoint)))
+    writePoints(state, Seq(fooPoint, barPoint, junkPoint))
     import HBaseStorage.ValueNameFilterCondition._
     val future = state.storage.getPoints("metric", (0, 1), Map("type" -> Multiple(Seq("foo", "bar"))))
-    val filteredPoints = pointsStreamToList(future)
-    filteredPoints should (contain(Point(0, 1)) and contain(Point(0, 2)))
-    filteredPoints should (not contain Point(0, 3))
+    val groupsMap = toGroupsMap(future)
+    groupsMap.size should equal(2)
+    val fooGroup = groupsMap(SortedMap("type" -> "foo"))
+    val barGroup = groupsMap(SortedMap("type" -> "bar"))
+    fooGroup.size should equal(1)
+    barGroup.size should equal(1)
+    fooGroup(SortedMap("type" -> "foo")) should (contain(Point(0, 1)) and (not contain Point(0, 3)))
+    barGroup(SortedMap("type" -> "bar")) should (contain(Point(0, 2)) and (not contain Point(0, 3)))
   }
 
   it should "perform multiple attribute value queries (All filter)" in {
-    val state = new State(
+    implicit val state = new State(
       metricNames = Seq("metric"),
       attributeNames = Seq("type", "attr"),
       attributeValues = Seq("foo", "bar")
     )
-    val fooPoint = point(
+    val fooPoint = messagePoint(
       metricName = "metric",
       timestamp = 0,
       value = 1,
       attrs = Seq("type" -> "foo", "attr" -> "foo")
     )
-    val barPoint = point(
+    val barPoint = messagePoint(
       metricName = "metric",
       timestamp = 0,
       value = 2,
       attrs = Seq("type" -> "bar", "attr" -> "foo")
     )
-    val junkPoint = point(
+    val junkPoint = messagePoint(
       metricName = "metric",
       timestamp = 0,
       value = 3,
       attrs = Seq("type" -> "foo", "attr" -> "bar")
     )
-    state.storage.writePoints(PackedPoints(Seq(fooPoint, barPoint, junkPoint)))
+    writePoints(state, Seq(fooPoint, barPoint, junkPoint))
     import HBaseStorage.ValueNameFilterCondition._
     val future = state.storage.getPoints("metric", (0, 1), Map("type" -> All, "attr" -> Single("foo")))
-    val filteredPoints = pointsStreamToList(future)
-    filteredPoints should (contain(Point(0, 1)) and contain(Point(0, 2)))
-    filteredPoints should (not contain Point(0, 3))
+    val groupsMap = toGroupsMap(future)
+    groupsMap.size should equal(2)
+    val fooGroup = groupsMap(SortedMap("type" -> "foo"))
+    val barGroup = groupsMap(SortedMap("type" -> "bar"))
+    fooGroup.size should equal(1)
+    barGroup.size should equal(1)
+    fooGroup(SortedMap("type" -> "foo", "attr" -> "foo")) should (contain(Point(0, 1)) and (not contain Point(0, 3)))
+    barGroup(SortedMap("type" -> "bar", "attr" -> "foo")) should (contain(Point(0, 2)) and (not contain Point(0, 3)))
   }
 
-  def point(metricName: String, timestamp: Long, value: Long, attrs: Seq[(String, String)]) = {
+  def toGroupsMap(future: Future[PointsStream]): Map[PointAttributes, NamedPointsGroup] = {
+    Await.result(future.flatMap(_.toFuturePointsGroups), 5 seconds).groupsMap
+  }
+
+  def writePoints(state: State, points: Seq[Message.Point]) {
+    Await.result(state.storage.writePoints(PackedPoints(points)), 5 seconds)
+  }
+
+  def messagePoint(metricName: String, timestamp: Long, value: Long, attrs: Seq[(String, String)]) = {
     val builder = Message.Point.newBuilder()
       .setMetric(metricName)
       .setTimestamp(timestamp)
@@ -237,17 +263,6 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
 
   def attribute(name: String, value: String) =
     Message.Attribute.newBuilder().setName(name).setValue(value).build()
-
-  def pointsStreamToList(streamFuture: Future[PointsStream]) = {
-    def streamToFutureList(stream: PointsStream): Future[Seq[Point]] = {
-      val nextListFuture = stream.next match {
-        case Some(nextFuture) => nextFuture().flatMap(streamToFutureList)
-        case None => Future.successful(Nil)
-      }
-      nextListFuture.map {nextList => stream.points ++ nextList}
-    }
-    Await.result(streamFuture.flatMap(streamToFutureList), 5 seconds)
-  }
 
   behavior of "HBaseStorage.createRowRegexp"
 

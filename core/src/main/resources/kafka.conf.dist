@@ -24,6 +24,7 @@ popeye.pipeline {
   }
 
   opentsdb-sink = {
+    read-chunk-size = 10
     zk.quorum = "localhost:2182"
     topic = "popeye-points"
   }

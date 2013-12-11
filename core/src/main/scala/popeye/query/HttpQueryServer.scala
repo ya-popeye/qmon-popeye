@@ -13,21 +13,20 @@ import akka.util.Timeout
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 import popeye.storage.hbase.HBaseStorage
+import popeye.storage.hbase.HBaseStorage._
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition
-import popeye.storage.hbase.PointsStream
-import popeye.query.HttpQueryServer.PointsStorage
 import scala.util.Try
-import spray.http.HttpRequest
-import spray.http.ChunkedResponseStart
-import scala.Some
-import spray.http.HttpResponse
 import java.io.{PrintWriter, StringWriter}
+import HttpQueryServer._
+import popeye.storage.hbase.HBaseStorage.Point
+import spray.http.HttpResponse
+import popeye.storage.hbase.HBaseStorage.PointsGroups
+import spray.http.HttpRequest
 
 
 class HttpQueryServer(storage: PointsStorage, executionContext: ExecutionContext) extends Actor with Logging {
   implicit val eCtx = executionContext
   val pointsPathPattern = """/points/([^/]+)""".r
-
   case class SendNextPoints(client: ActorRef, points: PointsStream)
 
   def receive: Actor.Receive = {
@@ -41,21 +40,26 @@ class HttpQueryServer(storage: PointsStorage, executionContext: ExecutionContext
         endTime <- query.get("end").toRight("end is not set").right
         attributesString <- query.get("attrs").toRight("attributes are not set").right
         attributes <- parseAttributes(attributesString).right
+        aggregation <- parseInterpolationAggregator(query).right
+        downsampling <- Right(parseDownsampling(query)).right
       } yield {
         val pointStreamFuture = storage.getPoints(metricName, (startTime.toInt, endTime.toInt), attributes)
-        pointStreamFuture.onSuccess {
-          case PointsStream(points, None) => savedClient ! HttpResponse(entity = HttpEntity(points.mkString("\n")))
-          case PointsStream(points, Some(nextPointsFuture)) =>
-            savedClient ! ChunkedResponseStart(HttpResponse(entity = HttpEntity(points.mkString("\n"))))
-            val future = nextPointsFuture()
-            processNextPoints(savedClient, future)
-        }
-        pointStreamFuture.onFailure {
-          case t: Throwable =>
-            val sw = new StringWriter()
-            t.printStackTrace(new PrintWriter(sw))
-            val errMessage = sw.toString
-            savedClient ! ChunkedResponseStart(HttpResponse(entity = HttpEntity(errMessage)))
+        val aggregatedPointsFuture =
+          pointStreamFuture
+            .flatMap(_.toFuturePointsGroups)
+            .map(groups => aggregationsToString(aggregatePoints(groups, aggregation, downsampling)))
+        aggregatedPointsFuture.onComplete {
+          tryString =>
+            tryString.map {
+              string => savedClient ! HttpResponse(entity = HttpEntity(string))
+            }.recoverWith {
+              case t: Throwable => Try {
+                val sw = new StringWriter()
+                t.printStackTrace(new PrintWriter(sw))
+                val errMessage = sw.toString
+                savedClient ! HttpResponse(entity = HttpEntity(errMessage))
+              }
+            }
         }
       }
 
@@ -66,16 +70,19 @@ class HttpQueryServer(storage: PointsStorage, executionContext: ExecutionContext
     case HttpRequest(GET, Uri.Path(path), _, _, _) =>
       sender ! f"invalid path: $path"
 
-    case SendNextPoints(client: ActorRef, pointsStream: PointsStream) =>
-      client ! MessageChunk(pointsStream.points.mkString("\n", "\n", ""))
-      if (pointsStream.next.isDefined) {
-        val future = pointsStream.next.get()
-        processNextPoints(client, future)
-      } else {
-        client ! ChunkedMessageEnd()
-      }
-
   }
+
+  def parseDownsampling(query: Uri.Query): Option[(Int, Seq[Double] => Double)] = for {
+    dsAggregationKey <- query.get("dsagrg")
+    dsAggregation <- aggregatorsMap.get(dsAggregationKey)
+    dsInterval <- query.get("dsint")
+  } yield (dsInterval.toInt, dsAggregation)
+
+  def parseInterpolationAggregator(query: Uri.Query) = for {
+    aggregationKey <- query.get("agrg").toRight("aggregation is not set").right
+    aggregation <- aggregatorsMap.get(aggregationKey)
+      .toRight(f"invalid aggregation, available aggregations:${aggregatorsMap.keys}").right
+  } yield aggregation
 
   def parseAttributes(attributesString: String): Either[String, Map[String, ValueNameFilterCondition]] =
     Try {
@@ -97,18 +104,16 @@ class HttpQueryServer(storage: PointsStorage, executionContext: ExecutionContext
       valueFilters.toMap
     }.toOption.toRight("incorrect attributes format; example: \"?attrs=host->foo;type->bar+foo;port->*\"")
 
-  def processNextPoints(savedClient: ActorRef, future: Future[PointsStream]) = {
-    future.onSuccess {case pointsStream: PointsStream => self ! SendNextPoints(savedClient, pointsStream)}
-    future.onFailure {
-      case e: Exception =>
-        savedClient ! ChunkedMessageEnd()
-        info(e)
-    }
-  }
-
 }
 
 object HttpQueryServer {
+
+  val aggregatorsMap = Map[String, Seq[Double] => Double](
+    "sum" -> (seq => seq.sum),
+    "min" -> (seq => seq.min),
+    "max" -> (seq => seq.max),
+    "avg" -> (seq => seq.sum / seq.size)
+  )
 
   trait PointsStorage {
     def getPoints(metric: String,
@@ -142,4 +147,27 @@ object HttpQueryServer {
 
   }
 
+  private def aggregationsToString(aggregationsMap: Map[PointAttributes, Seq[(Int, Double)]]): String =
+    aggregationsMap.toList
+      .flatMap { case (attrs, points) => attrs +: points}
+      .mkString("\n")
+
+
+  private def aggregatePoints(pointsGroups: PointsGroups,
+                              interpolationAggregator: Seq[Double] => Double,
+                              downsamplingOption: Option[(Int, Seq[Double] => Double)]): Map[PointAttributes, Seq[(Int, Double)]] = {
+    def toGraphPointIterator(points: Seq[Point]) = {
+      val graphPoints = points.iterator.map {
+        point => (point.timestamp, point.value.doubleValue())
+      }
+      downsamplingOption.map {
+        case (interval, aggregator) => PointAggregation.downsample(graphPoints, interval, aggregator)
+      }.getOrElse(graphPoints)
+    }
+    pointsGroups.groupsMap.mapValues {
+      group =>
+        val graphPointIterators = group.values.map(toGraphPointIterator).toSeq
+        PointAggregation.linearInterpolation(graphPointIterators, interpolationAggregator).toList
+    }
+  }
 }
