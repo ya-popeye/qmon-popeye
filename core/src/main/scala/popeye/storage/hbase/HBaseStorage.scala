@@ -20,7 +20,8 @@ import popeye.pipeline.{PipelineSinkFactory, PointsSink}
 import java.nio.charset.Charset
 import org.apache.hadoop.hbase.filter.{RegexStringComparator, CompareFilter, RowFilter}
 import java.nio.ByteBuffer
-import HBaseStorage.ValueIdFilterCondition
+import HBaseStorage._
+import scala.collection.immutable.SortedMap
 
 object HBaseStorage {
   final val Encoding = Charset.forName("UTF-8")
@@ -82,33 +83,101 @@ object HBaseStorage {
   sealed case class QualifiedId(kind: String, id: BytesKey)
 
 
-  val ROW_REGEX_FILTER_ENCODING = Charset.forName("ISO-8859-1")
+  type NamedPointsGroup = Map[PointAttributes, Seq[Point]]
 
-  sealed trait ValueIdFilterCondition
+  type PointsGroup = Map[PointAttributeIds, Seq[Point]]
 
-  object ValueIdFilterCondition {
+  type PointAttributes = SortedMap[String, String]
 
-    case class Single(id: BytesKey) extends ValueIdFilterCondition
+  type PointAttributeIds = SortedMap[BytesKey, BytesKey]
 
-    case class Multiple(ids: Seq[BytesKey]) extends ValueIdFilterCondition {
-      require(ids.size > 1, "must be more than one value id")
+  def concatGroups(a: NamedPointsGroup, b: NamedPointsGroup) = {
+    b.foldLeft(a) {
+      case (accGroup, (attrs, newPoints)) =>
+        val pointsOption = accGroup.get(attrs)
+        accGroup.updated(attrs, pointsOption.getOrElse(Seq()) ++ newPoints)
     }
+  }
 
-    case object All extends ValueIdFilterCondition
+  case class PointsGroups(groupsMap: Map[PointAttributes, NamedPointsGroup]) {
+    def concat(that: PointsGroups) = {
+      val newMap =
+        that.groupsMap.foldLeft(groupsMap) {
+          case (accGroups, (groupByAttrs, newGroup)) =>
+            val groupOption = accGroups.get(groupByAttrs)
+            val concatinatedGroups = groupOption.map(oldGroup => concatGroups(oldGroup, newGroup)).getOrElse(newGroup)
+            accGroups.updated(groupByAttrs, concatinatedGroups)
+        }
+      PointsGroups(newMap)
+    }
+  }
+
+  case class Point(timestamp: Int, value: Number)
+
+  case class PointsStream(groups: PointsGroups, next: Option[() => Future[PointsStream]]) {
+    def toFuturePointsGroups(implicit eCtx: ExecutionContext): Future[PointsGroups] = {
+      val nextPointsFuture = next match {
+        case Some(nextFuture) => nextFuture().flatMap(_.toFuturePointsGroups)
+        case None => Future.successful(PointsGroups(Map()))
+      }
+      nextPointsFuture.map {
+        nextGroups => groups.concat(nextGroups)
+      }
+    }
 
   }
 
-  sealed trait ValueNameFilterCondition
+  object PointsStream {
+    def apply(groups: PointsGroups): PointsStream = PointsStream(groups, None)
+
+    def apply(groups: PointsGroups, nextStream: => Future[PointsStream]): PointsStream =
+      PointsStream(groups, Some(() => nextStream))
+  }
+
+
+  val ROW_REGEX_FILTER_ENCODING = Charset.forName("ISO-8859-1")
+
+  sealed trait ValueIdFilterCondition {
+    def isGroupByAttribute: Boolean
+  }
+
+  object ValueIdFilterCondition {
+
+    case class Single(id: BytesKey) extends ValueIdFilterCondition {
+      def isGroupByAttribute: Boolean = false
+    }
+
+    case class Multiple(ids: Seq[BytesKey]) extends ValueIdFilterCondition {
+      require(ids.size > 1, "must be more than one value id")
+
+      def isGroupByAttribute: Boolean = true
+    }
+
+    case object All extends ValueIdFilterCondition {
+      def isGroupByAttribute: Boolean = true
+    }
+
+  }
+
+  sealed trait ValueNameFilterCondition {
+    def isGroupByAttribute: Boolean
+  }
 
   object ValueNameFilterCondition {
 
-    case class Single(name: String) extends ValueNameFilterCondition
+    case class Single(name: String) extends ValueNameFilterCondition {
+      def isGroupByAttribute: Boolean = false
+    }
 
     case class Multiple(names: Seq[String]) extends ValueNameFilterCondition {
       require(names.size > 1, "must be more than one value name")
+
+      def isGroupByAttribute: Boolean = true
     }
 
-    case object All extends ValueNameFilterCondition
+    case object All extends ValueNameFilterCondition {
+      def isGroupByAttribute: Boolean = true
+    }
 
   }
 
@@ -186,17 +255,6 @@ case class HBaseStorageMetrics(name: String, override val metricRegistry: Metric
   val delayedPointsMeter = metrics.meter(s"$name.storage.delayed.points")
 }
 
-case class PointsStream(points: Seq[Point], next: Option[() => Future[PointsStream]])
-
-case class Point(timestamp: Int, value: Number, attributes: BytesKey)
-
-object PointsStream {
-  def apply(points: Seq[Point]): PointsStream = PointsStream(points, None)
-
-  def apply(points: Seq[Point], nextStream: => Future[PointsStream]): PointsStream =
-    PointsStream(points, Some(() => nextStream))
-}
-
 class HBaseStorage(tableName: String,
                    hTablePool_ : HTablePool,
                    metricNames: UniqueId,
@@ -213,27 +271,82 @@ class HBaseStorage(tableName: String,
   def getPoints(metric: String,
                 timeRange: (Int, Int),
                 attributes: Map[String, ValueNameFilterCondition])(implicit eCtx: ExecutionContext): Future[PointsStream] = {
-    val attrFutures = attributes.toList.map {
+    val attrFilterFutures = attributes.toList.map {
       case (name, valueFilterCondition) =>
         val nameIdFuture = attributeNames.resolveIdByName(name, create = false)(resolveTimeout)
         val valueIdFilterFuture = resolveFilterCondition(valueFilterCondition)
         nameIdFuture zip valueIdFilterFuture
     }
-    def toPointsStream(rowsQuery: PointRowsQuery)(implicit eCtx: ExecutionContext): PointsStream = {
-      val (results, nextResults) = rowsQuery.getRows()
-      val pointsSeq = parseTimeValuePoints(results, timeRange)
-      val nextStream = nextResults.map {
-        query => () => Future {toPointsStream(query)}
+    val futurePointsStream =
+      for {
+        metricId <- metricNames.resolveIdByName(metric, create = false)(resolveTimeout)
+        attrValueFilters <- Future.sequence(attrFilterFutures)
+      } yield {
+        val attrValueFiltersMap = attrValueFilters.toMap
+        val pointRowsQuery = createRowsQuery(metricId, timeRange, attrValueFiltersMap)
+        val groupByAttributeNameIds =
+          attrValueFiltersMap
+            .toList
+            .filter { case (attrName, valueFilter) => valueFilter.isGroupByAttribute}
+            .map(_._1)
+        createPointsStream(pointRowsQuery, timeRange, groupByAttributeNameIds)
       }
-      PointsStream(pointsSeq, nextStream)
+    futurePointsStream.flatMap(future => future)
+  }
+
+  def createPointsStream(rowsQuery: PointRowsQuery,
+                         timeRange: (Int, Int),
+                         groupByAttributeNameIds: Seq[BytesKey])
+                        (implicit eCtx: ExecutionContext): Future[PointsStream] = {
+
+    def toPointsStream(rowsQuery: PointRowsQuery): Future[PointsStream] = {
+      val (results, nextResults) = rowsQuery.getRows()
+      val pointGroups: Map[PointAttributeIds, PointsGroup] =
+        parseTimeValuePoints(results, timeRange, groupByAttributeNameIds)
+      val nextStream = nextResults.map {
+        query => () => toPointsStream(query)
+      }
+      val (nameIds, valueIds) = allAttributeIds(pointGroups)
+      val attrNameNamesFutures = nameIds.map(id => attributeNames.resolveNameById(id)(resolveTimeout))
+      val attrValueNamesFutures = valueIds.map(id => attributeValues.resolveNameById(id)(resolveTimeout))
+      for {
+        attributeNameNames <- Future.sequence(attrNameNamesFutures)
+        attributeValueNames <- Future.sequence(attrValueNamesFutures)
+      } yield {
+        val attrNameIdToNameMap = (nameIds zip attributeNameNames).toMap
+        val attrValueIdToNameMap = (valueIds zip attributeValueNames).toMap
+        val points = toNamedPointsGroups(pointGroups, attrNameIdToNameMap, attrValueIdToNameMap)
+        PointsStream(PointsGroups(points), nextStream)
+      }
     }
-    for {
-      metricId <- metricNames.resolveIdByName(metric, create = false)(resolveTimeout)
-      attrs <- Future.sequence(attrFutures)
-    } yield {
-      val pointRowsQuery = createRowsQuery(metricId, timeRange, attrs.toMap, readChunkSize)
-      toPointsStream(pointRowsQuery)
+    toPointsStream(rowsQuery)
+  }
+
+  private def toNamedPointsGroups(groups: Map[PointAttributeIds, PointsGroup],
+                                  names: Map[BytesKey, String],
+                                  values: Map[BytesKey, String]) = {
+    def nameAttributes(attrsIds: PointAttributeIds) = attrsIds.map {
+      case (nameId, valueId) => (names(nameId), values(valueId))
     }
+    groups.map {
+      case (groupByAttributes, group) =>
+        val namedGroupByAttributes = nameAttributes(groupByAttributes)
+        val namedAttributeGroup = group.map {
+          case (attributes, pointsSeq) =>
+            val namedAttributes = nameAttributes(attributes)
+            (namedAttributes, pointsSeq)
+        }
+        (namedGroupByAttributes, namedAttributeGroup)
+    }
+  }
+
+  private def allAttributeIds(groups: Map[PointAttributeIds, PointsGroup]): (Seq[BytesKey], Seq[BytesKey]) = {
+    val groupByAttrs = groups.keys.map(_.toList).flatten
+    val otherAttrs = groups.values.map(_.keys.map(_.toList).flatten).flatten
+    val allAttrs = groupByAttrs ++ otherAttrs
+    val nameIds = allAttrs.map(_._1).toList.distinct
+    val valueIds = allAttrs.map(_._2).toList.distinct
+    (nameIds, valueIds)
   }
 
   def resolveFilterCondition(nameCondition: ValueNameFilterCondition)
@@ -254,8 +367,7 @@ class HBaseStorage(tableName: String,
 
   def createRowsQuery(metricId: Array[Byte],
                       timeRange: (Int, Int),
-                      attributes: Map[BytesKey, ValueIdFilterCondition],
-                      chunkSize: Int) = {
+                      attributes: Map[BytesKey, ValueIdFilterCondition]) = {
     val (startTime, endTime) = timeRange
     val baseStartTime = startTime - (startTime % MAX_TIMESPAN)
     val startRow = metricId ++ Bytes.toBytes(baseStartTime)
@@ -301,29 +413,61 @@ class HBaseStorage(tableName: String,
     }
   }
 
-  private def parseTimeValuePoints(results: Array[Result], timeRange: (Int, Int)): Seq[Point] = {
+  def getAttributesMap(attributes: Array[Byte]): PointAttributeIds = {
+    val attributeWidth = attributeNames.width + attributeValues.width
+    require(attributes.length % attributeWidth == 0, "bad attributes length")
+    val numberOfAttributes = attributes.length / attributeWidth
+    val attrNamesIndexes = (0 until numberOfAttributes).map(i => i * attributeWidth)
+    val attributePairs =
+      for (attrNameIndex <- attrNamesIndexes)
+      yield {
+        val attrValueIndex = attrNameIndex + attributeNames.width
+        val nameArray = new Array[Byte](attributeNames.width)
+        val valueArray = new Array[Byte](attributeValues.width)
+        System.arraycopy(attributes, attrNameIndex, nameArray, 0, attributeNames.width)
+        System.arraycopy(attributes, attrValueIndex, valueArray, 0, attributeValues.width)
+        (new BytesKey(nameArray), new BytesKey(valueArray))
+      }
+    SortedMap[BytesKey, BytesKey]() ++ attributePairs
+  }
+
+  private def parseTimeValuePoints(results: Array[Result],
+                                   timeRange: (Int, Int),
+                                   groupByAttributesNames: Seq[BytesKey]
+                                  ): Map[PointAttributeIds, PointsGroup] = {
     val baseTimeBuffer = new Array[Byte](TIMESTAMP_BYTES)
 
-    val pointsLists = for (result <- results) yield {
+    val pointsRows = for (result <- results) yield {
       import scala.collection.JavaConverters.mapAsScalaMapConverter
       val row = result.getRow
       System.arraycopy(row, metricNames.width, baseTimeBuffer, 0, TIMESTAMP_BYTES)
       val attributes = getAttributesBytes(row)
+      val attributeMap = getAttributesMap(attributes.bytes)
+      val groupByAttributes =
+        SortedMap[BytesKey, BytesKey]() ++ groupByAttributesNames.map(attrName => (attrName, attributeMap(attrName)))
       val baseTime = Bytes.toInt(baseTimeBuffer)
       val columns = result.getFamilyMap(PointsFamily).asScala.toList
-      columns.map {
+      val points = columns.map {
         case (qualifierBytes, valueBytes) =>
           val (delta, value) = parseValue(qualifierBytes, valueBytes)
-          Point(baseTime + delta, value, attributes)
+          Point(baseTime + delta, value)
       }
+      (groupByAttributes, attributeMap, points): (PointAttributeIds, PointAttributeIds, List[Point])
     }
     val (startTime, endTime) = timeRange
-    if (pointsLists.nonEmpty) {
-      pointsLists(0) = pointsLists(0).filter(point => point.timestamp >= startTime)
-      val lastIndex = pointsLists.length - 1
-      pointsLists(lastIndex) = pointsLists(lastIndex).filter(point => point.timestamp < endTime)
+    if (pointsRows.nonEmpty) {
+      val firstRow = pointsRows(0)
+      pointsRows(0) = firstRow.copy(_3 = firstRow._3.filter(point => point.timestamp >= startTime))
+      val lastIndex = pointsRows.length - 1
+      val lastRow = pointsRows(lastIndex)
+      pointsRows(lastIndex) = lastRow.copy(_3 = lastRow._3.filter(point => point.timestamp < endTime))
     }
-    pointsLists.toSeq.flatten
+    pointsRows.groupBy(_._1).mapValues {
+      rows: Array[(PointAttributeIds, PointAttributeIds, List[Point])] =>
+        rows.groupBy(_._2).mapValues {
+          pointsWithAttributes => pointsWithAttributes.map(_._3).toSeq.flatten: Seq[Point]
+        }: PointsGroup
+    }
   }
 
   def getAttributesBytes(row: Array[Byte]) = {
