@@ -27,6 +27,7 @@ import spray.http.HttpRequest
 class HttpQueryServer(storage: PointsStorage, executionContext: ExecutionContext) extends Actor with Logging {
   implicit val eCtx = executionContext
   val pointsPathPattern = """/points/([^/]+)""".r
+
   case class SendNextPoints(client: ActorRef, points: PointsStream)
 
   def receive: Actor.Receive = {
@@ -106,7 +107,7 @@ class HttpQueryServer(storage: PointsStorage, executionContext: ExecutionContext
 
 }
 
-object HttpQueryServer {
+object HttpQueryServer extends HttpServerFactory {
 
   val aggregatorsMap = Map[String, Seq[Double] => Double](
     "sum" -> (seq => seq.sum),
@@ -131,7 +132,6 @@ object HttpQueryServer {
       options = Nil,
       settings = None)
     handler
-
   }
 
   private def aggregationsToString(aggregationsMap: Map[PointAttributes, Seq[(Int, Double)]]): String =

@@ -10,10 +10,15 @@ import scopt.OptionParser
 import popeye.MainConfig
 import scala.Some
 
-object QueryCommand {
-}
+object QueryCommand extends PopeyeCommand with Logging {
+  val serverTypes: Map[String, HttpServerFactory] = Map(
+    "opentsdb" -> OpenTSDBHttpApiServer,
+    "simple" -> HttpQueryServer
+  ).withDefault {
+    key =>
+      throw new NoSuchElementException(f"wrong server type name: $key; available types: ${serverTypes.keys} ")
+  }
 
-class QueryCommand extends PopeyeCommand with Logging {
   def prepare(parser: OptionParser[MainConfig]): OptionParser[MainConfig] = {
     parser cmd "query" action {
       (_, c) => c.copy(command = Some(this))
@@ -27,6 +32,7 @@ class QueryCommand extends PopeyeCommand with Logging {
     val storageName = queryConfig.getString("db.storage")
     val hbaseConfig = queryConfig.getConfig("db").withFallback(storagesConfig.getConfig(storageName))
     val serverConfig = queryConfig.getConfig("http")
+    val serverTypeKey = queryConfig.getString("serverType")
     val ectx = ExecutionContext.global
     val hbaseStorage = new HBaseStorageConfigured(
       new HBaseStorageConfig(
@@ -35,7 +41,6 @@ class QueryCommand extends PopeyeCommand with Logging {
         metrics
       )(ectx))
     hbaseStorage.storage.ping()
-
-    HttpQueryServer.runServer(serverConfig, hbaseStorage.storage, actorSystem, ectx)
+    serverTypes(serverTypeKey).runServer(serverConfig, hbaseStorage.storage, actorSystem, ectx)
   }
 }
