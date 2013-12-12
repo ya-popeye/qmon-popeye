@@ -115,22 +115,9 @@ object HttpQueryServer {
     "avg" -> (seq => seq.sum / seq.size)
   )
 
-  trait PointsStorage {
-    def getPoints(metric: String,
-                  timeRange: (Int, Int),
-                  attributes: Map[String, ValueNameFilterCondition]): Future[PointsStream]
-  }
-
   def runServer(config: Config, storage: HBaseStorage, system: ActorSystem, executionContext: ExecutionContext) = {
     implicit val timeout: Timeout = 5 seconds
-    val pointsStorage = new PointsStorage {
-      def getPoints(metric: String,
-                    timeRange: (Int, Int),
-                    attributes: Map[String, ValueNameFilterCondition]) =
-        storage.getPoints(metric, timeRange, attributes)(executionContext)
-
-    }
-
+    val pointsStorage = PointsStorage.fromHBaseStorage(storage, executionContext)
     val handler = system.actorOf(
       Props.apply(new HttpQueryServer(pointsStorage, executionContext)),
       name = "server-http")
