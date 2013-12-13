@@ -156,6 +156,14 @@ class UniqueIdImpl(val width: Short,
    * @return future with id
    */
   def resolveIdByName(name: String, create: Boolean, retries: Int = 3)(implicit timeout: Duration): Future[BytesKey] = {
+    if (!create) {
+      val future = nameCache.get(name)
+      if (future == null) {
+        return Future.failed(new NoSuchElementException(f"no id for name '$name'"))
+      } else {
+        return future
+      }
+    }
     val promise = Promise[BytesKey]()
     nameCache.putIfAbsent(name, promise.future) match {
       case null =>

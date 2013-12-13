@@ -12,6 +12,7 @@ import popeye.storage.hbase.UniqueIdProtocol.Race
 import popeye.storage.hbase.UniqueIdProtocol.Resolved
 import popeye.storage.hbase.UniqueIdProtocol.ResolutionFailed
 import popeye.storage.hbase.HBaseStorage.{ResolvedName, QualifiedId, QualifiedName}
+import java.util.NoSuchElementException
 
 /**
  * @author Andrey Stepachev
@@ -74,6 +75,16 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
     intercept[UniqueIdRaceException] {
       Await.result(future, timeout)
     }
+  }
+
+  it should "not hang in nonexistent name resolving" in {
+    val (probe, uniq) = mkUniq()
+    val name = "nonexistent"
+    val future = uniq.resolveIdByName(name, create = false)
+    val exception = intercept[NoSuchElementException] {
+      Await.result(future, 5 seconds)
+    }
+    exception.getMessage must include(name)
   }
 
   behavior of "name->id"
