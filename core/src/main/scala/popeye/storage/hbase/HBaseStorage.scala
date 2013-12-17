@@ -301,8 +301,8 @@ class HBaseStorage(tableName: String,
 
     def toPointsStream(chunkedResults: ChunkedResults): Future[PointsStream] = {
       val (results, nextResults) = chunkedResults.getRows()
-      val pointGroups: Map[PointAttributeIds, PointsGroup] =
-        parseTimeValuePoints(results, timeRange, groupByAttributeNameIds)
+      val pointsRows: Seq[(PointAttributeIds, Seq[Point])] = parseTimeValuePoints(results, timeRange)
+      val pointGroups: Map[PointAttributeIds, PointsGroup] = groupPoints(groupByAttributeNameIds, pointsRows)
       val nextStream = nextResults.map {
         query => () => toPointsStream(query)
       }
@@ -409,9 +409,7 @@ class HBaseStorage(tableName: String,
   }
 
   private def parseTimeValuePoints(results: Array[Result],
-                                   timeRange: (Int, Int),
-                                   groupByAttributesNames: Seq[BytesKey]
-                                  ): Map[PointAttributeIds, PointsGroup] = {
+                                   timeRange: (Int, Int)): Seq[(PointAttributeIds, List[Point])] = {
     val baseTimeBuffer = new Array[Byte](TIMESTAMP_BYTES)
 
     val pointsRows = for (result <- results) yield {
@@ -420,8 +418,6 @@ class HBaseStorage(tableName: String,
       System.arraycopy(row, metricNames.width, baseTimeBuffer, 0, TIMESTAMP_BYTES)
       val attributes = getAttributesBytes(row)
       val attributeMap = getAttributesMap(attributes.bytes)
-      val groupByAttributes =
-        SortedMap[BytesKey, BytesKey]() ++ groupByAttributesNames.map(attrName => (attrName, attributeMap(attrName)))
       val baseTime = Bytes.toInt(baseTimeBuffer)
       val columns = result.getFamilyMap(PointsFamily).asScala.toList
       val points = columns.map {
@@ -429,21 +425,30 @@ class HBaseStorage(tableName: String,
           val (delta, value) = parseValue(qualifierBytes, valueBytes)
           Point(baseTime + delta, value)
       }
-      (groupByAttributes, attributeMap, points): (PointAttributeIds, PointAttributeIds, List[Point])
+      (attributeMap, points): (PointAttributeIds, List[Point])
     }
     val (startTime, endTime) = timeRange
     if (pointsRows.nonEmpty) {
       val firstRow = pointsRows(0)
-      pointsRows(0) = firstRow.copy(_3 = firstRow._3.filter(point => point.timestamp >= startTime))
+      pointsRows(0) = firstRow.copy(_2 = firstRow._2.filter(point => point.timestamp >= startTime))
       val lastIndex = pointsRows.length - 1
       val lastRow = pointsRows(lastIndex)
-      pointsRows(lastIndex) = lastRow.copy(_3 = lastRow._3.filter(point => point.timestamp < endTime))
+      pointsRows(lastIndex) = lastRow.copy(_2 = lastRow._2.filter(point => point.timestamp < endTime))
     }
-    pointsRows.groupBy(_._1).mapValues {
-      rows: Array[(PointAttributeIds, PointAttributeIds, List[Point])] =>
-        rows.groupBy(_._2).mapValues {
-          pointsWithAttributes => pointsWithAttributes.map(_._3).toSeq.flatten: Seq[Point]
-        }: PointsGroup
+    pointsRows
+  }
+
+  def groupPoints(groupByAttributeNameIds: Seq[BytesKey],
+                  pointsRows: Seq[(PointAttributeIds, Seq[Point])]): Map[PointAttributeIds, PointsGroup] = {
+    val groupedRows = pointsRows.groupBy {
+      case (attributes, _) =>
+        val groupByAttributeValueIds = groupByAttributeNameIds.map(attributes(_))
+        SortedMap[BytesKey, BytesKey]() ++ (groupByAttributeNameIds zip groupByAttributeValueIds)
+    }
+    groupedRows.mapValues {
+      case rows => rows
+        .groupBy { case (attributes, points) => attributes}
+        .mapValues(_.flatMap { case (attributes, points) => points}): PointsGroup
     }
   }
 
