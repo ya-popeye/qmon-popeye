@@ -11,7 +11,7 @@ object PointAggregation {
   case class IdleSeries(firstLineStart: Int, series: BufferedIterator[Line])
 
   case class Line(x1: Int, y1: Double, x2: Int, y2: Double) {
-    require(x1 <= x2)
+    require(x1 <= x2, f"$x1 > $x2")
 
     def next(xNext: Int, yNext: Double) = copy(x2, y2, xNext, yNext)
 
