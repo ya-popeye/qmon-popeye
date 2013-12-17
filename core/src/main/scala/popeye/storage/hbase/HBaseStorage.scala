@@ -5,7 +5,6 @@ import java.util
 import org.apache.hadoop.hbase.KeyValue
 import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.util.Bytes
-import popeye.storage.hbase.HBaseStorage._
 import popeye.proto.{PackedPoints, Message}
 import popeye.{Instrumented, Logging}
 import scala.collection.JavaConversions._
@@ -22,6 +21,7 @@ import org.apache.hadoop.hbase.filter.{RegexStringComparator, CompareFilter, Row
 import java.nio.ByteBuffer
 import HBaseStorage._
 import scala.collection.immutable.SortedMap
+import popeye.util.hbase.HBaseUtils.ChunkedResults
 
 object HBaseStorage {
   final val Encoding = Charset.forName("UTF-8")
@@ -283,7 +283,7 @@ class HBaseStorage(tableName: String,
         attrValueFilters <- Future.sequence(attrFilterFutures)
       } yield {
         val attrValueFiltersMap = attrValueFilters.toMap
-        val pointRowsQuery = createRowsQuery(metricId, timeRange, attrValueFiltersMap)
+        val pointRowsQuery = createChunkedResults(metricId, timeRange, attrValueFiltersMap)
         val groupByAttributeNameIds =
           attrValueFiltersMap
             .toList
@@ -294,13 +294,13 @@ class HBaseStorage(tableName: String,
     futurePointsStream.flatMap(future => future)
   }
 
-  def createPointsStream(rowsQuery: PointRowsQuery,
+  def createPointsStream(chunkedResults: ChunkedResults,
                          timeRange: (Int, Int),
                          groupByAttributeNameIds: Seq[BytesKey])
                         (implicit eCtx: ExecutionContext): Future[PointsStream] = {
 
-    def toPointsStream(rowsQuery: PointRowsQuery): Future[PointsStream] = {
-      val (results, nextResults) = rowsQuery.getRows()
+    def toPointsStream(chunkedResults: ChunkedResults): Future[PointsStream] = {
+      val (results, nextResults) = chunkedResults.getRows()
       val pointGroups: Map[PointAttributeIds, PointsGroup] =
         parseTimeValuePoints(results, timeRange, groupByAttributeNameIds)
       val nextStream = nextResults.map {
@@ -319,7 +319,7 @@ class HBaseStorage(tableName: String,
         PointsStream(PointsGroups(points), nextStream)
       }
     }
-    toPointsStream(rowsQuery)
+    toPointsStream(chunkedResults)
   }
 
   private def toNamedPointsGroups(groups: Map[PointAttributeIds, PointsGroup],
@@ -365,52 +365,29 @@ class HBaseStorage(tableName: String,
     }
   }
 
-  def createRowsQuery(metricId: Array[Byte],
-                      timeRange: (Int, Int),
-                      attributes: Map[BytesKey, ValueIdFilterCondition]) = {
+  def createChunkedResults(metricId: Array[Byte],
+                           timeRange: (Int, Int),
+                           attributes: Map[BytesKey, ValueIdFilterCondition]) = {
     val (startTime, endTime) = timeRange
     val baseStartTime = startTime - (startTime % MAX_TIMESPAN)
     val startRow = metricId ++ Bytes.toBytes(baseStartTime)
     val stopRow = metricId ++ Bytes.toBytes(endTime)
-    val regex =
-      if (attributes.nonEmpty) {
-        Some(createRowRegexp(
-          offset = 7,
-          attributeNames.width,
-          attributeValues.width,
-          attributes
-        ))
-      } else {
-        None
-      }
-    new PointRowsQuery(regex, startRow, stopRow)
-  }
-
-  class PointRowsQuery(rowRegexOption: Option[String], startRow: Array[Byte], stopRow: Array[Byte]) {
-    def getRows(): (Array[Result], Option[PointRowsQuery]) = withHTable(tableName) {
-      table =>
-        val scan: Scan = new Scan()
-        scan.setStartRow(startRow)
-        scan.setStopRow(stopRow)
-        scan.addFamily(PointsFamily)
-        for (rowRegex <- rowRegexOption) {
-          val comparator = new RegexStringComparator(rowRegex)
-          comparator.setCharset(ROW_REGEX_FILTER_ENCODING)
-          scan.setFilter(new RowFilter(CompareFilter.CompareOp.EQUAL, comparator))
-        }
-        val scanner = table.getScanner(scan)
-        val results =
-          try {scanner.next(readChunkSize)}
-          finally {scanner.close()}
-        val nextQuery =
-          if (results.length < readChunkSize) {
-            None
-          } else {
-            val lastRow = results(results.length - 2).getRow
-            Some(new PointRowsQuery(rowRegexOption, lastRow, stopRow))
-          }
-        (results, nextQuery)
+    val scan: Scan = new Scan()
+    scan.setStartRow(startRow)
+    scan.setStopRow(stopRow)
+    scan.addFamily(PointsFamily)
+    if (attributes.nonEmpty) {
+      val rowRegex = createRowRegexp(
+        offset = metricNames.width + Bytes.SIZEOF_INT,
+        attributeNames.width,
+        attributeValues.width,
+        attributes
+      )
+      val comparator = new RegexStringComparator(rowRegex)
+      comparator.setCharset(ROW_REGEX_FILTER_ENCODING)
+      scan.setFilter(new RowFilter(CompareFilter.CompareOp.EQUAL, comparator))
     }
+    getChunkedResults(tableName, readChunkSize, scan)
   }
 
   def getAttributesMap(attributes: Array[Byte]): PointAttributeIds = {
