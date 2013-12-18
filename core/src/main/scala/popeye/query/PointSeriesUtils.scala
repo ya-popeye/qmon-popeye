@@ -4,7 +4,7 @@ import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 
-object PointAggregation {
+object PointSeriesUtils {
 
   case class ActiveSeries(currentLineEnd: Int, series: BufferedIterator[Line])
 
@@ -26,7 +26,7 @@ object PointAggregation {
   type PlotPoint = (Int, Double)
   type Plot = Iterator[PlotPoint]
 
-  def linearInterpolation(series: Seq[Plot], aggregateFunction: Seq[Double] => Double): Iterator[PlotPoint] = {
+  def interpolateAndAggregate(series: Seq[Plot], aggregateFunction: Seq[Double] => Double): Iterator[PlotPoint] = {
     val nonEmptySeries =
       series
         .map(toLines)
@@ -138,7 +138,7 @@ object PointAggregation {
 
     def hasNext: Boolean = buffer.nonEmpty
 
-    def next(): PointAggregation.PlotPoint = {
+    def next(): PointSeriesUtils.PlotPoint = {
       if (!source.hasNext) {
         val point = (currentIntervalStart + intervalLength / 2, aggregator(buffer))
         buffer.clear()

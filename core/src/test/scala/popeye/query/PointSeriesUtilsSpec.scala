@@ -2,17 +2,16 @@ package popeye.query
 
 import org.scalatest.FlatSpec
 import org.scalatest.matchers.ShouldMatchers
-import popeye.query.PointAggregation.{PlotPoint, Line}
-import scala.collection.SortedMap
+import popeye.query.PointSeriesUtils.{PlotPoint, Line}
 import scala.util.Random
 
-class PointAggregationSpec extends FlatSpec with ShouldMatchers {
+class PointSeriesUtilsSpec extends FlatSpec with ShouldMatchers {
 
-  behavior of "PointAggregation.toLines"
+  behavior of "PointSeriesUtils.toLines"
 
   it should "work" in {
     val input = (0 to 5).map(n => (n, 0.0))
-    val lines = PointAggregation.toLines(input.iterator).toList
+    val lines = PointSeriesUtils.toLines(input.iterator).toList
     def line(x1: Int, x2: Int) = Line(x1, 0.0, x2, 0.0)
     val expectedLines = List(
       line(0, 1),
@@ -24,7 +23,7 @@ class PointAggregationSpec extends FlatSpec with ShouldMatchers {
     lines should equal(expectedLines)
   }
 
-  behavior of "PointAggregation.linearInterpolation"
+  behavior of "PointSeriesUtils.interpolateAndAggregate"
 
   it should "behave as no-op on single input" in {
     val input = (1 to 5).map(n => (n, n.toDouble))
@@ -33,7 +32,7 @@ class PointAggregationSpec extends FlatSpec with ShouldMatchers {
         seq.size should be(1)
         seq.foldLeft(-1.0)((acc, x) => x)
     }
-    val out = PointAggregation.linearInterpolation(Seq(input.iterator), aggregator)
+    val out = PointSeriesUtils.interpolateAndAggregate(Seq(input.iterator), aggregator)
     out.toList should equal(input.toList)
   }
 
@@ -44,7 +43,7 @@ class PointAggregationSpec extends FlatSpec with ShouldMatchers {
         seq.size should be(5)
         seq.foldLeft(-1.0)((acc, x) => x)
     }
-    val out = PointAggregation.linearInterpolation(input.map(_.iterator), aggregator)
+    val out = PointSeriesUtils.interpolateAndAggregate(input.map(_.iterator), aggregator)
     out.toList should equal(input(0).toList)
   }
 
@@ -53,7 +52,7 @@ class PointAggregationSpec extends FlatSpec with ShouldMatchers {
     for (_ <- 1 to 100) {
       val numberOfInputs = 20
       val inputs = List.fill(numberOfInputs)(randomInput(random))
-      val out = PointAggregation.linearInterpolation(inputs.map(_.iterator), maxAggregator).toList
+      val out = PointSeriesUtils.interpolateAndAggregate(inputs.map(_.iterator), maxAggregator).toList
       val expectedOut = slowInterpolation(inputs, maxAggregator)
       if (out != expectedOut) {
         println(inputs)
@@ -70,7 +69,7 @@ class PointAggregationSpec extends FlatSpec with ShouldMatchers {
     }
 
     val input = (1 to 50).map(_ => series)
-    val outputIterator = PointAggregation.linearInterpolation(input, _.sum)
+    val outputIterator = PointSeriesUtils.interpolateAndAggregate(input, _.sum)
     val workTime = time {
       while(outputIterator.hasNext) {
         outputIterator.next()
@@ -79,11 +78,11 @@ class PointAggregationSpec extends FlatSpec with ShouldMatchers {
     println(f"time in seconds = ${workTime * 0.001}")
   }
 
-  behavior of "PointAggregation.downsample"
+  behavior of "PointSeriesUtils.downsample"
 
   it should "behave as no-op when interval == 1" in {
     val input = (0 to 5).map(i => (i, i.toDouble))
-    val output = PointAggregation.downsample(input.iterator, 1, maxAggregator).toList
+    val output = PointSeriesUtils.downsample(input.iterator, 1, maxAggregator).toList
     output should equal(input)
   }
 
@@ -95,7 +94,7 @@ class PointAggregationSpec extends FlatSpec with ShouldMatchers {
     }
     val timestamps = 0 until 25
     val input = timestamps zip values
-    val output = PointAggregation.downsample(input.iterator, 5, maxAggregator).toList
+    val output = PointSeriesUtils.downsample(input.iterator, 5, maxAggregator).toList
     val expectedOutputValues = (0 until 5).map(i => i.toDouble)
     output.map(_._2) should equal(expectedOutputValues)
   }
@@ -104,7 +103,7 @@ class PointAggregationSpec extends FlatSpec with ShouldMatchers {
     val random = new Random(0)
     val input = randomInput(random)
     val intervalLength = 1 + random.nextInt(10)
-    val output = PointAggregation.downsample(input.iterator, intervalLength, maxAggregator).toList
+    val output = PointSeriesUtils.downsample(input.iterator, intervalLength, maxAggregator).toList
     val expectedOutput = slowDownsampling(input, intervalLength, maxAggregator)
     if (output != expectedOutput) {
       println(output)
@@ -118,7 +117,7 @@ class PointAggregationSpec extends FlatSpec with ShouldMatchers {
       i => (i, i.toDouble)
     }
 
-    val outputIterator = PointAggregation.downsample(series, 100, maxAggregator)
+    val outputIterator = PointSeriesUtils.downsample(series, 100, maxAggregator)
     val workTime = time {
       while(outputIterator.hasNext) {
         outputIterator.next()

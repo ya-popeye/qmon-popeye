@@ -188,13 +188,13 @@ object OpenTSDBHttpApiServer extends HttpServerFactory {
         point => (point.timestamp, point.value.doubleValue())
       }
       downsamplingOption.map {
-        case (interval, aggregator) => PointAggregation.downsample(graphPoints, interval, aggregator)
+        case (interval, aggregator) => PointSeriesUtils.downsample(graphPoints, interval, aggregator)
       }.getOrElse(graphPoints)
     }
     pointsGroups.groupsMap.mapValues {
       group =>
         val graphPointIterators = group.values.map(toGraphPointIterator).toSeq
-        PointAggregation.linearInterpolation(graphPointIterators, interpolationAggregator).toList
+        PointSeriesUtils.interpolateAndAggregate(graphPointIterators, interpolationAggregator).toList
     }
   }
 
