@@ -27,7 +27,8 @@ class OpenTSDBHttpApiServerSpec extends AkkaTestKitSpec("http-query") with Mocki
   behavior of "OpenTSDBHttpApiServer.parseTimeSeriesQuery"
 
   it should "parse simple query" in {
-    parseTimeSeriesQuery("avg:metric").right.value should equal(TimeSeriesQuery("avg", "metric", Map()))
+    val queryString = "avg:metric"
+    parseTimeSeriesQuery(queryString).right.value should equal(TimeSeriesQuery("avg", isRate = false, "metric", Map()))
   }
 
   it should "not parse simple query" in {
@@ -35,13 +36,24 @@ class OpenTSDBHttpApiServerSpec extends AkkaTestKitSpec("http-query") with Mocki
   }
 
   it should "ignore 'nointerpolation' flag " in {
-    parseTimeSeriesQuery("avg:nointerpolation:metric").right.value should equal(TimeSeriesQuery("avg", "metric", Map()))
+    val queryString = "avg:nointerpolation:metric"
+    parseTimeSeriesQuery(queryString).right.value should equal(TimeSeriesQuery("avg", isRate = false, "metric", Map()))
+  }
+
+  it should "parse rate flag" in {
+    val queryString = "avg:rate:metric"
+    parseTimeSeriesQuery(queryString).right.value should equal(TimeSeriesQuery("avg", isRate = true, "metric", Map()))
+  }
+
+  it should "not confuse metric name with rate flag" in {
+    val queryString = "avg:rate"
+    parseTimeSeriesQuery(queryString).right.value should equal(TimeSeriesQuery("avg", isRate = false, "rate", Map()))
   }
 
   it should "parse tags" in {
     val query: Either[String, TimeSeriesQuery] = parseTimeSeriesQuery("avg:metric{single=foo,multiple=foo|bar,all=*}")
     val attrs = Map("single" -> Single("foo"), "multiple" -> Multiple(Seq("foo", "bar")), "all" -> All)
-    query.right.value should equal(TimeSeriesQuery("avg", "metric", attrs))
+    query.right.value should equal(TimeSeriesQuery("avg", isRate = false, "metric", attrs))
   }
 
   it should "return error message on bad tags" in {

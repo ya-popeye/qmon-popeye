@@ -18,6 +18,7 @@ import java.text.SimpleDateFormat
 import popeye.storage.hbase.HBaseStorage
 import popeye.storage.hbase.HBaseStorage._
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition._
+import scala.Predef._
 import popeye.storage.hbase.HBaseStorage.Point
 import scala.Some
 import spray.http.HttpResponse
@@ -53,7 +54,7 @@ class OpenTSDBHttpApiServer(storage: PointsStorage, executionContext: ExecutionC
           val endTime = parseTime(endDate)
           storage.getPoints(timeSeriesQuery.metricName, (startTime, endTime), timeSeriesQuery.tags)
             .flatMap(_.toFuturePointsGroups)
-            .map(pointsGroups => aggregatePoints(pointsGroups, aggregator, None))
+            .map(pointsGroups => aggregatePoints(pointsGroups, aggregator, timeSeriesQuery.isRate))
             .map(seriesMap => pointsToString(timeSeriesQuery.metricName, seriesMap))
         }
 
@@ -93,7 +94,7 @@ object OpenTSDBHttpApiServer extends HttpServerFactory {
   private val metricTagsRegex = """[^{]+\{([^}]+)\}""".r
   private val metricSingleTagRegex = "[^,]+".r
 
-  case class TimeSeriesQuery(aggregatorKey: String, metricName: String, tags: Map[String, ValueNameFilterCondition])
+  case class TimeSeriesQuery(aggregatorKey: String, isRate: Boolean, metricName: String, tags: Map[String, ValueNameFilterCondition])
 
   def runServer(config: Config, storage: HBaseStorage, system: ActorSystem, executionContext: ExecutionContext) {
     implicit val timeout: Timeout = 5 seconds
@@ -134,20 +135,26 @@ object OpenTSDBHttpApiServer extends HttpServerFactory {
 
   private[query] def parseTimeSeriesQuery(queryString: String): Either[String, TimeSeriesQuery] = {
 
-    val queryParts = queryString.split(":")
-    val aggregationKeyAndMetric =
-      if (queryParts.length >= 2) {
-        Right(queryParts.head, queryParts.last)
+    val queryPartsArray = queryString.split(":")
+    case class QueryParts(aggregatorKey: String, isRate: Boolean, metric: String)
+    val errorMessageOrQueryParts =
+      if (queryPartsArray.length >= 2) {
+        val arrayLength = queryPartsArray.length
+        Right(QueryParts(
+          aggregatorKey = queryPartsArray.head,
+          isRate = queryPartsArray.slice(1, arrayLength - 1).exists(_ == "rate"),
+          metric = queryPartsArray.last
+        ))
       } else {
         Left("bad metric string: less than 2 tokens")
       }
 
     for {
-      aggregationAndMetric <- aggregationKeyAndMetric.right
-      metricName <- metricNameFromMetricString(aggregationAndMetric._2).right
-      tags <- tagsFromMetricString(aggregationAndMetric._2).right
+      queryParts <- errorMessageOrQueryParts.right
+      metricName <- metricNameFromMetricString(queryParts.metric).right
+      tags <- tagsFromMetricString(queryParts.metric).right
     } yield {
-      TimeSeriesQuery(aggregationAndMetric._1, metricName, tags)
+      TimeSeriesQuery(queryParts.aggregatorKey, queryParts.isRate, metricName, tags)
     }
   }
 
@@ -182,19 +189,22 @@ object OpenTSDBHttpApiServer extends HttpServerFactory {
 
   private def aggregatePoints(pointsGroups: PointsGroups,
                               interpolationAggregator: Seq[Double] => Double,
-                              downsamplingOption: Option[(Int, Seq[Double] => Double)]): Map[PointAttributes, Seq[(Int, Double)]] = {
-    def toGraphPointIterator(points: Seq[Point]) = {
-      val graphPoints = points.iterator.map {
-        point => (point.timestamp, point.value.doubleValue())
-      }
-      downsamplingOption.map {
-        case (interval, aggregator) => PointSeriesUtils.downsample(graphPoints, interval, aggregator)
-      }.getOrElse(graphPoints)
+                              rate: Boolean): Map[PointAttributes, Seq[(Int, Double)]] = {
+
+    def toGraphPointIterator(points: Seq[Point]) = points.iterator.map {
+      point => (point.timestamp, point.value.doubleValue())
     }
     pointsGroups.groupsMap.mapValues {
       group =>
         val graphPointIterators = group.values.map(toGraphPointIterator).toSeq
-        PointSeriesUtils.interpolateAndAggregate(graphPointIterators, interpolationAggregator).toList
+        val aggregated = PointSeriesUtils.interpolateAndAggregate(graphPointIterators, interpolationAggregator)
+        val result =
+          if (rate) {
+            PointSeriesUtils.differentiate(aggregated)
+          } else {
+            aggregated
+          }
+        result.toList
     }
   }
 
