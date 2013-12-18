@@ -20,7 +20,7 @@ import scala.collection.immutable.SortedMap
 /**
  * @author Andrey Stepachev
  */
-class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMatchers with MustMatchers with MockitoStubs {
+class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoStubs {
 
   implicit val executionContext = system.dispatcher
 

@@ -46,7 +46,7 @@ object Version {
   val Scala = "2.10.3"
   val Akka = "2.2.3"
   val Spray = "1.2-RC2"
-  val ScalaTest = "1.9.1"
+  val ScalaTest = "2.0"
   val Mockito = "1.9.0"
   val Jackson = "1.8.8"
   val Kafka = "0.8.0-beta1-qmon5"

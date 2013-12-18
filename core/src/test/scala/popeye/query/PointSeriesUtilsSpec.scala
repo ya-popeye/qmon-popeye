@@ -1,11 +1,11 @@
 package popeye.query
 
 import org.scalatest.FlatSpec
-import org.scalatest.matchers.ShouldMatchers
 import popeye.query.PointSeriesUtils.{PlotPoint, Line}
 import scala.util.Random
+import org.scalatest.Matchers
 
-class PointSeriesUtilsSpec extends FlatSpec with ShouldMatchers {
+class PointSeriesUtilsSpec extends FlatSpec with Matchers {
 
   behavior of "PointSeriesUtils.toLines"
 

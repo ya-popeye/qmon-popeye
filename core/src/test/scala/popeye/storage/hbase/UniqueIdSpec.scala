@@ -31,8 +31,8 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
 
   it should "handle empty cache" in {
     val (probe, uniq) = mkUniq()
-    uniq.findIdByName(metric) must be(None)
-    uniq.findNameById(metricId) must be(None)
+    uniq.findIdByName(metric) should be(None)
+    uniq.findNameById(metricId) should be(None)
   }
 
   it should "resolve" in {
@@ -40,7 +40,7 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
     val future = uniq.resolveIdByName(metric, create = true)
     probe.expectMsg(FindName(qname, create = true))
     probe.lastSender ! Resolved(ResolvedName(qname, id("abc")))
-    Await.result(future, timeout) must be(id("abc"))
+    Await.result(future, timeout) should be(id("abc"))
   }
 
   it should "concurrent resolve" in {
@@ -49,8 +49,8 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
     val future2 = uniq.resolveIdByName(metric, create = true)
     probe.expectMsg(FindName(qname, create = true))
     probe.lastSender ! Resolved(ResolvedName(qname, id("abc")))
-    Await.result(future, timeout) must be(id("abc"))
-    Await.result(future2, timeout) must be(id("abc"))
+    Await.result(future, timeout) should be(id("abc"))
+    Await.result(future2, timeout) should be(id("abc"))
   }
 
   it should "handle resolve failure" in {
@@ -94,7 +94,7 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
     val future = uniq.resolveNameById(metricId)
     probe.expectMsg(FindId(qId))
     probe.lastSender ! Resolved(ResolvedName(qname, metricId))
-    Await.result(future, timeout) must be(metric)
+    Await.result(future, timeout) should be(metric)
   }
 
   it should "concurrent resolve" in {
@@ -103,8 +103,8 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
     val future2 = uniq.resolveNameById(metricId)
     probe.expectMsg(FindId(qId))
     probe.lastSender ! Resolved(ResolvedName(qname, metricId))
-    Await.result(future, timeout) must be(metric)
-    Await.result(future2, timeout) must be(metric)
+    Await.result(future, timeout) should be(metric)
+    Await.result(future2, timeout) should be(metric)
   }
 
   it should "handle resolve failure" in {
