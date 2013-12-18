@@ -170,4 +170,27 @@ object PointSeriesUtils {
 
   }
 
+  def differentiate(source: Iterator[PlotPoint]): Iterator[PlotPoint] = {
+    if (source.hasNext) {
+      new DifferentiatingIterator(source, source.next())
+    } else {
+      Iterator.empty
+    }
+  }
+
+  class DifferentiatingIterator(source: Iterator[PlotPoint], startPoint: PlotPoint) extends Iterator[PlotPoint] {
+
+    var lastPoint = startPoint
+
+    def hasNext: Boolean = source.hasNext
+
+    def next(): PointSeriesUtils.PlotPoint = {
+      val (lastX, lastY) = lastPoint
+      val currentPoint@(currentX, currentY) = source.next()
+      lastPoint = currentPoint
+      val y = (currentY - lastY) / (currentX - lastX)
+      (currentX, y)
+    }
+  }
+
 }

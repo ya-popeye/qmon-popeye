@@ -126,6 +126,27 @@ class PointSeriesUtilsSpec extends FlatSpec with Matchers {
     println(f"time in seconds = ${workTime * 0.001}")
   }
 
+  behavior of "PointSeriesUtils.differentiate"
+
+  it should "not fail on empty source" in {
+    PointSeriesUtils.differentiate(Iterator.empty).hasNext should be(false)
+    PointSeriesUtils.differentiate(Iterator((1, 1.0))).hasNext should be(false)
+  }
+
+  it should "differentiate constant" in {
+    val constPlot = (0 to 10).map(i => (i, 1.0))
+    val div = PointSeriesUtils.differentiate(constPlot.iterator).toList
+    div.map { case (x, y) => x} should equal(1 to 10)
+    all(div.map { case (x, y) => math.abs(y)}) should (be < 0.000001)
+  }
+
+  it should "differentiate linear function" in {
+    val constPlot = (0 to 10).map(i => (i, i.toDouble))
+    val div = PointSeriesUtils.differentiate(constPlot.iterator).toList
+    div.map { case (x, y) => x} should equal(1 to 10)
+    all(div.map { case (x, y) => y}) should be(1.0 +- 0.000001)
+  }
+
   private def time[T](body: => Unit) = {
     val startTime = System.currentTimeMillis()
     body
