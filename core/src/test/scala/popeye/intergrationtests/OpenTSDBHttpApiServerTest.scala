@@ -5,7 +5,7 @@ import akka.actor.ActorSystem
 import popeye.proto.{PackedPoints, Message}
 import scala.concurrent.Await
 import scala.concurrent.duration._
-import popeye.query.OpenTSDBHttpApiServer
+import popeye.query.{PointsStorage, OpenTSDBHttpApiServer}
 import com.typesafe.config.ConfigFactory
 import scala.collection.mutable
 
@@ -32,7 +32,8 @@ object OpenTSDBHttpApiServerTest {
         |  backlog = 100
         |}
       """.stripMargin)
-    OpenTSDBHttpApiServer.runServer(serverConfig, storageStub.storage, actorSystem, eCtx)
+    val pointsStorage = PointsStorage.fromHBaseStorage(storageStub.storage, eCtx)
+    OpenTSDBHttpApiServer.runServer(serverConfig, pointsStorage, actorSystem, eCtx)
   }
 
   def writePoints(metricName: String, value: Int => Double)(tags: (String, String)*) {

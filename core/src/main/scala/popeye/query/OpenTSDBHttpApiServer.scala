@@ -15,16 +15,9 @@ import spray.http.HttpMethods._
 import spray.can.server.ServerSettings
 import popeye.query.OpenTSDBHttpApiServer._
 import java.text.SimpleDateFormat
-import popeye.storage.hbase.HBaseStorage
 import popeye.storage.hbase.HBaseStorage._
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition._
-import scala.Predef._
-import popeye.storage.hbase.HBaseStorage.Point
-import scala.Some
 import spray.http.HttpResponse
-import popeye.storage.hbase.HBaseStorage.PointsGroups
-import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.Single
-import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.Multiple
 import spray.http.HttpRequest
 
 
@@ -96,11 +89,10 @@ object OpenTSDBHttpApiServer extends HttpServerFactory {
 
   case class TimeSeriesQuery(aggregatorKey: String, isRate: Boolean, metricName: String, tags: Map[String, ValueNameFilterCondition])
 
-  def runServer(config: Config, storage: HBaseStorage, system: ActorSystem, executionContext: ExecutionContext) {
+  def runServer(config: Config, storage: PointsStorage, system: ActorSystem, executionContext: ExecutionContext) {
     implicit val timeout: Timeout = 5 seconds
-    val pointsStorage = PointsStorage.fromHBaseStorage(storage, executionContext)
     val handler = system.actorOf(
-      Props.apply(new OpenTSDBHttpApiServer(pointsStorage, executionContext)),
+      Props.apply(new OpenTSDBHttpApiServer(storage, executionContext)),
       name = "server-http")
 
     val hostport = config.getString("server.http.listen").split(":")

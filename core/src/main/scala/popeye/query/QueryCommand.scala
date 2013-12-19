@@ -41,6 +41,7 @@ object QueryCommand extends PopeyeCommand with Logging {
         metrics
       )(ectx))
     hbaseStorage.storage.ping()
-    serverTypes(serverTypeKey).runServer(serverConfig, hbaseStorage.storage, actorSystem, ectx)
+    val pointsStorage = PointsStorage.fromHBaseStorage(hbaseStorage.storage, ectx)
+    serverTypes(serverTypeKey).runServer(serverConfig, pointsStorage, actorSystem, ectx)
   }
 }

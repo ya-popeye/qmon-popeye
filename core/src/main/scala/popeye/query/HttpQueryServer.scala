@@ -11,8 +11,7 @@ import spray.can.Http
 import com.typesafe.config.Config
 import akka.util.Timeout
 import scala.concurrent.duration._
-import scala.concurrent.{ExecutionContext, Future}
-import popeye.storage.hbase.HBaseStorage
+import scala.concurrent.ExecutionContext
 import popeye.storage.hbase.HBaseStorage._
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition
 import scala.util.Try
@@ -116,11 +115,10 @@ object HttpQueryServer extends HttpServerFactory {
     "avg" -> (seq => seq.sum / seq.size)
   )
 
-  def runServer(config: Config, storage: HBaseStorage, system: ActorSystem, executionContext: ExecutionContext) = {
+  def runServer(config: Config, storage: PointsStorage, system: ActorSystem, executionContext: ExecutionContext) = {
     implicit val timeout: Timeout = 5 seconds
-    val pointsStorage = PointsStorage.fromHBaseStorage(storage, executionContext)
     val handler = system.actorOf(
-      Props.apply(new HttpQueryServer(pointsStorage, executionContext)),
+      Props.apply(new HttpQueryServer(storage, executionContext)),
       name = "server-http")
 
     val hostport = config.getString("server.http.listen").split(":")
