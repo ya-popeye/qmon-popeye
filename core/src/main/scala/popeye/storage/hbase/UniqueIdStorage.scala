@@ -1,10 +1,15 @@
 package popeye.storage.hbase
 
-import org.apache.hadoop.hbase.client.{HTablePool, Get, Put, HTableInterface}
+import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.util.Bytes
 import popeye.Logging
 import popeye.storage.hbase.HBaseStorage._
 import scala.collection.JavaConversions._
+import popeye.storage.hbase.HBaseStorage.QualifiedId
+import popeye.storage.hbase.HBaseStorage.QualifiedName
+import scala.Some
+import popeye.util.hbase.HBaseUtils
+import java.util
 
 object UniqueIdStorage {
   final val IdFamily = "id".getBytes
@@ -134,6 +139,24 @@ class UniqueIdStorage(tableName: String, hTablePool: HTablePool, kindWidths: Map
       body(hTable)
     } finally {
       hTable.close()
+    }
+  }
+
+  def getSuggestions(namePrefix: String, kind: String, limit: Int): Seq[String] = {
+    require(kindWidths.keys.contains(kind), f"unknown kind: $kind; known kinds: ${kindWidths.keys}")
+    val startRow = namePrefix.getBytes(Encoding)
+    val endRow = HBaseUtils.addOneIfNotMaximum(startRow)
+    val scan = new Scan(startRow, endRow)
+    val qualifierSet = new util.TreeSet[Array[Byte]](Bytes.BYTES_COMPARATOR)
+    qualifierSet.add(Bytes.toBytes(kind))
+    val familyMap = new util.HashMap[Array[Byte], util.NavigableSet[Array[Byte]]]
+    familyMap.put(IdFamily, qualifierSet)
+    scan.setFamilyMap(familyMap)
+    withHTable {
+      table =>
+        table.getScanner(scan).next(limit).map {
+          result => new String(result.getRow, Encoding)
+        }
     }
   }
 }
