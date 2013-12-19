@@ -84,7 +84,7 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
     val exception = intercept[NoSuchElementException] {
       Await.result(future, 5 seconds)
     }
-    exception.getMessage must include(name)
+    exception.getMessage should include(name)
   }
 
   behavior of "name->id"
