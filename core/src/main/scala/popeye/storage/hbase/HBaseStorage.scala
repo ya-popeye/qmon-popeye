@@ -739,10 +739,11 @@ class HBaseStorageConfigured(config: HBaseStorageConfig) {
 
   config.actorSystem.registerOnTermination(hbase.close())
 
+  val uniqueIdStorage = new UniqueIdStorage(config.uidsTableName, hbase.hTablePool, HBaseStorage.UniqueIdMapping)
+
   val storage = {
     implicit val eCtx = config.eCtx
 
-    val uniqueIdStorage = new UniqueIdStorage(config.uidsTableName, hbase.hTablePool, HBaseStorage.UniqueIdMapping)
     val uniqIdResolved = config.actorSystem.actorOf(Props.apply(new UniqueIdActor(uniqueIdStorage)))
     val metrics = makeUniqueIdCache(config.uidsConfig, HBaseStorage.MetricKind, uniqIdResolved, uniqueIdStorage,
       config.resolveTimeout)

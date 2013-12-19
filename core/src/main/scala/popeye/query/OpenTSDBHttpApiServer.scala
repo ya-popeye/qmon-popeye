@@ -9,7 +9,7 @@ import spray.can.Http
 import com.typesafe.config.Config
 import akka.util.Timeout
 import scala.concurrent.duration._
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{Future, ExecutionContext}
 import spray.http._
 import spray.http.HttpMethods._
 import spray.can.server.ServerSettings
@@ -17,19 +17,23 @@ import popeye.query.OpenTSDBHttpApiServer._
 import java.text.SimpleDateFormat
 import popeye.storage.hbase.HBaseStorage._
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition._
+import spray.http.MediaTypes.`application/json`
+import popeye.storage.hbase.HBaseStorage.Point
+import scala.Some
 import spray.http.HttpResponse
+import popeye.storage.hbase.HBaseStorage.PointsGroups
+import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.Single
+import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.Multiple
 import spray.http.HttpRequest
 
 
 class OpenTSDBHttpApiServer(storage: PointsStorage, executionContext: ExecutionContext) extends Actor with Logging {
 
-  val query = """/q&.*""".r
   implicit val eCtx = executionContext
 
   def receive: Actor.Receive = {
     case x: Http.Connected => sender ! Http.Register(self)
     case request@HttpRequest(GET, path@Uri.Path("/q"), _, _, _) =>
-      info(f"request: $request)")
       val savedClient = sender
       val parameters = queryStringToMap(path.query.value)
       def parameter(name: String, errorMsg: => String) = parameters.get(name).toRight(errorMsg)
@@ -57,7 +61,7 @@ class OpenTSDBHttpApiServer(storage: PointsStorage, executionContext: ExecutionC
           .onFailure {
           case t: Throwable =>
             savedClient ! HttpResponse(status = StatusCodes.InternalServerError)
-            info(f"query failed", t)
+            info(f"points query failed", t)
         }
       }
       for (errMessage <- resultFutureOrErrMessage.left) {
@@ -66,9 +70,42 @@ class OpenTSDBHttpApiServer(storage: PointsStorage, executionContext: ExecutionC
       }
 
 
+    case request@HttpRequest(GET, path@Uri.Path("/suggest"), _, _, _) =>
+      val savedClient = sender
+      val parameters = queryStringToMap(path.query.value)
+      def parameter(name: String, errorMsg: => String) = parameters.get(name).toRight(errorMsg)
+      val suggestionsFutureOrErrorMsg =
+        for {
+          suggestKey <- parameter("type", "suggest type (type) is not set").right
+          suggestType <- suggestTypes.get(suggestKey)
+            .toRight(f"no such suggest type: $suggestKey, try one of ${suggestTypes.keys}").right
+          namePrefix <- parameter("q", "name prefix (q) is not set").right
+        } yield Future {
+          val suggestions: Seq[String] = storage.getSuggestions(namePrefix, suggestType)
+          suggestions.mkString("[\"", "\", \"", "\"]")
+        }
+
+      for (suggestions <- suggestionsFutureOrErrorMsg.right) {
+        suggestions.map {
+          json =>
+            val responseEntity = HttpEntity(ContentType(`application/json`), json)
+            savedClient ! HttpResponse(entity = responseEntity)
+            info(f"suggest request served: $request)")
+        }.onFailure {
+          case t: Throwable =>
+            savedClient ! HttpResponse(status = StatusCodes.InternalServerError)
+            info(f"suggest query failed", t)
+        }
+      }
+
+      for (errMessage <- suggestionsFutureOrErrorMsg.left) {
+        info(f"bad suggest request: $errMessage)")
+        savedClient ! HttpResponse(status = StatusCodes.BadRequest, entity = HttpEntity(errMessage))
+      }
+
     case request: HttpRequest =>
-      info(f"request: $request)")
-      sender ! HttpResponse(entity = HttpEntity("not implemented"))
+      info(f"bad request: $request)")
+      sender ! HttpResponse(status = StatusCodes.BadRequest)
   }
 }
 
@@ -83,6 +120,11 @@ object OpenTSDBHttpApiServer extends HttpServerFactory {
 
   val dateFormat = new SimpleDateFormat("yyyy/MM/dd-hh:mm:ss")
 
+  import popeye.query.PointsStorage.NameType._
+
+  val suggestTypes = Map(
+    "metrics" -> MetricType
+  )
   private val metricNameRegex = "[^{]+".r
   private val metricTagsRegex = """[^{]+\{([^}]+)\}""".r
   private val metricSingleTagRegex = "[^,]+".r

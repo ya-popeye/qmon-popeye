@@ -3,13 +3,16 @@ package popeye.intergrationtests
 import popeye.storage.hbase.PointsStorageStub
 import akka.actor.ActorSystem
 import popeye.proto.{PackedPoints, Message}
-import scala.concurrent.Await
+import scala.concurrent.{Future, Await}
 import scala.concurrent.duration._
 import popeye.query.{PointsStorage, OpenTSDBHttpApiServer}
 import com.typesafe.config.ConfigFactory
 import scala.collection.mutable
+import popeye.query.PointsStorage.NameType
+import popeye.storage.hbase.HBaseStorage.{PointsStream, ValueNameFilterCondition}
+import popeye.Logging
 
-object OpenTSDBHttpApiServerTest {
+class OpenTSDBHttpApiServerTest extends Logging {
   implicit val actorSystem = ActorSystem("test")
   implicit val eCtx = actorSystem.dispatcher
   val storageStub = new PointsStorageStub
@@ -18,11 +21,10 @@ object OpenTSDBHttpApiServerTest {
   val attrNames = mutable.Set[String]()
   val attrValues = mutable.Set[String]()
 
-  def main(args: Array[String]) {
+  def test(args: Array[String]) {
     writePoints("sin", i => math.sin(i * 0.01) + 1)("phase" -> "0", "freq" -> "0.01", "add" -> "1")
     startServer()
   }
-
 
   def startServer() {
     val serverConfig = ConfigFactory.parseString(
@@ -32,8 +34,29 @@ object OpenTSDBHttpApiServerTest {
         |  backlog = 100
         |}
       """.stripMargin)
-    val pointsStorage = PointsStorage.fromHBaseStorage(storageStub.storage, eCtx)
+    val pointsStorage = new PointsStorage {
+      def getPoints(metric: String,
+                    timeRange: (Int, Int),
+                    attributes: Map[String, ValueNameFilterCondition]): Future[PointsStream] =
+        storageStub.storage.getPoints(metric, timeRange, attributes)(eCtx)
+
+      def getSuggestions(namePrefix: String, nameType: NameType.NameType): Seq[String] = {
+        import NameType._
+        val names = nameType match {
+          case MetricType => metrics
+          case AttributeNameType => attrNames
+          case AttributeValueType => attrValues
+        }
+        val suggestions = names.toList.filter(name => name.startsWith(namePrefix)).sorted.take(10)
+        info(f"suggestions $suggestions")
+        suggestions
+      }
+    }
     OpenTSDBHttpApiServer.runServer(serverConfig, pointsStorage, actorSystem, eCtx)
+  }
+
+  def stopServer() {
+    actorSystem.shutdown()
   }
 
   def writePoints(metricName: String, value: Int => Double)(tags: (String, String)*) {
