@@ -1,7 +1,6 @@
 package popeye.util.hbase
 
-import org.scalatest.FlatSpec
-import org.scalatest.matchers.ShouldMatchers
+import org.scalatest.{Matchers, FlatSpec}
 import org.kiji.testing.fakehtable.FakeHTable
 import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.conf.Configuration
@@ -9,7 +8,7 @@ import popeye.util.hbase.HBaseUtils.ChunkedResults
 import org.apache.hadoop.hbase.KeyValue
 
 
-class HBaseUtilsSpec extends FlatSpec with ShouldMatchers {
+class HBaseUtilsSpec extends FlatSpec with Matchers {
 
   behavior of "HBaseUtils.getChunkedResults"
 
@@ -33,6 +32,32 @@ class HBaseUtilsSpec extends FlatSpec with ShouldMatchers {
     val flattenChunks = toSingleResult(chunkedResults)
     def getRowIndex(result: Result) = result.getRow()(0)
     flattenChunks.map(getRowIndex).toList should equal((1 to 10).map(_.toByte).toList)
+  }
+
+  behavior of "HBaseUtils.addOneIfNotMaximum"
+
+  it should "add one" in {
+    val zero = Array[Byte](0x00, 0x00)
+    val one = Array[Byte](0x00, 0x01)
+    HBaseUtils.addOneIfNotMaximum(zero) should equal(one)
+  }
+
+  it should "carry" in {
+    val n255 = Array[Byte](0x00, 0xff.toByte)
+    val n256 = Array[Byte](0x01, 0x00)
+    HBaseUtils.addOneIfNotMaximum(n255) should equal(n256)
+  }
+
+  it should "not add if maximum" in {
+    val maximum = Array[Byte](0xff.toByte, 0xff.toByte)
+    HBaseUtils.addOneIfNotMaximum(maximum) should equal(maximum)
+  }
+
+  it should "copy" in {
+    val maximum = Array[Byte](0xff.toByte, 0xff.toByte)
+    HBaseUtils.addOneIfNotMaximum(maximum) should not(be theSameInstanceAs maximum)
+    val zero = Array[Byte](0x00, 0x00)
+    HBaseUtils.addOneIfNotMaximum(zero) should not(be theSameInstanceAs zero)
   }
 
   private def toSingleResult(chunkedResults: ChunkedResults): Array[Result] = {
