@@ -158,29 +158,16 @@ class UniqueIdImpl(val width: Short,
     val promise = Promise[BytesKey]()
     nameCache.putIfAbsent(name, promise.future) match {
       case null =>
-
         val resolutionFuture = resolver.ask(FindName(QualifiedName(kind, name), create))(new Timeout(timeout.toMillis))
         val promiseCompletionFuture = resolutionFuture.map {
           case r: Resolved =>
             addToCache(r)
             promise.success(r.name.id)
           case r: Race =>
-            if (retries == 0) {
-              nameCache.remove(name)
-              promise.failure(new UniqueIdRaceException(s"Can't battle race creating $name"))
-            } else {
-              info(s"Got $r, $retries retries left")
-              nameCache.remove(name) match {
-                case null =>
-                  promise.completeWith(resolveIdByName(name, create, retries - 1)) // retry
-                case removed => removed.value match {
-                  case Some(Success(x)) =>
-                    promise.success(x)
-                  case _ =>
-                    promise.completeWith(resolveIdByName(name, create, retries - 1)) // retry
-                }
-              }
-            }
+            info(s"Got $r, $retries retries left")
+            val lastResolutionAttemptOption = Option(nameCache.remove(name))
+            val idFuture = retryResolution(name, lastResolutionAttemptOption, retries)
+            promise.completeWith(idFuture)
           case f: ResolutionFailed =>
             log.debug("id resolution failed: {}" , f)
             nameCache.remove(name)
@@ -198,6 +185,27 @@ class UniqueIdImpl(val width: Short,
         promise.future
 
       case idFuture => idFuture
+    }
+  }
+
+
+  private def retryResolution(name: String,
+                              lastResolutionAttemptOption: Option[Future[BytesKey]],
+                              retries: Int)
+                             (implicit timeout: Duration): Future[BytesKey] = {
+    if (retries == 0) {
+      Future.failed(new UniqueIdRaceException(s"Can't battle race creating $name"))
+    } else {
+      val idOption =
+        for {
+          idFuture <- lastResolutionAttemptOption
+          idTry <- idFuture.value
+          id <- idTry.toOption
+        } yield id
+
+      idOption.map(Future.successful).getOrElse {
+        resolveIdByName(name, create = true, retries - 1)
+      }
     }
   }
 
