@@ -25,6 +25,7 @@ import popeye.storage.hbase.HBaseStorage.PointsGroups
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.Single
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.Multiple
 import spray.http.HttpRequest
+import java.util.TimeZone
 
 
 class OpenTSDBHttpApiServer(storage: PointsStorage, executionContext: ExecutionContext) extends Actor with Logging {
@@ -119,6 +120,7 @@ object OpenTSDBHttpApiServer extends HttpServerFactory {
   )
 
   val dateFormat = new SimpleDateFormat("yyyy/MM/dd-hh:mm:ss")
+  dateFormat.setTimeZone(TimeZone.getTimeZone("Etc/UTC"))
 
   import popeye.query.PointsStorage.NameType._
 
@@ -137,8 +139,7 @@ object OpenTSDBHttpApiServer extends HttpServerFactory {
       Props.apply(new OpenTSDBHttpApiServer(storage, executionContext)),
       name = "server-http")
 
-    val hostport = config.getString("server.http.listen").split(":")
-    val addr = new InetSocketAddress(hostport(0), hostport(1).toInt)
+    val hostAndPort = config.getString("http.listen").split(":")
     val relaxedUriParsingSettings = """
                                       |spray.can.server.parsing {
                                       |  uri-parsing-mode = relaxed-with-raw-query
@@ -146,8 +147,8 @@ object OpenTSDBHttpApiServer extends HttpServerFactory {
                                     """.stripMargin
     IO(Http)(system) ? Http.Bind(
       listener = handler,
-      endpoint = addr,
-      backlog = config.getInt("server.http.backlog"),
+      endpoint = new InetSocketAddress(hostAndPort(0), hostAndPort(1).toInt),
+      backlog = config.getInt("http.backlog"),
       options = Nil,
       settings = Some(ServerSettings(relaxedUriParsingSettings)))
   }

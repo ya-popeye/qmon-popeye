@@ -69,7 +69,7 @@ class OpenTSDBHttpApiServerSpec extends AkkaTestKitSpec("http-query") with Mocki
       "max:" +
       "nointerpolation:" +
       "metric{single=foo,multiple=foo|bar,all=*}"
-    val timeParams = "start=1970/01/01-03:00:00&end=1970/01/01-03:00:01"
+    val timeParams = "start=1970/01/01-00:00:00&end=1970/01/01-00:00:01"
 
     val uriString = f"/q?$timeParams&$metricParam"
 
@@ -88,7 +88,6 @@ class OpenTSDBHttpApiServerSpec extends AkkaTestKitSpec("http-query") with Mocki
 
     val storage = mock[PointsStorage]
     stub(storage.getPoints(any(), any(), any())).toReturn(Future.successful(PointsStream(PointsGroups(groups))))
-
     val serverRef = TestActorRef(Props.apply(new OpenTSDBHttpApiServer(storage, executionContext)))
     val future = serverRef ? HttpRequest(GET, Uri(uriString, Uri.ParsingMode.RelaxedWithRawQuery))
     val response = Await.result(future, 5 seconds).asInstanceOf[HttpResponse]

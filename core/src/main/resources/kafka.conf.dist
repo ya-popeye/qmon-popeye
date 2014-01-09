@@ -46,9 +46,10 @@ popeye.query = {
     storage = hbaseStorage
   }
   serverType = opentsdb
-  http = {
-    server.http.listen="localhost:8080"
-    server.http.backlog=100
+
+  server = {
+    http.listen = "localhost:8080"
+    http.backlog = 100
   }
 }
 
