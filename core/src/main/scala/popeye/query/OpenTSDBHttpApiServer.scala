@@ -14,7 +14,7 @@ import spray.http._
 import spray.http.HttpMethods._
 import spray.can.server.ServerSettings
 import popeye.query.OpenTSDBHttpApiServer._
-import java.text.SimpleDateFormat
+import java.text.{DateFormat, SimpleDateFormat}
 import popeye.storage.hbase.HBaseStorage._
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition._
 import spray.http.MediaTypes.`application/json`
@@ -25,9 +25,10 @@ import popeye.storage.hbase.HBaseStorage.PointsGroups
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.Single
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.Multiple
 import spray.http.HttpRequest
+import java.util.TimeZone
 
 
-class OpenTSDBHttpApiServer(storage: PointsStorage, executionContext: ExecutionContext) extends Actor with Logging {
+class OpenTSDBHttpApiServer(storage: PointsStorage, dateFormat: DateFormat, executionContext: ExecutionContext) extends Actor with Logging {
 
   implicit val eCtx = executionContext
 
@@ -107,6 +108,9 @@ class OpenTSDBHttpApiServer(storage: PointsStorage, executionContext: ExecutionC
       info(f"bad request: $request)")
       sender ! HttpResponse(status = StatusCodes.BadRequest)
   }
+
+  private def parseTime(dateString: String) = (dateFormat.parse(dateString).getTime / 1000).toInt
+
 }
 
 object OpenTSDBHttpApiServer extends HttpServerFactory {
@@ -118,7 +122,6 @@ object OpenTSDBHttpApiServer extends HttpServerFactory {
     "avg" -> (seq => seq.sum / seq.size)
   )
 
-  val dateFormat = new SimpleDateFormat("yyyy/MM/dd-hh:mm:ss")
 
   import popeye.query.PointsStorage.NameType._
 
@@ -133,12 +136,12 @@ object OpenTSDBHttpApiServer extends HttpServerFactory {
 
   def runServer(config: Config, storage: PointsStorage, system: ActorSystem, executionContext: ExecutionContext) {
     implicit val timeout: Timeout = 5 seconds
+    val dateFormat = getDateFormat(config)
     val handler = system.actorOf(
-      Props.apply(new OpenTSDBHttpApiServer(storage, executionContext)),
+      Props.apply(new OpenTSDBHttpApiServer(storage, dateFormat, executionContext)),
       name = "server-http")
 
-    val hostport = config.getString("server.http.listen").split(":")
-    val addr = new InetSocketAddress(hostport(0), hostport(1).toInt)
+    val hostAndPort = config.getString("http.listen").split(":")
     val relaxedUriParsingSettings = """
                                       |spray.can.server.parsing {
                                       |  uri-parsing-mode = relaxed-with-raw-query
@@ -146,10 +149,23 @@ object OpenTSDBHttpApiServer extends HttpServerFactory {
                                     """.stripMargin
     IO(Http)(system) ? Http.Bind(
       listener = handler,
-      endpoint = addr,
-      backlog = config.getInt("server.http.backlog"),
+      endpoint = new InetSocketAddress(hostAndPort(0), hostAndPort(1).toInt),
+      backlog = config.getInt("http.backlog"),
       options = Nil,
       settings = Some(ServerSettings(relaxedUriParsingSettings)))
+  }
+
+  private def getDateFormat(config: Config) = {
+    val dateFormat = new SimpleDateFormat("yyyy/MM/dd-hh:mm:ss")
+    val timeZoneId = config.getString("timeZone")
+    val timeZone =
+      if (timeZoneId.toLowerCase == "default") {
+        TimeZone.getDefault
+      } else {
+        TimeZone.getTimeZone(timeZoneId)
+      }
+    dateFormat.setTimeZone(timeZone)
+    dateFormat
   }
 
   private val paramRegex = "[^&]+".r
@@ -165,7 +181,6 @@ object OpenTSDBHttpApiServer extends HttpServerFactory {
         }
     }.toMap
 
-  private[query] def parseTime(dateString: String) = (dateFormat.parse(dateString).getTime / 1000).toInt
 
   private[query] def parseTimeSeriesQuery(queryString: String): Either[String, TimeSeriesQuery] = {
 
