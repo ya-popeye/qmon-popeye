@@ -11,8 +11,7 @@ import spray.can.Http
 import com.typesafe.config.Config
 import akka.util.Timeout
 import scala.concurrent.duration._
-import scala.concurrent.{ExecutionContext, Future}
-import popeye.storage.hbase.HBaseStorage
+import scala.concurrent.ExecutionContext
 import popeye.storage.hbase.HBaseStorage._
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition
 import scala.util.Try
@@ -27,6 +26,7 @@ import spray.http.HttpRequest
 class HttpQueryServer(storage: PointsStorage, executionContext: ExecutionContext) extends Actor with Logging {
   implicit val eCtx = executionContext
   val pointsPathPattern = """/points/([^/]+)""".r
+
   case class SendNextPoints(client: ActorRef, points: PointsStream)
 
   def receive: Actor.Receive = {
@@ -106,7 +106,7 @@ class HttpQueryServer(storage: PointsStorage, executionContext: ExecutionContext
 
 }
 
-object HttpQueryServer {
+object HttpQueryServer extends HttpServerFactory {
 
   val aggregatorsMap = Map[String, Seq[Double] => Double](
     "sum" -> (seq => seq.sum),
@@ -115,24 +115,10 @@ object HttpQueryServer {
     "avg" -> (seq => seq.sum / seq.size)
   )
 
-  trait PointsStorage {
-    def getPoints(metric: String,
-                  timeRange: (Int, Int),
-                  attributes: Map[String, ValueNameFilterCondition]): Future[PointsStream]
-  }
-
-  def runServer(config: Config, storage: HBaseStorage, system: ActorSystem, executionContext: ExecutionContext) = {
+  def runServer(config: Config, storage: PointsStorage, system: ActorSystem, executionContext: ExecutionContext) = {
     implicit val timeout: Timeout = 5 seconds
-    val pointsStorage = new PointsStorage {
-      def getPoints(metric: String,
-                    timeRange: (Int, Int),
-                    attributes: Map[String, ValueNameFilterCondition]) =
-        storage.getPoints(metric, timeRange, attributes)(executionContext)
-
-    }
-
     val handler = system.actorOf(
-      Props.apply(new HttpQueryServer(pointsStorage, executionContext)),
+      Props.apply(new HttpQueryServer(storage, executionContext)),
       name = "server-http")
 
     val hostport = config.getString("server.http.listen").split(":")
@@ -144,7 +130,6 @@ object HttpQueryServer {
       options = Nil,
       settings = None)
     handler
-
   }
 
   private def aggregationsToString(aggregationsMap: Map[PointAttributes, Seq[(Int, Double)]]): String =
@@ -161,13 +146,13 @@ object HttpQueryServer {
         point => (point.timestamp, point.value.doubleValue())
       }
       downsamplingOption.map {
-        case (interval, aggregator) => PointAggregation.downsample(graphPoints, interval, aggregator)
+        case (interval, aggregator) => PointSeriesUtils.downsample(graphPoints, interval, aggregator)
       }.getOrElse(graphPoints)
     }
     pointsGroups.groupsMap.mapValues {
       group =>
         val graphPointIterators = group.values.map(toGraphPointIterator).toSeq
-        PointAggregation.linearInterpolation(graphPointIterators, interpolationAggregator).toList
+        PointSeriesUtils.interpolateAndAggregate(graphPointIterators, interpolationAggregator).toList
     }
   }
 }

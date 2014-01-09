@@ -45,9 +45,11 @@ popeye.query = {
     zk.quorum = "localhost:2182"
     storage = hbaseStorage
   }
-  http = {
-    server.http.listen="localhost:8080"
-    server.http.backlog=100
+  serverType = opentsdb
+
+  server = {
+    http.listen = "localhost:8080"
+    http.backlog = 100
   }
 }
 

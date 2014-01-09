@@ -17,7 +17,7 @@ trait PopeyeCommand {
 }
 
 object Main extends App with MetricsConfiguration with Logging {
-  val commands = List[PopeyeCommand](new PipelineCommand, new QueryCommand)
+  val commands = List[PopeyeCommand](new PipelineCommand, QueryCommand)
 
   val commonParser = new scopt.OptionParser[MainConfig]("popeye") {
     head("popeye", "0.x")

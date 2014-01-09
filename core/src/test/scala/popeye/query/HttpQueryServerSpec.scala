@@ -1,20 +1,17 @@
 package popeye.query
 
 import popeye.pipeline.test.AkkaTestKitSpec
-import popeye.query.HttpQueryServer.PointsStorage
 import scala.concurrent.{Await, Future}
 import spray.http._
 import spray.http.HttpMethods._
 import akka.testkit.TestActorRef
-import akka.actor.{ActorRef, Actor, Props}
+import akka.actor.Props
 import akka.pattern.ask
 import spray.http.HttpRequest
-import popeye.storage.hbase.HBaseStorage.{PointsGroups, PointsStream, Point, ValueNameFilterCondition}
+import popeye.storage.hbase.HBaseStorage.{PointsGroups, PointsStream, ValueNameFilterCondition}
 import spray.http.HttpResponse
 import akka.util.Timeout
 import scala.concurrent.duration._
-import org.scalatest.matchers.Matcher
-import java.nio.charset.Charset
 import org.scalatest.mock.MockitoSugar
 import org.mockito.Mockito._
 import org.mockito.Matchers._
@@ -42,7 +39,7 @@ class HttpQueryServerSpec extends AkkaTestKitSpec("http-query") with MockitoSuga
 
     val future = serverRef ? HttpRequest(GET, Uri(uriString))
     val response = Await.result(future, 5 seconds).asInstanceOf[HttpResponse]
-    response.entity.asString must equal("")
+    response.entity.asString should equal("")
     import ValueNameFilterCondition._
     val attrs = Map(
       "single" -> Single("foo"),

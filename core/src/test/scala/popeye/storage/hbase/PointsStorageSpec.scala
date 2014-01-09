@@ -1,11 +1,5 @@
 package popeye.storage.hbase
 
-import akka.actor.Props
-import akka.testkit.TestActorRef
-import java.util.concurrent.atomic.AtomicInteger
-import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.hbase.client.{HTableInterfaceFactory, HTableInterface, HTablePool}
-import org.kiji.testing.fakehtable.FakeHTable
 import org.scalatest.matchers.{MustMatchers, ShouldMatchers}
 import popeye.test.PopeyeTestUtils._
 import popeye.test.{PopeyeTestUtils, MockitoStubs}
@@ -14,7 +8,6 @@ import scala.collection.JavaConversions.iterableAsScalaIterable
 import scala.concurrent.{Future, Await}
 import scala.concurrent.duration._
 import popeye.proto.{PackedPoints, Message}
-import com.codahale.metrics.MetricRegistry
 import nl.grons.metrics.scala.Meter
 import java.util.regex.Pattern
 import scala.util.Random
@@ -27,12 +20,9 @@ import scala.collection.immutable.SortedMap
 /**
  * @author Andrey Stepachev
  */
-class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMatchers with MustMatchers with MockitoStubs {
+class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoStubs {
 
   implicit val executionContext = system.dispatcher
-
-  implicit val metricRegistry = new MetricRegistry()
-  implicit val pointsStorageMetrics = new HBaseStorageMetrics("hbase", metricRegistry)
 
   final val tableName = "my-table"
 
@@ -41,21 +31,25 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
   it should "produce key values" in {
     implicit val random = new java.util.Random(1234)
 
-    val state = new State
+    val storageStub = new PointsStorageStub(
+      metricNames = PopeyeTestUtils.names,
+      attributeNames = Seq("host"),
+      attributeValues = PopeyeTestUtils.hosts
+    )
 
     val events = mkEvents(msgs = 4)
-    val future = state.storage.writePoints(PackedPoints(events))
+    val future = storageStub.storage.writePoints(PackedPoints(events))
     val written = Await.result(future, 5 seconds)
     written should be(events.size)
-    val points = state.hTable.getScanner(HBaseStorage.PointsFamily).map(_.raw).flatMap {
+    val points = storageStub.hTable.getScanner(HBaseStorage.PointsFamily).map(_.raw).flatMap {
       kv =>
-      kv.map(state.storage.keyValueToPoint)
+        kv.map(storageStub.storage.keyValueToPoint)
     }
     points.size should be(events.size)
     events.toList.sortBy(_.getTimestamp) should equal(points.toList.sortBy(_.getTimestamp))
 
     // write once more, we shold write using short path
-    val future2 = state.storage.writePoints(PackedPoints(events))
+    val future2 = storageStub.storage.writePoints(PackedPoints(events))
     val written2 = Await.result(future2, 5 seconds)
     written2 should be(events.size)
 
@@ -64,15 +58,19 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
   ignore should "performance test" in {
     implicit val random = new java.util.Random(1234)
 
-    val state = new State
+    val storageStub = new PointsStorageStub(
+      metricNames = PopeyeTestUtils.names,
+      attributeNames = Seq("host"),
+      attributeValues = PopeyeTestUtils.hosts
+    )
 
     val events = mkEvents(msgs = 4000)
     for (i <- 1 to 600) {
-      val future = state.storage.writePoints(PackedPoints(events))
+      val future = storageStub.storage.writePoints(PackedPoints(events))
       val written = Await.result(future, 5 seconds)
       written should be(events.size)
     }
-    printMeter(pointsStorageMetrics.writeHBasePoints)
+    printMeter(storageStub.pointsStorageMetrics.writeHBasePoints)
   }
 
   private def printMeter(meter: Meter) {
@@ -83,44 +81,12 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
     printf("    15-minute rate = %2.2f events/s%n", meter.getFifteenMinuteRate)
   }
 
-  class State(metricNames: Seq[String] = PopeyeTestUtils.names,
-              attributeNames: Seq[String] = Seq("host"),
-              attributeValues: Seq[String] = PopeyeTestUtils.hosts) {
-    val id = new AtomicInteger(1)
-
-    val hTable = new FakeHTable(tableName, desc = null)
-    val hTablePool = new HTablePool(new Configuration(), 1, new HTableInterfaceFactory {
-      def releaseHTableInterface(table: HTableInterface) {}
-
-      def createHTableInterface(config: Configuration, tableName: Array[Byte]): HTableInterface = hTable
-    })
-
-    val uniqActor: TestActorRef[FixedUniqueIdActor] = TestActorRef(Props.apply(new FixedUniqueIdActor()))
-
-    val metrics = setup(uniqActor, HBaseStorage.MetricKind, metricNames)
-    val attrNames = setup(uniqActor, HBaseStorage.AttrNameKind, attributeNames)
-    val attrValues = setup(uniqActor, HBaseStorage.AttrValueKind, attributeValues)
-    val storage = new HBaseStorage(
-      tableName,
-      hTablePool,
-      metrics,
-      attrNames,
-      attrValues,
-      pointsStorageMetrics,
-      readChunkSize = 10
-    )
-
-    def setup(actor: TestActorRef[FixedUniqueIdActor], kind: String, seq: Seq[String]): UniqueId = {
-      val uniq = new UniqueIdImpl(HBaseStorage.UniqueIdMapping.get(kind).get, kind, actor)
-      seq.map {
-        item => actor.underlyingActor.add(HBaseStorage.ResolvedName(kind, item, uniq.toBytes(id.incrementAndGet())))
-      }
-      uniq
-    }
-  }
-
   it should "perform time range queries" in {
-    val state = new State
+    val storageStub = new PointsStorageStub(
+      metricNames = PopeyeTestUtils.names,
+      attributeNames = Seq("host"),
+      attributeValues = PopeyeTestUtils.hosts
+    )
     val points = (0 to 6).map {
       i =>
         messagePoint(
@@ -130,9 +96,9 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
           attrs = Seq("host" -> "localhost")
         )
     }
-    writePoints(state, points)
+    writePoints(storageStub, points)
     import HBaseStorage.ValueNameFilterCondition._
-    val future = state.storage.getPoints("my.metric1", (1200, 4801), Map("host" -> Single("localhost")))
+    val future = storageStub.storage.getPoints("my.metric1", (1200, 4801), Map("host" -> Single("localhost")))
     val groupsMap = toGroupsMap(future)
     val group = groupsMap(SortedMap())
     group.size should equal(1)
@@ -143,7 +109,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
   }
 
   it should "perform multiple attributes queries" in {
-    val state = new State(
+    val storageStub = new PointsStorageStub(
       metricNames = Seq("metric"),
       //order of attribute names is important
       attributeNames = Seq("b", "a"),
@@ -156,9 +122,9 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
       attrs = Seq("a" -> "foo", "b" -> "foo")
     )
 
-    writePoints(state, Seq(point))
+    writePoints(storageStub, Seq(point))
     import HBaseStorage.ValueNameFilterCondition._
-    val future = state.storage.getPoints("metric", (0, 1), Map("a" -> Single("foo"), "b" -> Single("foo")))
+    val future = storageStub.storage.getPoints("metric", (0, 1), Map("a" -> Single("foo"), "b" -> Single("foo")))
     val groupsMap = toGroupsMap(future)
     val group = groupsMap(SortedMap())
     group.size should equal(1)
@@ -169,7 +135,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
 
 
   it should "perform multiple attribute value queries" in {
-    implicit val state = new State(
+    val storageStub = new PointsStorageStub(
       metricNames = Seq("metric"),
       attributeNames = Seq("type"),
       attributeValues = Seq("foo", "bar", "junk")
@@ -192,9 +158,9 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
       value = 3,
       attrs = Seq("type" -> "junk")
     )
-    writePoints(state, Seq(fooPoint, barPoint, junkPoint))
+    writePoints(storageStub, Seq(fooPoint, barPoint, junkPoint))
     import HBaseStorage.ValueNameFilterCondition._
-    val future = state.storage.getPoints("metric", (0, 1), Map("type" -> Multiple(Seq("foo", "bar"))))
+    val future = storageStub.storage.getPoints("metric", (0, 1), Map("type" -> Multiple(Seq("foo", "bar"))))
     val groupsMap = toGroupsMap(future)
     groupsMap.size should equal(2)
     val fooGroup = groupsMap(SortedMap("type" -> "foo"))
@@ -206,7 +172,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
   }
 
   it should "perform multiple attribute value queries (All filter)" in {
-    implicit val state = new State(
+    val storageStub = new PointsStorageStub(
       metricNames = Seq("metric"),
       attributeNames = Seq("type", "attr"),
       attributeValues = Seq("foo", "bar")
@@ -229,9 +195,9 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
       value = 3,
       attrs = Seq("type" -> "foo", "attr" -> "bar")
     )
-    writePoints(state, Seq(fooPoint, barPoint, junkPoint))
+    writePoints(storageStub, Seq(fooPoint, barPoint, junkPoint))
     import HBaseStorage.ValueNameFilterCondition._
-    val future = state.storage.getPoints("metric", (0, 1), Map("type" -> All, "attr" -> Single("foo")))
+    val future = storageStub.storage.getPoints("metric", (0, 1), Map("type" -> All, "attr" -> Single("foo")))
     val groupsMap = toGroupsMap(future)
     groupsMap.size should equal(2)
     val fooGroup = groupsMap(SortedMap("type" -> "foo"))
@@ -246,7 +212,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with ShouldMat
     Await.result(future.flatMap(_.toFuturePointsGroups), 5 seconds).groupsMap
   }
 
-  def writePoints(state: State, points: Seq[Message.Point]) {
+  def writePoints(state: PointsStorageStub, points: Seq[Message.Point]) {
     Await.result(state.storage.writePoints(PackedPoints(points)), 5 seconds)
   }
 

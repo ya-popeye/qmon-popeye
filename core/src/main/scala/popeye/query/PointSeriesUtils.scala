@@ -4,14 +4,14 @@ import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 
-object PointAggregation {
+object PointSeriesUtils {
 
   case class ActiveSeries(currentLineEnd: Int, series: BufferedIterator[Line])
 
   case class IdleSeries(firstLineStart: Int, series: BufferedIterator[Line])
 
   case class Line(x1: Int, y1: Double, x2: Int, y2: Double) {
-    require(x1 <= x2)
+    require(x1 <= x2, f"$x1 > $x2")
 
     def next(xNext: Int, yNext: Double) = copy(x2, y2, xNext, yNext)
 
@@ -26,7 +26,7 @@ object PointAggregation {
   type PlotPoint = (Int, Double)
   type Plot = Iterator[PlotPoint]
 
-  def linearInterpolation(series: Seq[Plot], aggregateFunction: Seq[Double] => Double): Iterator[PlotPoint] = {
+  def interpolateAndAggregate(series: Seq[Plot], aggregateFunction: Seq[Double] => Double): Iterator[PlotPoint] = {
     val nonEmptySeries =
       series
         .map(toLines)
@@ -138,7 +138,7 @@ object PointAggregation {
 
     def hasNext: Boolean = buffer.nonEmpty
 
-    def next(): PointAggregation.PlotPoint = {
+    def next(): PointSeriesUtils.PlotPoint = {
       if (!source.hasNext) {
         val point = (currentIntervalStart + intervalLength / 2, aggregator(buffer))
         buffer.clear()
@@ -168,6 +168,29 @@ object PointAggregation {
       (intervalTime, aggregatedValue)
     }
 
+  }
+
+  def differentiate(source: Iterator[PlotPoint]): Iterator[PlotPoint] = {
+    if (source.hasNext) {
+      new DifferentiatingIterator(source, source.next())
+    } else {
+      Iterator.empty
+    }
+  }
+
+  class DifferentiatingIterator(source: Iterator[PlotPoint], startPoint: PlotPoint) extends Iterator[PlotPoint] {
+
+    var lastPoint = startPoint
+
+    def hasNext: Boolean = source.hasNext
+
+    def next(): PointSeriesUtils.PlotPoint = {
+      val (lastX, lastY) = lastPoint
+      val currentPoint@(currentX, currentY) = source.next()
+      lastPoint = currentPoint
+      val y = (currentY - lastY) / (currentX - lastX)
+      (currentX, y)
+    }
   }
 
 }
