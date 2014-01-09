@@ -48,7 +48,6 @@ popeye.query = {
   serverType = opentsdb
 
   server = {
-    timeZone = default
     http.listen = "localhost:8080"
     http.backlog = 100
   }

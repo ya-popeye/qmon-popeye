@@ -20,8 +20,6 @@ import scala.concurrent.duration._
 import akka.pattern.ask
 import akka.util.Timeout
 import scala.collection.immutable.SortedMap
-import java.text.SimpleDateFormat
-import java.util.TimeZone
 
 class OpenTSDBHttpApiServerSpec extends AkkaTestKitSpec("http-query") with MockitoSugar with ShouldMatchers {
   val executionContext = system.dispatcher
@@ -90,9 +88,7 @@ class OpenTSDBHttpApiServerSpec extends AkkaTestKitSpec("http-query") with Mocki
 
     val storage = mock[PointsStorage]
     stub(storage.getPoints(any(), any(), any())).toReturn(Future.successful(PointsStream(PointsGroups(groups))))
-    val dateFormat = new SimpleDateFormat("yyyy/MM/dd-hh:mm:ss")
-    dateFormat.setTimeZone(TimeZone.getTimeZone("0"))
-    val serverRef = TestActorRef(Props.apply(new OpenTSDBHttpApiServer(storage, dateFormat, executionContext)))
+    val serverRef = TestActorRef(Props.apply(new OpenTSDBHttpApiServer(storage, executionContext)))
     val future = serverRef ? HttpRequest(GET, Uri(uriString, Uri.ParsingMode.RelaxedWithRawQuery))
     val response = Await.result(future, 5 seconds).asInstanceOf[HttpResponse]
     val responseString = response.entity.asString
