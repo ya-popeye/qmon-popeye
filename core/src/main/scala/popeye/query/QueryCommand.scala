@@ -31,8 +31,8 @@ object QueryCommand extends PopeyeCommand with Logging {
     val storagesConfig = config.getConfig("popeye.storages")
     val storageName = queryConfig.getString("db.storage")
     val hbaseConfig = queryConfig.getConfig("db").withFallback(storagesConfig.getConfig(storageName))
-    val serverConfig = queryConfig.getConfig("http")
-    val serverTypeKey = queryConfig.getString("serverType")
+    val serverConfig = queryConfig.getConfig("server")
+    val serverTypeKey = serverConfig.getString("type")
     val ectx = ExecutionContext.global
     val hbaseStorage = new HBaseStorageConfigured(
       new HBaseStorageConfig(

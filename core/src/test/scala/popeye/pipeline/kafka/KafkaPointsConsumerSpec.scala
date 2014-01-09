@@ -56,7 +56,7 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
     | batch-size = 2
     | max-lag = 60s
       """.stripMargin)
-    .withFallback(ConfigFactory.parseResources("reference.conf").getConfig("popeye.pipeline.defaults.kafka.consumer"))
+    .withFallback(ConfigFactory.parseResources("reference.conf").getConfig("common.popeye.pipeline.kafka.consumer"))
     .resolve()
 
 }

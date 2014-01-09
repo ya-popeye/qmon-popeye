@@ -9,7 +9,7 @@ metrics.csv {
 popeye.pipeline {
   channel {
    type = kafka
-   kafka {
+   kafka = ${common.popeye.pipeline.kafka} {
      topic = popeye-points
      group = opentsdb
      max-lag = 300s
@@ -19,22 +19,20 @@ popeye.pipeline {
   }
 
   sinks = {
-    opentsdb-sink: hbase
-//    bh: blackhole
-  }
-
-  opentsdb-sink = {
-    read-chunk-size = 10
-    zk.quorum = "localhost:2182"
-    topic = "popeye-points"
+    opentsdb-sink = ${common.popeye.pipeline.hbase-sink} {
+      read-chunk-size = 10
+      zk.quorum = "localhost:2182"
+      topic = "popeye-points"
+    }
+   //    bh = {
+   //       type = blackhole
+   //    }
   }
 
   sources = {
-    opentsdb-source: telnet
-  }
-
-  opentsdb-source = {
-    port = 4444
+    opentsdb-source = ${common.popeye.pipeline.telnet} {
+      port = 4444
+    }
   }
 }
 
@@ -45,9 +43,9 @@ popeye.query = {
     zk.quorum = "localhost:2182"
     storage = hbaseStorage
   }
-  serverType = opentsdb
 
   server = {
+    type = opentsdb
     http.listen = "localhost:8080"
     http.backlog = 100
   }
