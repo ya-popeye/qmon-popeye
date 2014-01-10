@@ -1,37 +1,27 @@
 package popeye
 
-import com.typesafe.config.{ConfigFactory, ConfigValue, Config}
+import com.typesafe.config._
+import com.typesafe.config.{ConfigUtil => TypesafeConfig}
 import java.util.Properties
 import java.util.Map.Entry
 import scala.collection.JavaConversions._
 import scala.concurrent.duration.FiniteDuration
 import java.util.concurrent.TimeUnit
-import java.io.InputStream
 
 /**
  * @author Andrey Stepachev
  */
 object ConfigUtil {
 
-  def foreachKeyValue(config: Config, what: String)(body: (String, String) => Unit) = {
-    val inner = config.getConfig(what)
-    inner.entrySet().foreach { entry =>
-      val confName = entry.getKey
-      val confType = inner.getString(confName)
-      body(confType, confName)
-    }
-  }
-
-  def mergeDefaults(pc: Config, typeName: String, name: String): Config = {
-    val settings = if (pc.hasPath(s"$name"))
-      pc.getConfig(s"$name")
-    else
-      ConfigFactory.empty()
-    if (pc.hasPath(s"defaults.$typeName")) {
-      settings.withFallback(pc.getConfig(s"defaults.$typeName"))
-    } else {
-      settings
-    }
+  def asMap(config: Config): Map[String, Config] = {
+    val topKeys =
+      config.entrySet()
+        .map(entry => TypesafeConfig.splitPath(entry.getKey).head)
+        .toList
+        .distinct
+    topKeys.map {
+      key => (key, config.getConfig(key))
+    }.toMap
   }
 
   def mergeProperties(config: Config, path: String): Properties = {

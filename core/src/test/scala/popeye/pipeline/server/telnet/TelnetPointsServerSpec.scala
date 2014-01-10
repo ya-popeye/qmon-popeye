@@ -43,7 +43,7 @@ class TelnetPointsServerSpec extends AkkaTestKitSpec("tsdb-server") with Mockito
       | batchSize = $batchSize
       """.stripMargin)
       .withFallback(ConfigFactory.parseResources("reference.conf")
-      .getConfig("popeye.pipeline.defaults.telnet"))
+      .getConfig("common.popeye.pipeline.telnet"))
       .resolve()
 
     val kafka = TestProbe()

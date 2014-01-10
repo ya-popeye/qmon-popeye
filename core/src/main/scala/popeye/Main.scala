@@ -46,14 +46,7 @@ object Main extends App with MetricsConfiguration with Logging {
       parser.reportError("No command was passed")
       System.exit(2)
     } else {
-      val conf = (main.get.configPath match {
-        case Some(file) =>
-          ConfigFactory.parseFile(file)
-        case None =>
-          ConfigFactory.load("application")
-      }).withFallback(ConfigFactory.load("reference"))
-        .withFallback(ConfigFactory.load())
-        .resolve()
+      val conf = loadConfig()
       val metrics = initMetrics(conf)
       val actorSystem = ActorSystem("popeye", conf)
       Runtime.getRuntime.addShutdownHook(new Thread(new Runnable() {
@@ -69,6 +62,19 @@ object Main extends App with MetricsConfiguration with Logging {
           actorSystem.shutdown()
       }
     }
+  }
+
+  def loadConfig(): Config = {
+    val userConfig = main.get.configPath match {
+      case Some(file) =>
+        ConfigFactory.parseFile(file)
+      case None =>
+        ConfigFactory.load("application")
+    }
+    userConfig
+      .withFallback(ConfigFactory.load("reference"))
+      .withFallback(ConfigFactory.load())
+      .resolve()
   }
 }
 

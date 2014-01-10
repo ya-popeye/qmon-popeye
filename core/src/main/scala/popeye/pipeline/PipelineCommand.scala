@@ -18,7 +18,7 @@ object PipelineCommand {
     "telnet" -> TelnetPointsServer.sourceFactory())
 
   val sinks: Map[String, PipelineSinkFactory] = Map(
-    "hbase" -> HBaseStorage.sinkFactory(),
+    "hbase-sink" -> HBaseStorage.sinkFactory(),
     "blackhole" -> BlackHole.sinkFactory()
   )
 
@@ -41,31 +41,30 @@ class PipelineCommand extends PopeyeCommand {
 
     val ectx = ExecutionContext.global
     val pc = config.getConfig("popeye.pipeline")
+    val channelConfig = pc.getConfig("channel")
     val storageConfig = config.getConfig("popeye.storages")
     val idGenerator = new IdGenerator(config.getInt("generator.id"), config.getInt("generator.datacenter"))
     val channel = pc.getString("channel.type") match {
       case "kafka" =>
         new KafkaPipelineChannel(
-          ConfigUtil.mergeDefaults(pc, "kafka", "channel.kafka"),
+          channelConfig.getConfig("kafka"),
           actorSystem, ectx, metrics, idGenerator)
       case "memory" =>
         new MemoryPipelineChannel(
-          ConfigUtil.mergeDefaults(pc, "memory", "channel.memory"),
+          channelConfig.getConfig("memory"),
           actorSystem, metrics, idGenerator)
       case x =>
         throw new NoSuchElementException(s"Requested channel type not supported")
 
     }
 
-
-    ConfigUtil.foreachKeyValue(pc, "sinks") { (typeName, confName) =>
-      val sinkConfig = ConfigUtil.mergeDefaults(pc, typeName, confName)
-      PipelineCommand.sinkForType(typeName).startSink(confName, channel, sinkConfig, storageConfig, ectx)
+    for ((sinkName, sinkConfig) <- ConfigUtil.asMap(pc.getConfig("sinks"))) {
+      val typeName = sinkConfig.getString("type")
+      PipelineCommand.sinkForType(typeName).startSink(sinkName, channel, sinkConfig, storageConfig, ectx)
     }
-
-    ConfigUtil.foreachKeyValue(pc, "sources") { (typeName, confName) =>
-      val sourceConfig = ConfigUtil.mergeDefaults(pc, typeName, confName)
-      PipelineCommand.sourceForType(typeName).startSource(confName, channel, sourceConfig, ectx)
+    for ((sourceName, sourceConfig) <- ConfigUtil.asMap(pc.getConfig("sources"))) {
+      val typeName = sourceConfig.getString("type")
+      PipelineCommand.sourceForType(typeName).startSource(sourceName, channel, sourceConfig, ectx)
     }
   }
 

@@ -49,7 +49,7 @@ class KafkaPointProducerSpec extends AkkaTestKitSpec("tsdb-writer") with Mockito
       .resolve()
     val producer = mock[PopeyeKafkaProducer]
     val actor: TestActorRef[KafkaPointsProducer] = TestActorRef(
-      KafkaPointsProducer.props("kafka", config.withFallback(config.getConfig("popeye.pipeline.defaults.kafka")),
+      KafkaPointsProducer.props("kafka", config.withFallback(config.getConfig("common.popeye.pipeline.kafka")),
         generator, new PopeyeKafkaProducerFactory {
         def newProducer(topic: String): PopeyeKafkaProducer = producer
       }, metricRegistry))
