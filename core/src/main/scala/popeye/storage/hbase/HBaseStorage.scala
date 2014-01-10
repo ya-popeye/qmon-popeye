@@ -554,7 +554,9 @@ class HBaseStorage(tableName: String,
         debug(s"Writing ${kvList.size} keyvalues - done")
         metrics.writeHBasePoints.mark(puts.size())
       } catch {
-        case e: Exception => error("Failed to write points", e)
+        case e: Exception =>
+          error("Failed to write points", e)
+          throw e
       } finally {
         hTable.close()
       }
