@@ -40,11 +40,31 @@ object UniqueIdProtocol {
 
 }
 
+trait UniqueIdStorageTrait {
+  def findByName(qnames: Seq[QualifiedName]): Seq[ResolvedName]
+
+  def findById(ids: Seq[QualifiedId]): Seq[ResolvedName]
+
+  def registerName(qname: QualifiedName): ResolvedName
+}
+
+object UniqueIdActor {
+  def apply(storage: UniqueIdStorage, batchSize: Int = 100) = {
+    val storageWrapper = new UniqueIdStorageTrait {
+      def findByName(qnames: Seq[QualifiedName]): Seq[ResolvedName] = storage.findByName(qnames)
+
+      def findById(ids: Seq[QualifiedId]): Seq[ResolvedName] = storage.findById(ids)
+
+      def registerName(qname: QualifiedName): ResolvedName = storage.registerName(qname)
+    }
+    new UniqueIdActor(storageWrapper, batchSize)
+  }
+}
 
 /**
  * @author Andrey Stepachev
  */
-class UniqueIdActor(storage: UniqueIdStorage,
+class UniqueIdActor(storage: UniqueIdStorageTrait,
                     batchSize: Int = 100)
   extends Actor with Logging {
 
@@ -137,7 +157,7 @@ class UniqueIdActor(storage: UniqueIdStorage,
           case None =>
             try {
               val result = storage.registerName(tuple._1)
-              tuple._2.foreach { ref => ref ! result}
+              tuple._2.foreach { ref => ref ! Resolved(result)}
             } catch {
               case ex: UniqueIdRaceException =>
                 error("Race: ", ex)

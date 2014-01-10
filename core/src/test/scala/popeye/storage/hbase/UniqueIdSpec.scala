@@ -43,6 +43,14 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
     Await.result(future, timeout) should be(id("abc"))
   }
 
+  it should "resolve already created ids" in {
+    val (probe, uniq) = mkUniq()
+    val future = uniq.resolveIdByName(metric, create = false)
+    probe.expectMsg(FindName(qname, create = false))
+    probe.lastSender ! Resolved(ResolvedName(qname, id("abc")))
+    Await.result(future, timeout) should be(id("abc"))
+  }
+
   it should "concurrent resolve" in {
     val (probe, uniq) = mkUniq()
     val future = uniq.resolveIdByName(metric, create = true)
@@ -79,12 +87,13 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
 
   it should "not hang in nonexistent name resolving" in {
     val (probe, uniq) = mkUniq()
-    val name = "nonexistent"
-    val future = uniq.resolveIdByName(name, create = false)
+    val future = uniq.resolveIdByName(qname.name, create = false)
+    probe.expectMsg(FindName(qname, create = false))
+    probe.lastSender ! NotFoundName(qname)
     val exception = intercept[NoSuchElementException] {
       Await.result(future, 5 seconds)
     }
-    exception.getMessage should include(name)
+    exception.getMessage should (include(qname.name) and include(qname.kind))
   }
 
   behavior of "name->id"
