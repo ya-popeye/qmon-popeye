@@ -6,7 +6,7 @@ import com.typesafe.config.Config
 import popeye.IdGenerator
 import popeye.pipeline._
 import popeye.proto.PackedPoints
-import scala.concurrent.{ExecutionContext, Promise, Future}
+import scala.concurrent.{ExecutionContext, Promise}
 import akka.routing.FromConfig
 
 /**
@@ -40,12 +40,18 @@ class KafkaPipelineChannel(val config: Config,
       .withDispatcher(config.getString("producer.dispatcher")), "kafka-producer")
   }
 
-  def startReader(group: String, sink: PointsSink): Unit = {
+  def startReader(group: String, mainSink: PointsSink, dropSink: PointsSink): Unit = {
     consumerId += 1
-    actorSystem.actorOf(KafkaPointsConsumer.props(config.getString("topic"), group, config, metrics, sink, new PointsSink {
-      def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] = {
-        throw new IllegalStateException("Drop not enabled")
-      }
-    }, executionContext).withDispatcher(config.getString("consumer.dispatcher")), s"kafka-consumer-$group-$consumerId")
+    val props = KafkaPointsConsumer.props(
+      config.getString("topic"),
+      group,
+      config,
+      metrics,
+      mainSink,
+      dropSink,
+      executionContext
+    ).withDispatcher(config.getString("consumer.dispatcher"))
+
+    actorSystem.actorOf(props, s"kafka-consumer-$group-$consumerId")
   }
 }

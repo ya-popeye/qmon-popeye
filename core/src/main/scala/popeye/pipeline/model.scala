@@ -1,6 +1,5 @@
 package popeye.pipeline
-import scala.concurrent.{Promise, ExecutionContext, Future}
-import java.io.Closeable
+import scala.concurrent.{Promise, ExecutionContext}
 import akka.actor.ActorSystem
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.Config
@@ -12,7 +11,7 @@ trait PipelineSourceFactory {
 }
 
 trait PipelineSinkFactory {
-  def startSink(sinkName: String, channel: PipelineChannel, config: Config, storagesConfig: Config, ect: ExecutionContext): Unit
+  def startSink(sinkName: String, config: Config): PointsSink
 }
 
 trait PipelineChannelFactory {
@@ -24,7 +23,7 @@ trait PipelineChannel {
   def metrics: MetricRegistry
   def idGenerator: IdGenerator
   def newWriter(): PipelineChannelWriter
-  def startReader(group: String, sink: PointsSink): Unit
+  def startReader(group: String, mainSink: PointsSink, dropSink: PointsSink): Unit
 }
 
 trait PipelineChannelWriter {

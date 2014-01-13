@@ -18,17 +18,26 @@ popeye.pipeline {
    }
   }
 
-  sinks = {
-    opentsdb-sink = ${common.popeye.pipeline.hbase-sink} {
-      read-chunk-size = 10
-      zk.quorum = "localhost:2182"
-      topic = "popeye-points"
+  channelReaders = {
+    opentsdb-reader = {
+      mainSink = ${common.popeye.pipeline.hbase-sink} {
+        type = hbase-sink
+        read-chunk-size = 10
+        zk.quorum = "localhost:2182"
+        topic = "popeye-points"
+      }
+      dropSink = {
+        type = kafka-sink
+        kafka = ${common.popeye.pipeline.kafka} {
+          topic = popeye-drop-points
+          group = opentsdb
+          max-lag = 300s
+          zk.quorum = "localhost:2181"
+          broker.list = "localhost:9092"
+        }
+      }
     }
-   //    bh = {
-   //       type = blackhole
-   //    }
   }
-
   sources = {
     opentsdb-source = ${common.popeye.pipeline.telnet} {
       port = 4444

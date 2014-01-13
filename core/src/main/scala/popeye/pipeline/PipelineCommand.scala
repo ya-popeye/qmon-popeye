@@ -3,27 +3,39 @@ package popeye.pipeline
 import akka.actor.ActorSystem
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.Config
-import popeye.pipeline.kafka.KafkaPipelineChannel
-import popeye.storage.hbase.HBaseStorage
+import popeye.pipeline.kafka.{KafkaSinkFactory, KafkaPipelineChannel}
+import popeye.storage.hbase.HBasePipelineSinkFactory
 import popeye.{ConfigUtil, IdGenerator, MainConfig, PopeyeCommand}
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{Future, ExecutionContext}
 import scopt.OptionParser
 import popeye.storage.BlackHole
 import popeye.pipeline.server.telnet.TelnetPointsServer
 import popeye.pipeline.memory.MemoryPipelineChannel
+import popeye.proto.PackedPoints
 
 object PipelineCommand {
 
   val sources: Map[String, PipelineSourceFactory] = Map(
     "telnet" -> TelnetPointsServer.sourceFactory())
 
-  val sinks: Map[String, PipelineSinkFactory] = Map(
-    "hbase-sink" -> HBaseStorage.sinkFactory(),
-    "blackhole" -> BlackHole.sinkFactory()
-  )
 
-  def sinkForType(typeName: String): PipelineSinkFactory = {
-    sinks.getOrElse(typeName, throw new IllegalArgumentException("No such sink type"))
+  def sinkFactories(ectx: ExecutionContext,
+                    actorSystem: ActorSystem,
+                    storagesConfig: Config,
+                    metrics: MetricRegistry,
+                    idGenerator: IdGenerator): Map[String, PipelineSinkFactory] = {
+    val sinks = Map(
+      "hbase-sink" -> new HBasePipelineSinkFactory(storagesConfig, actorSystem, ectx, metrics),
+      "kafka-sink" -> new KafkaSinkFactory(actorSystem, ectx, idGenerator, metrics),
+      "blackhole" -> BlackHole.sinkFactory(),
+      "fail" -> new PipelineSinkFactory {
+        def startSink(sinkName: String, config: Config): PointsSink = new PointsSink {
+          def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] =
+            Future.failed(new RuntimeException("fail sink"))
+        }
+      }
+    )
+    sinks.withDefault(_ => throw new IllegalArgumentException("No such sink type"))
   }
 
   def sourceForType(typeName: String): PipelineSourceFactory = {
@@ -38,12 +50,12 @@ class PipelineCommand extends PopeyeCommand {
   }
 
   def run(actorSystem: ActorSystem, metrics: MetricRegistry, config: Config, mainConfig: MainConfig): Unit = {
-
     val ectx = ExecutionContext.global
     val pc = config.getConfig("popeye.pipeline")
     val channelConfig = pc.getConfig("channel")
     val storageConfig = config.getConfig("popeye.storages")
     val idGenerator = new IdGenerator(config.getInt("generator.id"), config.getInt("generator.datacenter"))
+    val sinks = PipelineCommand.sinkFactories(ectx, actorSystem, storageConfig, metrics, idGenerator)
     val channel = pc.getString("channel.type") match {
       case "kafka" =>
         new KafkaPipelineChannel(
@@ -57,10 +69,16 @@ class PipelineCommand extends PopeyeCommand {
         throw new NoSuchElementException(s"Requested channel type not supported")
 
     }
+    val readersConfig = ConfigUtil.asMap(pc.getConfig("channelReaders"))
 
-    for ((sinkName, sinkConfig) <- ConfigUtil.asMap(pc.getConfig("sinks"))) {
-      val typeName = sinkConfig.getString("type")
-      PipelineCommand.sinkForType(typeName).startSink(sinkName, channel, sinkConfig, storageConfig, ectx)
+    for ((readerName, readerConfig) <- readersConfig) {
+      val mainSinkConfig = readerConfig.getConfig("mainSink")
+      val mainSink = sinks(mainSinkConfig.getString("type")).startSink(f"$readerName-mainSink", mainSinkConfig)
+
+      val dropSinkConfig = readerConfig.getConfig("dropSink")
+      val dropSink = sinks(dropSinkConfig.getString("type")).startSink(f"$readerName-dropSink", dropSinkConfig)
+
+      channel.startReader("popeye-" + readerName, mainSink, dropSink)
     }
     for ((sourceName, sourceConfig) <- ConfigUtil.asMap(pc.getConfig("sources"))) {
       val typeName = sourceConfig.getString("type")

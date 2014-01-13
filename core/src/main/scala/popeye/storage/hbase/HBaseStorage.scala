@@ -233,8 +233,6 @@ object HBaseStorage {
     ROW_REGEX_FILTER_ENCODING.decode(byteBuffer).toString
   }
 
-
-  def sinkFactory(): PipelineSinkFactory = new HBasePipelineSinkFactory
 }
 
 class HBasePointsSink(config: Config, storage: HBaseStorage)(implicit eCtx: ExecutionContext) extends PointsSink {

@@ -34,7 +34,7 @@ class MemoryPipelineChannel(val config: Config,
     }
   }
 
-  def startReader(group: String, sink: PointsSink): Unit = {
-    readers.add(sink)
+  def startReader(group: String, mainSink: PointsSink, dropSink: PointsSink): Unit = {
+    readers.add(mainSink)
   }
 }
