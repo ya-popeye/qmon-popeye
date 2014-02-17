@@ -11,8 +11,6 @@ popeye.pipeline {
    type = kafka
    kafka = ${common.popeye.pipeline.kafka} {
      topic = popeye-points
-     group = opentsdb
-     max-lag = 300s
      zk.quorum = "localhost:2181"
      broker.list = "localhost:9092"
    }
@@ -20,9 +18,7 @@ popeye.pipeline {
 
   sinks = {
     opentsdb-sink = ${common.popeye.pipeline.hbase-sink} {
-      read-chunk-size = 10
       zk.quorum = "localhost:2182"
-      topic = "popeye-points"
     }
    //    bh = {
    //       type = blackhole
