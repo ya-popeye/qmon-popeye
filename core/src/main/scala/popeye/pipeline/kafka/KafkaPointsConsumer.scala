@@ -21,7 +21,6 @@ import scala.concurrent.ExecutionContext
 class KafkaPointsConsumerConfig(val topic: String, val group: String, config: Config) {
   val tick = new FiniteDuration(config.getMilliseconds("tick"), TimeUnit.MILLISECONDS)
   val batchSize = config.getInt("batch-size")
-  val maxLag = config.getMilliseconds("max-lag")
 }
 
 class KafkaPointsConsumerMetrics(val prefix: String,

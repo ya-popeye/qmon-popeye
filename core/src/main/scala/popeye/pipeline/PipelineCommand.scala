@@ -23,11 +23,17 @@ object PipelineCommand {
   )
 
   def sinkForType(typeName: String): PipelineSinkFactory = {
-    sinks.getOrElse(typeName, throw new IllegalArgumentException("No such sink type"))
+    sinks.getOrElse(
+      typeName,
+      throw new IllegalArgumentException(f"No such sink type: $typeName, available types: ${sinks.keys}")
+    )
   }
 
   def sourceForType(typeName: String): PipelineSourceFactory = {
-    sources.getOrElse(typeName, throw new IllegalArgumentException("No such source type"))
+    sources.getOrElse(
+      typeName,
+      throw new IllegalArgumentException(f"No such source type: $typeName, available types: ${sources.keys}")
+    )
   }
 }
 

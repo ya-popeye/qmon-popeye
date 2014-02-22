@@ -13,7 +13,8 @@ import scala.Some
 object QueryCommand extends PopeyeCommand with Logging {
   val serverTypes: Map[String, HttpServerFactory] = Map(
     "opentsdb" -> OpenTSDBHttpApiServer,
-    "simple" -> HttpQueryServer
+    "simple" -> HttpQueryServer,
+    "health-check" -> HealthCheckServer
   ).withDefault {
     key =>
       throw new NoSuchElementException(f"wrong server type name: $key; available types: ${serverTypes.keys} ")

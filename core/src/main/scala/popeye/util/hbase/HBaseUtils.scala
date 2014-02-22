@@ -53,12 +53,13 @@ object HBaseUtils {
     def getRows(): (Array[Result], Option[ChunkedResults]) = utils.withHTable(tableName) {
       table =>
         val scanner = table.getScanner(scan)
-        if (skipFirstRow) {
-          try {scanner.next()}
-          finally {scanner.close()}
-        }
         val results =
-          try {scanner.next(readChunkSize)}
+          try {
+            if (skipFirstRow) {
+              scanner.next()
+            }
+            scanner.next(readChunkSize)
+          }
           finally {scanner.close()}
         val nextQuery =
           if (results.length < readChunkSize) {
