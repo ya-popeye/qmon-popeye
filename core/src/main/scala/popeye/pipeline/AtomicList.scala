@@ -21,7 +21,7 @@ class AtomicList[A] extends Traversable[A] {
           if (x.compareAndSet(oldList, tail))
             return Some(head)
         case _ =>
-          None
+          return None
       }
     }
     None
