@@ -10,8 +10,8 @@ import scala.concurrent.Promise
  */
 object PointsQueue extends Logging {
 
-  case class Stat(bytes: Long, points: Long, promises: Int) {
-    def +(other: Stat) = Stat(bytes + other.bytes, points + other.points, promises + other.promises)
+  case class Stat(points: Long, batches: Long, promises: Int) {
+    def +(other: Stat) = Stat(points + other.points, batches + other.batches, promises + other.promises)
   }
 
   final class PromiseForOffset(val offset: Long, val promise: Promise[Long])
