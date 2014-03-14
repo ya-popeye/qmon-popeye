@@ -2,6 +2,7 @@ package popeye.util
 
 import akka.util.ByteString
 import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable
 
 /**
  * @author Andrey Stepachev
@@ -51,7 +52,7 @@ class LineDecoder(maxSize: Int = 2048) {
 
 object LineDecoder {
 
-  def split(str: String, separator: Char, preserveAllTokens: Boolean): Array[String] = {
+  def split(str: String, separator: Char, preserveAllTokens: Boolean): mutable.IndexedSeq[String] = {
     val len = str.length
     if (len == 0)
       ArrayBuffer.empty
@@ -78,6 +79,6 @@ object LineDecoder {
     if (matched || (preserveAllTokens && lastMatch)) {
       list += str.substring(start, i)
     }
-    list.toArray
+    list
   }
 }

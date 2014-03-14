@@ -214,7 +214,7 @@ object TelnetCommands {
     true
   }
 
-  def parsePoint(words: Array[String]): Point = {
+  def parsePoint(words: mutable.IndexedSeq[String]): Point = {
     val ev = Point.newBuilder()
     words(0) = null; // Ditch the "put".
     if (words.length < 5) {
@@ -252,12 +252,12 @@ object TelnetCommands {
    * @throws IllegalArgumentException if the tag was already in tags with a
    *                                  different value.
    */
-  def parseTags(builder: Point.Builder, startIdx: Int, tags: Array[String]) {
+  def parseTags(builder: Point.Builder, startIdx: Int, tags: mutable.IndexedSeq[String]) {
     val set = mutable.HashSet[String]()
     for (i <- startIdx until tags.length) {
       val tag = tags(i)
       if (!tag.isEmpty) {
-        val kv: Array[String] = LineDecoder.split(tag, '=', preserveAllTokens = true)
+        val kv = LineDecoder.split(tag, '=', preserveAllTokens = true)
         if (kv.length != 2 || kv(0).length <= 0 || kv(1).length <= 0) {
           throw new IllegalArgumentException("invalid tag: " + tag)
         }
