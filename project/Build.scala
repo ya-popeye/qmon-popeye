@@ -157,15 +157,14 @@ object PopeyeBuild extends Build {
   lazy val popeyeBench = Project(
     id = "popeye-bench",
     base = file("bench"),
-    settings = defaultSettings ++ QMonDistPlugin.distSettings)
+    settings = defaultSettings ++ QMonDistPlugin.distSettings).dependsOn(popeyeCore)
     .settings(
     distMainClass := "popeye.transport.bench.GenerateMain",
     libraryDependencies ++= Version.slf4jDependencies ++ Seq(
       "nl.grons" %% "metrics-scala" % Version.Metrics,
       "com.typesafe.akka" %% "akka-actor" % Version.Akka,
       "com.typesafe.akka" %% "akka-slf4j" % Version.Akka,
-      "io.spray" % "spray-can" % Version.Spray,
-      "io.spray" % "spray-io" % Version.Spray,
+      "org.apache.kafka" %% "kafka" % Version.Kafka,
       "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
       "org.mockito" % "mockito-core" % Version.Mockito % "test",
       "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"

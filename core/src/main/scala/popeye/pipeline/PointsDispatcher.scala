@@ -16,6 +16,7 @@ class PointsDispatcherMetrics(prefix: String, override val metricRegistry: Metri
 }
 
 trait PointsDispatcherWorkerActor extends WorkerActor {
+  type Batch = Seq[PackedPoints]
 }
 
 trait PointsDispatcherActor extends DispatcherActor {

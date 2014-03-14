@@ -26,7 +26,6 @@ class KafkaPointsProducerWorker(kafkaClient: PopeyeKafkaProducerFactory,
                                 val batcher: KafkaPointsProducer)
   extends PointsDispatcherWorkerActor {
 
-  type Batch = Seq[PackedPoints]
   type Batcher = KafkaPointsProducer
 
   val producer = kafkaClient.newProducer(batcher.config.topic)
