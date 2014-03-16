@@ -3,7 +3,6 @@ package popeye.pipeline.kafka
 import _root_.kafka.serializer.{Decoder, Encoder}
 import akka.actor.SupervisorStrategy.Restart
 import akka.actor._
-import akka.routing.FromConfig
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.Config
 import kafka.producer._
@@ -47,7 +46,8 @@ class KafkaPointsProducerWorker(kafkaClient: PopeyeKafkaProducerFactory,
 class KafkaPointsProducer(producerConfig: Config,
                           val idGenerator: IdGenerator,
                           kafkaClient: PopeyeKafkaProducerFactory,
-                          val metrics: KafkaProducerMetrics)
+                          val metrics: KafkaProducerMetrics,
+                          akkaDispatcher: Option[String])
   extends PointsDispatcherActor {
 
   type Config = KafkaPointsProducerConfig
@@ -62,8 +62,10 @@ class KafkaPointsProducer(producerConfig: Config,
 
   def spawnWorker(): ActorRef = {
     idx += 1
+    val workerProps = Props.apply(new KafkaPointsProducerWorker(kafkaClient, this)).withDeploy(Deploy.local)
+    val propsWithDispatcher = akkaDispatcher.map(disp => workerProps.withDispatcher(disp)).getOrElse(workerProps)
     context.actorOf(
-      Props.apply(new KafkaPointsProducerWorker(kafkaClient, this)).withDeploy(Deploy.local),
+      propsWithDispatcher,
       "points-sender-" + idx)
   }
 }
@@ -85,15 +87,6 @@ object KafkaPointsProducer {
     producer ! DispatcherProtocol.Pending(promise)(Seq(points))
   }
 
-  def start(name: String, config: Config, idGenerator: IdGenerator)
-           (implicit system: ActorSystem, metricRegistry: MetricRegistry): ActorRef = {
-    val myConf = config.getConfig(name).withFallback(config.getConfig("kafka"))
-    val kafkaClient = new PopeyeKafkaProducerFactoryImpl(producerConfig(myConf))
-    system.actorOf(KafkaPointsProducer.props(name, config, idGenerator, kafkaClient, metricRegistry)
-      .withRouter(FromConfig())
-      .withDispatcher(s"$name.producer.dispatcher"), s"$name-producer")
-  }
-
   def producerConfig(kafkaConfig: Config): ProducerConfig = {
     val producerProps = ConfigUtil.mergeProperties(kafkaConfig, "producer.config")
     producerProps.setProperty("metadata.broker.list", kafkaConfig.getString("broker.list"))
@@ -103,13 +96,14 @@ object KafkaPointsProducer {
   }
 
   def props(prefix: String, config: Config, idGenerator: IdGenerator,
-            kafkaClient: PopeyeKafkaProducerFactory, metricRegistry: MetricRegistry) = {
+            kafkaClient: PopeyeKafkaProducerFactory, metricRegistry: MetricRegistry, akkaDispatcher: Option[String] = None) = {
     val metrics = new KafkaProducerMetrics(prefix, metricRegistry)
     Props.apply(new KafkaPointsProducer(
       config,
       idGenerator,
       kafkaClient,
-      metrics))
+      metrics,
+      akkaDispatcher))
   }
 
   def defaultProducerFactory(config: ProducerConfig) = new Producer[Int, Array[Byte]](config)

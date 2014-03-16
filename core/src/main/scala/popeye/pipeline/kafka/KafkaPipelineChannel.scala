@@ -35,9 +35,10 @@ class KafkaPipelineChannel(val config: Config,
   private def startProducer(): ActorRef = {
     val producerConfig = KafkaPointsProducer.producerConfig(config)
     val kafkaClient = new PopeyeKafkaProducerFactoryImpl(producerConfig)
-    actorSystem.actorOf(KafkaPointsProducer.props("kafka", config, idGenerator, kafkaClient, metrics)
+    val dispatcher = config.getString("producer.dispatcher")
+    val props = KafkaPointsProducer.props("kafka", config, idGenerator, kafkaClient, metrics, Some(dispatcher))
       .withRouter(FromConfig())
-      .withDispatcher(config.getString("producer.dispatcher")), "kafka-producer")
+    actorSystem.actorOf(props, "kafka-producer")
   }
 
   def startReader(group: String, sink: PointsSink): Unit = {
