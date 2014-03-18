@@ -10,7 +10,7 @@ import popeye.pipeline.{PointsSource, PointsSink}
 import popeye.proto.PackedPoints
 import popeye.{ConfigUtil, Instrumented}
 import scala.collection.mutable.ArrayBuffer
-import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.duration._
 import popeye.pipeline.kafka.KafkaPointsConsumerProto._
 import scala.util.Failure
 import scala.Some
@@ -26,6 +26,7 @@ class KafkaPointsConsumerConfig(val topic: String, val group: String, config: Co
 class KafkaPointsConsumerMetrics(val prefix: String,
                                  val metricRegistry: MetricRegistry) extends Instrumented {
   val consumeTimer = metrics.timer(s"$prefix.consume.time")
+  val consumeTimerMeter = metrics.meter(s"$prefix.consume.time-meter")
   val decodeFailures = metrics.meter(s"$prefix.consume.decode-failures")
 }
 
@@ -169,7 +170,8 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
     try {
       consumeInner(p, batchSize)
     } finally {
-      tctx.close()
+      val time = tctx.stop().nano
+      metrics.consumeTimerMeter.mark(time.toMillis)
     }
   }
 
