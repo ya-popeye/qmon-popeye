@@ -5,7 +5,7 @@ console log
 env QMON_CONF=/etc/qmon-popeye-slicer
 env QMON_LOGDIR=/var/log/qmon-popeye-slicer
 pre-start script
-  if ! -d /etc/qmon-popeye-slicer/slicer.conf ; then
+  if [ ! -f /etc/qmon-popeye-slicer/slicer.conf ] ; then
     stop ; exit 0
   fi
 end script

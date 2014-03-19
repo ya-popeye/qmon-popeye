@@ -5,7 +5,7 @@ console log
 env QMON_CONF=/etc/qmon-popeye-pump
 env QMON_LOGDIR=/var/log/qmon-popeye-pump
 pre-start script
-  if ! -d /etc/qmon-popeye-pump/pump.conf ; then
+  if [ ! -f /etc/qmon-popeye-pump/pump.conf ] ; then
     stop ; exit 0
   fi
 end script
