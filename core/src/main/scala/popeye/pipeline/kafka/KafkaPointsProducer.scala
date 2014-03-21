@@ -109,8 +109,8 @@ object KafkaPointsProducer {
   def defaultProducerFactory(config: ProducerConfig) = new Producer[Int, Array[Byte]](config)
 }
 
-class KeyPartitioner(props: VerifiableProperties = null) extends Partitioner[Long] {
-  def partition(data: Long, numPartitions: Int): Int = (data % numPartitions).toInt
+class KeyPartitioner(props: VerifiableProperties = null) extends Partitioner {
+  def partition(data: Any, numPartitions: Int): Int = (data.asInstanceOf[Long] % numPartitions).toInt
 }
 
 class KeySerialiser(props: VerifiableProperties = null) extends Encoder[Long] {

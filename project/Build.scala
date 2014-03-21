@@ -49,7 +49,7 @@ object Version {
   val ScalaTest = "2.0"
   val Mockito = "1.9.0"
   val Jackson = "1.8.8"
-  val Kafka = "0.8.0-beta1-qmon5"
+  val Kafka = "0.8.1"
   val Metrics = "3.0.0"
   val Slf4j = "1.7.5"
   val Logback = "1.0.7"
