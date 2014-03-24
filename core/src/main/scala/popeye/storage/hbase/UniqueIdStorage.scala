@@ -28,7 +28,7 @@ class UniqueIdStorage(tableName: String, hTablePool: HTablePool, kindWidths: Map
   import UniqueIdStorage._
 
   def kindWidth(kind: String): Short = {
-    kindWidths.getOrElse(kind, throw new IllegalArgumentException(s"Unknwon kind $kind"))
+    kindWidths.getOrElse(kind, throw new IllegalArgumentException(s"Unknown kind $kind"))
   }
 
   /**
@@ -40,10 +40,10 @@ class UniqueIdStorage(tableName: String, hTablePool: HTablePool, kindWidths: Map
       qname => new Get(qname.name.getBytes(Encoding)).addColumn(IdFamily, Bytes.toBytes(qname.kind))
     }
     withHTable { hTable =>
-      for (
-        r <- hTable.get(gets);
+      for {
+        r <- hTable.get(gets) if !r.isEmpty
         k <- r.raw()
-      ) yield {
+      } yield {
         ResolvedName(
           Bytes.toString(k.getQualifier),
           Bytes.toString(k.getRow),
@@ -71,10 +71,10 @@ class UniqueIdStorage(tableName: String, hTablePool: HTablePool, kindWidths: Map
     }
 
     withHTable { hTable =>
-      val r = for (
-        r <- hTable.get(gets);
+      val r = for {
+        r <- hTable.get(gets) if !r.isEmpty
         k <- r.raw
-      ) yield {
+      } yield {
         ResolvedName(
           Bytes.toString(k.getQualifier),
           Bytes.toString(k.getValue),
