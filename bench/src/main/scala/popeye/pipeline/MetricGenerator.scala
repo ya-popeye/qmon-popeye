@@ -20,7 +20,7 @@ object MetricGenerator {
       Seq("cpu", "mem", "disk", "pag", "swp"),
       Seq("10s", "30s", "1m", "5m")
     )
-    generateMetricNames(subNames)
+    generateMetricNames(subNames).toIndexedSeq
   }
 
   def generateMetricNames(subNames: Seq[Seq[String]]): Seq[String] = {

@@ -86,7 +86,7 @@ class PopeyeClientActor(remote: InetSocketAddress, hostIndex: Int, nBatches: Int
           reconnect()
         }
       case CommandFailed(w: Write) =>
-        println(f"actorId:$hostIndex write command failed, reconnecting")
+        println(f"actorId:$hostIndex write command failed $w, reconnecting")
         PopeyeClientActor.ioFails.inc()
         reconnect()
       case CloseConnection =>
@@ -118,9 +118,7 @@ object PopeyeClientActor {
 
   def props(remote: InetSocketAddress, id: Int, nBatches: Int) =
     Props(classOf[PopeyeClientActor], remote, id, nBatches)
-}
 
-object Main {
   def main(args: Array[String]) {
     implicit val timeout = Timeout(5 seconds)
     val nHosts = args(0).toInt
