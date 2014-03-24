@@ -42,11 +42,14 @@ class KafkaPipelineChannel(val config: Config,
   }
 
   def startReader(group: String, sink: PointsSink): Unit = {
-    consumerId += 1
-    actorSystem.actorOf(KafkaPointsConsumer.props(config.getString("topic"), group, config, metrics, sink, new PointsSink {
-      def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] = {
-        throw new IllegalStateException("Drop not enabled")
-      }
-    }, executionContext).withDispatcher(config.getString("consumer.dispatcher")), s"kafka-consumer-$group-$consumerId")
+    val nWorkers = config.getInt("consumer.workers")
+    for (i <- 0 until nWorkers) {
+      consumerId += 1
+      actorSystem.actorOf(KafkaPointsConsumer.props(config.getString("topic"), group, config, metrics, sink, new PointsSink {
+        def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] = {
+          throw new IllegalStateException("Drop not enabled")
+        }
+      }, executionContext).withDispatcher(config.getString("consumer.dispatcher")), s"kafka-consumer-$group-$consumerId")
+    }
   }
 }
