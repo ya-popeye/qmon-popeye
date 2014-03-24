@@ -1,0 +1,12 @@
+description "QMon Popeye Slicer Service"
+setuid qmon-popeye-query
+limit nofile 150000 150000
+console log
+env QMON_CONF=/etc/qmon-popeye-query
+env QMON_LOGDIR=/var/log/qmon-popeye-query
+pre-start script
+  if [ ! -f /etc/qmon-popeye-query/query.conf ] ; then
+    stop ; exit 0
+  fi
+end script
+exec /usr/share/qmon-popeye-query/bin/start query -c /etc/qmon-popeye-query/query.conf
