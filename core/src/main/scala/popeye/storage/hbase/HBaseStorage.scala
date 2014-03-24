@@ -541,16 +541,17 @@ class HBaseStorage(tableName: String,
   }
 
   private def writeKv(kvList: Seq[KeyValue]) = {
-    metrics.writeHBaseTime.time {
-      debug(s"Making puts for ${kvList.size} keyvalues")
-      val puts = new util.ArrayList[Put](kvList.length)
-      kvList.foreach { k =>
+    debug(s"Making puts for ${kvList.size} keyvalues")
+    val puts = new util.ArrayList[Put](kvList.length)
+    kvList.foreach {
+      k =>
         puts.add(new Put(k.getRow).add(k))
-      }
-      withDebug {
-        val l = puts.map(_.heapSize()).foldLeft(0l)(_ + _)
-        debug(s"Writing ${kvList.size} keyvalues (heapsize=$l)")
-      }
+    }
+    withDebug {
+      val l = puts.map(_.heapSize()).foldLeft(0l)(_ + _)
+      debug(s"Writing ${kvList.size} keyvalues (heapsize=$l)")
+    }
+    metrics.writeHBaseTime.time {
       val hTable = hTablePool.getTable(tableName)
       hTable.setAutoFlush(false, true)
       hTable.setWriteBufferSize(4*1024*1024)
