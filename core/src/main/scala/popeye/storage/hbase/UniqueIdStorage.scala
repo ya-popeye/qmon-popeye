@@ -95,7 +95,7 @@ class UniqueIdStorage(tableName: String, hTablePool: HTablePool, kindWidths: Map
       val idBytes = Bytes.toBytes(id)
       // check, that produced id is not larger, then required id width
       validateLen(idBytes, idWidth)
-      val row = java.util.Arrays.copyOfRange(idBytes, idBytes.length - idWidth, idBytes.length)
+      val row = java.util.Arrays.copyOfRange(idBytes, idBytes.length - idWidth, idBytes.length).reverse
       if (!cas(hTable, row, NameFamily, kindQual, nameBytes)) {
         val msg = s"Failed assignment: $id -> $qname, already assigned $id, unbelievable"
         log.error(msg)
