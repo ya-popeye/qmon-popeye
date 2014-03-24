@@ -92,7 +92,7 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
       goto(Active)
   }
 
-  when(Active, stateTimeout = config.tick) {
+  when(Active, stateTimeout = FiniteDuration.apply(0, TimeUnit.MILLISECONDS)) {
     case Event(StateTimeout, p: PointsState) =>
       log.debug(s"Tick: ${p.batches.mkString}")
       if (p.hasData)
