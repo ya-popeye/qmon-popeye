@@ -1,16 +1,20 @@
 package popeye.pipeline
 
 import akka.actor.ActorSystem
-import com.codahale.metrics.MetricRegistry
+import com.codahale.metrics._
 import com.typesafe.config.Config
 import popeye.pipeline.kafka.KafkaPipelineChannel
 import popeye.storage.hbase.HBaseStorage
-import popeye.{ConfigUtil, IdGenerator, MainConfig, PopeyeCommand}
+import popeye._
 import scala.concurrent.ExecutionContext
-import scopt.OptionParser
 import popeye.storage.BlackHole
 import popeye.pipeline.server.telnet.TelnetPointsServer
 import popeye.pipeline.memory.MemoryPipelineChannel
+import popeye.monitoring.MonitoringHttpServer
+import java.net.InetSocketAddress
+import scopt.OptionParser
+import popeye.MainConfig
+import scala.Some
 
 object PipelineCommand {
 
@@ -72,6 +76,11 @@ class PipelineCommand extends PopeyeCommand {
       val typeName = sourceConfig.getString("type")
       PipelineCommand.sourceForType(typeName).startSource(sourceName, channel, sourceConfig, ectx)
     }
+
+    val monitoringAddress = config.getString("monitoring.address")
+    val Array(host, port) = monitoringAddress.split(":")
+    val address = new InetSocketAddress(host, port.toInt)
+    MonitoringHttpServer.runServer(address, metrics, actorSystem)
   }
 
 }
