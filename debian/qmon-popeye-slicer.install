@@ -1,3 +1,2 @@
 core/target/dist/bin/* usr/share/qmon-popeye-slicer/bin
 core/target/dist/lib/* usr/share/qmon-popeye-slicer/lib
-core/target/dist/config/* etc/qmon-popeye-slicer

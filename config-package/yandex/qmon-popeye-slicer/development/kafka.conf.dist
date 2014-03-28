@@ -1,0 +1,64 @@
+generator.id = 0
+
+metrics.csv {
+  enabled = false
+  period = 5s
+  directory = ./metrics
+}
+
+popeye.pipeline {
+  channel {
+   type = kafka
+   kafka = ${common.popeye.pipeline.kafka} {
+     topic = popeye-points
+     zk.quorum = "localhost:2181"
+     broker.list = "localhost:9092"
+   }
+  }
+
+  sinks = {
+    opentsdb-sink = ${common.popeye.pipeline.hbase-sink} {
+      zk.quorum = "localhost:2182"
+    }
+   //    bh = {
+   //       type = blackhole
+   //    }
+  }
+
+  sources = {
+    opentsdb-source = ${common.popeye.pipeline.telnet} {
+      port = 4444
+    }
+  }
+}
+
+popeye.query = {
+  db = {
+    zk.quorum = "localhost:2182"
+  }
+
+  server = {
+    type = opentsdb
+    http.listen = "localhost:8080"
+  }
+}
+
+
+
+akka {
+
+#  loglevel = "DEBUG"
+
+  actor {
+    debug {
+#         event-stream = on
+#         autoreceive = on
+#         lifecycle = on
+#         fsm = on
+#         unhandled = on
+#         receive = on
+#         router-misconfiguration = on
+    }
+  }
+}
+

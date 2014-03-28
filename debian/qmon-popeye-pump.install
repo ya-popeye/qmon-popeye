@@ -1,4 +1,3 @@
 core/target/dist/bin/* usr/share/qmon-popeye-pump/bin
 core/target/dist/lib/* usr/share/qmon-popeye-pump/lib
-core/target/dist/config/* etc/qmon-popeye-pump
 
