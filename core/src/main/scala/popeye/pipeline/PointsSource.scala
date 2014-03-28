@@ -24,7 +24,3 @@ trait PointsSource {
   /** Shutdown this consumer */
   def shutdown(): Unit
 }
-
-trait PointsSourceFactory {
-  def newConsumer(topic: String): PointsSource
-}

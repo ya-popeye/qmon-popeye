@@ -2,11 +2,10 @@ package popeye.pipeline.kafka
 
 import kafka.common.KafkaException
 import kafka.consumer._
-import kafka.message.MessageAndMetadata
 import popeye.Logging
 import popeye.proto.Message.Point
 import popeye.proto.PackedPoints
-import popeye.pipeline.{PointsSourceFactory, PointsSource}
+import popeye.pipeline.PointsSource
 import kafka.message.MessageAndMetadata
 import scala.Some
 
@@ -58,9 +57,4 @@ class KafkaPointsSourceImpl(consumerConnector: ConsumerConnector, topic: String)
       None
     }
   }
-}
-
-class KafkaPointsSourceFactoryImpl(consumerConfig: ConsumerConfig)
-  extends PointsSourceFactory {
-  def newConsumer(topic: String): PointsSource = new KafkaPointsSourceImpl(Consumer.create(consumerConfig), topic)
 }
