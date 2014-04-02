@@ -2,15 +2,20 @@ package popeye.pipeline.kafka
 
 import kafka.common.KafkaException
 import kafka.consumer._
-import kafka.message.MessageAndMetadata
-import popeye.Logging
+import popeye.{Instrumented, Logging}
 import popeye.proto.Message.Point
 import popeye.proto.PackedPoints
-import popeye.pipeline.{PointsSourceFactory, PointsSource}
+import popeye.pipeline.PointsSource
 import kafka.message.MessageAndMetadata
 import scala.Some
+import com.codahale.metrics.MetricRegistry
 
-class KafkaPointsSourceImpl(consumerConnector: ConsumerConnector, topic: String) extends PointsSource with Logging {
+class KafkaPointsSourceImplMetrics(val prefix: String,
+                                   val metricRegistry: MetricRegistry) extends Instrumented {
+  val consumerTimeouts = metrics.meter(s"$prefix.consume.consumer-timeouts")
+}
+
+class KafkaPointsSourceImpl(consumerConnector: ConsumerConnector, topic: String, metrics: KafkaPointsSourceImplMetrics) extends PointsSource with Logging {
 
   val stream = topicStream(topic)
   val iterator = stream.iterator()
@@ -41,26 +46,17 @@ class KafkaPointsSourceImpl(consumerConnector: ConsumerConnector, topic: String)
     iterator.hasNext()
   } catch {
     case ex: ConsumerTimeoutException =>
+      metrics.consumerTimeouts.mark()
       false
   }
 
   def consume(): Option[(Long, Seq[Point])] = {
     if (hasNext) {
-      try {
-        val msg: MessageAndMetadata[Array[Byte], Array[Byte]] = iterator.next()
-        val batchId = deser.fromBytes(msg.key)
-        Some((batchId, PackedPoints.decodePoints(msg.message)))
-      } catch {
-        case ex: ConsumerTimeoutException =>
-          None // ok
-      }
+      val msg: MessageAndMetadata[Array[Byte], Array[Byte]] = iterator.next()
+      val batchId = deser.fromBytes(msg.key)
+      Some((batchId, PackedPoints.decodePoints(msg.message)))
     } else {
       None
     }
   }
-}
-
-class KafkaPointsSourceFactoryImpl(consumerConfig: ConsumerConfig)
-  extends PointsSourceFactory {
-  def newConsumer(topic: String): PointsSource = new KafkaPointsSourceImpl(Consumer.create(consumerConfig), topic)
 }

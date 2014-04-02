@@ -121,12 +121,12 @@ object HttpQueryServer extends HttpServerFactory {
       Props.apply(new HttpQueryServer(storage, executionContext)),
       name = "server-http")
 
-    val hostport = config.getString("server.http.listen").split(":")
+    val hostport = config.getString("http.listen").split(":")
     val addr = new InetSocketAddress(hostport(0), hostport(1).toInt)
     IO(Http)(system) ? Http.Bind(
       listener = handler,
       endpoint = addr,
-      backlog = config.getInt("server.http.backlog"),
+      backlog = config.getInt("http.backlog"),
       options = Nil,
       settings = None)
     handler

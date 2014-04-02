@@ -49,7 +49,7 @@ object Version {
   val ScalaTest = "2.0"
   val Mockito = "1.9.0"
   val Jackson = "1.8.8"
-  val Kafka = "0.8.0-beta1-qmon5"
+  val Kafka = "0.8.1"
   val Metrics = "3.0.0"
   val Slf4j = "1.7.5"
   val Logback = "1.0.7"
@@ -80,16 +80,17 @@ object HBase {
 
   import Util._
 
-  val Hadoop = "2.0.0-cdh4.3.1"
-  val HBase = "0.94.6-cdh4.3.1"
+  val Hadoop = "2.2.0-cdh5.0.0-beta-2"
+  val HBase = "0.96.1.1-cdh5.0.0-beta-2"
 
   val settings = Seq(
     resolvers ++= Seq(
-      "cdh4.3.1" at "https://repository.cloudera.com/artifactory/cloudera-repos"
+      "cdh5.0.0-beta-2" at "https://repository.cloudera.com/artifactory/cloudera-repos"
     ),
     libraryDependencies ++= Seq(
       "org.apache.hadoop" % "hadoop-common" % Hadoop,
-      "org.apache.hbase" % "hbase" % HBase
+      "org.apache.hbase" % "hbase-client" % HBase,
+      "org.apache.hbase" % "hbase-common" % HBase
     ).excluding(
       ExclusionRule(name = "commons-daemon"),
       ExclusionRule(name = "commons-cli"),
@@ -134,7 +135,7 @@ object PopeyeBuild extends Build {
     distMainClass := "popeye.Main",
     libraryDependencies ++= Version.slf4jDependencies ++ Seq(
       "com.github.scopt" %% "scopt" % Version.Scopt,
-      "com.google.protobuf" % "protobuf-java" % "2.4.1",
+      "com.google.protobuf" % "protobuf-java" % "2.5.0",
       "org.apache.kafka" %% "kafka" % Version.Kafka,
       "nl.grons" %% "metrics-scala" % Version.Metrics,
       "org.codehaus.jackson" % "jackson-core-asl" % Version.Jackson,
@@ -148,7 +149,6 @@ object PopeyeBuild extends Build {
       "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
       "org.mockito" % "mockito-core" % Version.Mockito % "test",
       "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test",
-      "org.kiji.testing" %% "fake-hbase" % Version.FakeHBase % "test",
       "org.apache.avro" % "avro" % Version.Avro % "test"
     ).excluding(Version.slf4jExclusions :_*)
      .excluding(Version.commonExclusions :_*)
@@ -157,15 +157,14 @@ object PopeyeBuild extends Build {
   lazy val popeyeBench = Project(
     id = "popeye-bench",
     base = file("bench"),
-    settings = defaultSettings ++ QMonDistPlugin.distSettings)
+    settings = defaultSettings ++ QMonDistPlugin.distSettings).dependsOn(popeyeCore)
     .settings(
     distMainClass := "popeye.transport.bench.GenerateMain",
     libraryDependencies ++= Version.slf4jDependencies ++ Seq(
       "nl.grons" %% "metrics-scala" % Version.Metrics,
       "com.typesafe.akka" %% "akka-actor" % Version.Akka,
       "com.typesafe.akka" %% "akka-slf4j" % Version.Akka,
-      "io.spray" % "spray-can" % Version.Spray,
-      "io.spray" % "spray-io" % Version.Spray,
+      "org.apache.kafka" %% "kafka" % Version.Kafka,
       "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
       "org.mockito" % "mockito-core" % Version.Mockito % "test",
       "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"

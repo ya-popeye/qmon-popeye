@@ -235,7 +235,7 @@ object HBaseStorage {
 
 }
 
-class HBasePointsSink(config: Config, storage: HBaseStorage)(implicit eCtx: ExecutionContext) extends PointsSink {
+class HBasePointsSink(storage: HBaseStorage)(implicit eCtx: ExecutionContext) extends PointsSink {
   def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] = {
     storage.writePoints(points)(eCtx)
   }
@@ -246,6 +246,7 @@ case class HBaseStorageMetrics(name: String, override val metricRegistry: Metric
   val writeProcessingTime = metrics.timer(s"$name.storage.write.processing.time")
   val writeHBaseTime = metrics.timer(s"$name.storage.write.hbase.time")
   val writeTime = metrics.timer(s"$name.storage.write.time")
+  val writeTimeMeter = metrics.meter(s"$name.storage.write.time-meter")
   val writeHBasePoints = metrics.meter(s"$name.storage.write.points")
   val readProcessingTime = metrics.timer(s"$name.storage.read.processing.time")
   val readHBaseTime = metrics.timer(s"$name.storage.read.hbase.time")
@@ -522,26 +523,33 @@ class HBaseStorage(tableName: String,
         }
         (delayedFuture zip writeComplete).map {
           case (a, b) =>
-            ctx.stop
+            val time = ctx.stop.nano
+            metrics.writeTimeMeter.mark(time.toMillis)
             (a + b).toLong
         }
       } else {
-        writeComplete.map {a => ctx.stop; a.toLong}
+        writeComplete.map {
+          a =>
+            val time = ctx.stop.nano
+            metrics.writeTimeMeter.mark(time.toMillis)
+            a.toLong
+        }
       }
     }
   }
 
   private def writeKv(kvList: Seq[KeyValue]) = {
-    metrics.writeHBaseTime.time {
-      debug(s"Making puts for ${kvList.size} keyvalues")
-      val puts = new util.ArrayList[Put](kvList.length)
-      kvList.foreach { k =>
+    debug(s"Making puts for ${kvList.size} keyvalues")
+    val puts = new util.ArrayList[Put](kvList.length)
+    kvList.foreach {
+      k =>
         puts.add(new Put(k.getRow).add(k))
-      }
-      withDebug {
-        val l = puts.map(_.heapSize()).foldLeft(0l)(_ + _)
-        debug(s"Writing ${kvList.size} keyvalues (heapsize=$l)")
-      }
+    }
+    withDebug {
+      val l = puts.map(_.heapSize()).foldLeft(0l)(_ + _)
+      debug(s"Writing ${kvList.size} keyvalues (heapsize=$l)")
+    }
+    metrics.writeHBaseTime.time {
       val hTable = hTablePool.getTable(tableName)
       hTable.setAutoFlush(false, true)
       hTable.setWriteBufferSize(4*1024*1024)

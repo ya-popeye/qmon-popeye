@@ -35,23 +35,27 @@ class KafkaPipelineChannel(val config: Config,
   private def startProducer(): ActorRef = {
     val producerConfig = KafkaPointsProducer.producerConfig(config)
     val kafkaClient = new PopeyeKafkaProducerFactoryImpl(producerConfig)
-    actorSystem.actorOf(KafkaPointsProducer.props("kafka", config, idGenerator, kafkaClient, metrics)
+    val dispatcher = config.getString("producer.dispatcher")
+    val props = KafkaPointsProducer.props("kafka", config, idGenerator, kafkaClient, metrics, Some(dispatcher))
       .withRouter(FromConfig())
-      .withDispatcher(config.getString("producer.dispatcher")), "kafka-producer")
+    actorSystem.actorOf(props, "kafka-producer")
   }
 
   def startReader(group: String, mainSink: PointsSink, dropSink: PointsSink): Unit = {
-    consumerId += 1
-    val props = KafkaPointsConsumer.props(
-      config.getString("topic"),
-      group,
-      config,
-      metrics,
-      mainSink,
-      dropSink,
-      executionContext
-    ).withDispatcher(config.getString("consumer.dispatcher"))
+    val nWorkers = config.getInt("consumer.workers")
+    for (i <- 0 until nWorkers) {
+      consumerId += 1
+      val props = KafkaPointsConsumer.props(
+        config.getString("topic"),
+        group,
+        config,
+        metrics,
+        mainSink,
+        dropSink,
+        executionContext
+      ).withDispatcher(config.getString("consumer.dispatcher"))
 
-    actorSystem.actorOf(props, s"kafka-consumer-$group-$consumerId")
+      actorSystem.actorOf(props, s"kafka-consumer-$group-$consumerId")
+    }
   }
 }

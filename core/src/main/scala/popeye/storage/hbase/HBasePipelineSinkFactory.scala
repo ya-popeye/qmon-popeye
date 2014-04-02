@@ -22,6 +22,6 @@ class HBasePipelineSinkFactory(storagesConfig: Config,
       )(ectx))
     hbaseStorage.storage.ping()
 
-    new HBasePointsSink(config, hbaseStorage.storage)(ectx)
+    new HBasePointsSink(hbaseStorage.storage)(ectx)
   }
 }

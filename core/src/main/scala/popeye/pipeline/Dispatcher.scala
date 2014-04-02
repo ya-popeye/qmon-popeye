@@ -17,6 +17,7 @@ import popeye.pipeline.DispatcherProtocol.Pending
 import com.codahale.metrics.{Timer, MetricRegistry}
 import scala.util.Failure
 import popeye.proto.Message.Point
+import java.util.concurrent.atomic.AtomicInteger
 
 class DispatcherConfig(config: Config) {
   val batchWaitTimeout: FiniteDuration = toFiniteDuration(
@@ -30,8 +31,18 @@ class DispatcherConfig(config: Config) {
 class DispatcherMetrics(prefix: String, override val metricRegistry: MetricRegistry) extends Instrumented {
   val writeTimer = metrics.timer(s"$prefix.wall-time")
   val sendTimer = metrics.timer(s"$prefix.send-time")
+  val senders = metrics.counter(s"$prefix.senders")
+  val sendersTime = metrics.meter(s"$prefix.senders-time")
+  val batchTime = metrics.timer(s"$prefix.process-batch-time")
   val batchFailedMeter = metrics.meter(s"$prefix.batch-failed")
   val batchCompleteMeter = metrics.meter(s"$prefix.batch-complete")
+  private val id = new AtomicInteger(0)
+
+  def addWorkQueueSizeGauge(queue: AtomicList[ActorRef]) = {
+    metrics.gauge(s"$prefix.work-queue-size-${id.getAndIncrement}") {
+      queue.size
+    }
+  }
 }
 
 object DispatcherProtocol {
@@ -93,7 +104,10 @@ trait WorkerActor extends Actor with Logging {
       val batchId = p.batchId
       val promises = p.promises
       try {
-        processBatch(p.batchId, p.asInstanceOf[ProducePack[Batch]].batch)
+        batcher.metrics.senders.inc()
+        batcher.metrics.batchTime.time {
+          processBatch(p.batchId, p.asInstanceOf[ProducePack[Batch]].batch)
+        }
         debug(s"Sent batch ${p.batchId}")
         batcher.metrics.batchCompleteMeter.mark()
         withDebug {
@@ -102,9 +116,7 @@ trait WorkerActor extends Actor with Logging {
               debug(s"${self.path} got promise $promise for SUCCESS batch ${p.batchId}")
           }
         }
-        promises
-          .filter(!_.isCompleted) // we should check, that pormise not complete before
-          .foreach(_.success(p.batchId))
+        promises.foreach(_.trySuccess(p.batchId))
       } catch {
         case e: Exception =>
           sender ! Failure(new DispatcherException(s"batch $batchId failed", e))
@@ -115,13 +127,13 @@ trait WorkerActor extends Actor with Logging {
                 log.debug(s"${self.path} got promise for FAILURE $promise for batch ${batchId}")
             }
           }
-          promises
-            .filter(!_.isCompleted) // we should check, that pormise not complete before
-            .foreach(_.failure(e))
+          promises.foreach(_.tryFailure(e))
           throw e
       } finally {
+        batcher.metrics.senders.dec()
         val sended = sendctx.stop.nano
         val elapsed = p.started.stop.nano
+        batcher.metrics.sendersTime.mark(sended.toMillis)
         log.debug(s"batch ${p.batchId} sent in ${sended.toMillis}ms at total ${elapsed.toMillis}ms")
         batcher.addWorker(self)
         sender ! WorkDone(batchId)
@@ -168,6 +180,7 @@ trait DispatcherActor extends Actor with Logging {
 
     import context.dispatcher
     flusher = Some(context.system.scheduler.schedule(config.batchWaitTimeout, config.batchWaitTimeout, self, FlushPoints))
+    metrics.addWorkQueueSizeGauge(workQueue)
   }
 
   override def postStop() {

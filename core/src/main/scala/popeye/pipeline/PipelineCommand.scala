@@ -5,13 +5,17 @@ import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.Config
 import popeye.pipeline.kafka.{KafkaSinkFactory, KafkaPipelineChannel}
 import popeye.storage.hbase.HBasePipelineSinkFactory
-import popeye.{ConfigUtil, IdGenerator, MainConfig, PopeyeCommand}
-import scala.concurrent.{Future, ExecutionContext}
-import scopt.OptionParser
-import popeye.storage.BlackHole
+import scala.concurrent.Future
+import popeye._
+import scala.concurrent.ExecutionContext
+import popeye.storage.BlackHolePipelineSinkFactory
 import popeye.pipeline.server.telnet.TelnetPointsServer
 import popeye.pipeline.memory.MemoryPipelineChannel
 import popeye.proto.PackedPoints
+import popeye.monitoring.MonitoringHttpServer
+import java.net.InetSocketAddress
+import scopt.OptionParser
+import popeye.MainConfig
 
 object PipelineCommand {
 
@@ -27,19 +31,24 @@ object PipelineCommand {
     val sinks = Map(
       "hbase-sink" -> new HBasePipelineSinkFactory(storagesConfig, actorSystem, ectx, metrics),
       "kafka-sink" -> new KafkaSinkFactory(actorSystem, ectx, idGenerator, metrics),
-      "blackhole" -> BlackHole.sinkFactory(),
+      "blackhole" -> new BlackHolePipelineSinkFactory(actorSystem, ectx),
       "fail" -> new PipelineSinkFactory {
         def startSink(sinkName: String, config: Config): PointsSink = new PointsSink {
           def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] =
             Future.failed(new RuntimeException("fail sink"))
         }
       }
-    )
-    sinks.withDefault(_ => throw new IllegalArgumentException("No such sink type"))
+    )                                            
+    sinks.withDefault{
+      typeName => throw new IllegalArgumentException(f"No such sink type: $typeName, available types: ${sinks.keys}")
+    }
   }
 
   def sourceForType(typeName: String): PipelineSourceFactory = {
-    sources.getOrElse(typeName, throw new IllegalArgumentException("No such source type"))
+    sources.getOrElse(
+      typeName,
+      throw new IllegalArgumentException(f"No such source type: $typeName, available types: ${sources.keys}")
+    )
   }
 }
 
@@ -84,6 +93,11 @@ class PipelineCommand extends PopeyeCommand {
       val typeName = sourceConfig.getString("type")
       PipelineCommand.sourceForType(typeName).startSource(sourceName, channel, sourceConfig, ectx)
     }
+
+    val monitoringAddress = config.getString("monitoring.address")
+    val Array(host, port) = monitoringAddress.split(":")
+    val address = new InetSocketAddress(host, port.toInt)
+    MonitoringHttpServer.runServer(address, metrics, actorSystem)
   }
 
 }

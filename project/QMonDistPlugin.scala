@@ -94,7 +94,7 @@ object QMonDistPlugin extends Plugin {
 
   private def defaultConfigSourceDirs = (sourceDirectory, unmanagedResourceDirectories) map {
     (src, resources) ⇒
-      Seq(src / "config", src / "main" / "config") ++ resources
+      Seq(src / "config", src / "main" / "config")
   }
 
   private def defaultAdditionalLibs = (libraryDependencies) map {

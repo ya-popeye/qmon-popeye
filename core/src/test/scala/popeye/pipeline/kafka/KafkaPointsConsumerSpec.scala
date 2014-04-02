@@ -1,6 +1,7 @@
 package popeye.pipeline.kafka
 
-import akka.actor.Props
+import akka.actor.{PoisonPill, Props}
+import akka.pattern.ask
 import akka.testkit.TestActorRef
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.{ConfigFactory, Config}
@@ -12,7 +13,9 @@ import popeye.pipeline.{PointsSource, PointsSink, AtomicList}
 import popeye.test.{PopeyeTestUtils, MockitoStubs}
 import popeye.proto.PackedPoints
 import popeye.pipeline.test.AkkaTestKitSpec
-import scala.concurrent.Future
+import scala.concurrent.{Await, Future}
+import scala.concurrent.duration._
+import akka.util.Timeout
 
 
 /**
@@ -46,7 +49,7 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
     })
     val actor: TestActorRef[KafkaPointsConsumer] = TestActorRef(
       Props.apply(new KafkaPointsConsumer(dconf, metrics, consumer, listener.sinkPipe, listener.dropPipe, ectx)))
-    latch.await(3000, TimeUnit.MILLISECONDS) should be (true)
+    latch.await(6000, TimeUnit.MILLISECONDS) should be (true)
   }
 
   def mkConfig(): Config = ConfigFactory.parseString(

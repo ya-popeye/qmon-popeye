@@ -32,7 +32,6 @@ class PointsSinkDispatcherActor( val config: PointsDispatcherConfig,
 
 class PointsSinkWorkerActor(val factory: PointsSinkFactory, val batcher: PointsSinkDispatcherActor) extends PointsDispatcherWorkerActor {
 
-  type Batch = Seq[PackedPoints]
   type Batcher = PointsSinkDispatcherActor
 
   val sink = factory.newPointsSink()

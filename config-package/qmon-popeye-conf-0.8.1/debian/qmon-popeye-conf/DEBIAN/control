@@ -1,0 +1,10 @@
+Package: qmon-popeye-conf
+Version: 0.8.1
+Architecture: all
+Maintainer: Vasily Kolpakov <quasi@yandex-team.ru>
+Installed-Size: 113
+Depends: qmon-popeye-slicer | qmon-popeye-pump | qmon-popeye-query
+Section: misc
+Priority: extra
+Homepage: https://github.com/octo47/qmon-popeye
+Description: QMon Popeye metrics config

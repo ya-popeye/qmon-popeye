@@ -17,3 +17,9 @@ Architecture: all
 Depends: ${misc:Depends}, openjdk-7-jre-headless | java7-runtime-headless | java6-runtime-headless | yandex-jdk7 | yandex-jdk6, adduser
 Description: QMon Popeye metrics consumer daemon
  Popeye Pump consumes timeseries data from Kafka and stores it to OpenTSDB
+
+Package: qmon-popeye-query
+Architecture: all
+Depends: ${misc:Depends}, openjdk-7-jre-headless | java7-runtime-headless | java6-runtime-headless | yandex-jdk7 | yandex-jdk6, adduser
+Description: QMon Popeye metrics frontend daemon
+ Popeye Query serves timeseries from OpenTSDB

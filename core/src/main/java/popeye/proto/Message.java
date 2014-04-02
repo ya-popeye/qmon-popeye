@@ -10,108 +10,224 @@ public final class Message {
   }
   public interface AttributeOrBuilder
       extends com.google.protobuf.MessageOrBuilder {
-    
+
     // required string name = 1;
+    /**
+     * <code>required string name = 1;</code>
+     */
     boolean hasName();
-    String getName();
-    
+    /**
+     * <code>required string name = 1;</code>
+     */
+    java.lang.String getName();
+    /**
+     * <code>required string name = 1;</code>
+     */
+    com.google.protobuf.ByteString
+        getNameBytes();
+
     // required string value = 2;
+    /**
+     * <code>required string value = 2;</code>
+     */
     boolean hasValue();
-    String getValue();
+    /**
+     * <code>required string value = 2;</code>
+     */
+    java.lang.String getValue();
+    /**
+     * <code>required string value = 2;</code>
+     */
+    com.google.protobuf.ByteString
+        getValueBytes();
   }
+  /**
+   * Protobuf type {@code popeye.proto.Attribute}
+   */
   public static final class Attribute extends
       com.google.protobuf.GeneratedMessage
       implements AttributeOrBuilder {
     // Use Attribute.newBuilder() to construct.
-    private Attribute(Builder builder) {
+    private Attribute(com.google.protobuf.GeneratedMessage.Builder<?> builder) {
       super(builder);
+      this.unknownFields = builder.getUnknownFields();
     }
-    private Attribute(boolean noInit) {}
-    
+    private Attribute(boolean noInit) { this.unknownFields = com.google.protobuf.UnknownFieldSet.getDefaultInstance(); }
+
     private static final Attribute defaultInstance;
     public static Attribute getDefaultInstance() {
       return defaultInstance;
     }
-    
+
     public Attribute getDefaultInstanceForType() {
       return defaultInstance;
     }
-    
+
+    private final com.google.protobuf.UnknownFieldSet unknownFields;
+    @java.lang.Override
+    public final com.google.protobuf.UnknownFieldSet
+        getUnknownFields() {
+      return this.unknownFields;
+    }
+    private Attribute(
+        com.google.protobuf.CodedInputStream input,
+        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+        throws com.google.protobuf.InvalidProtocolBufferException {
+      initFields();
+      int mutable_bitField0_ = 0;
+      com.google.protobuf.UnknownFieldSet.Builder unknownFields =
+          com.google.protobuf.UnknownFieldSet.newBuilder();
+      try {
+        boolean done = false;
+        while (!done) {
+          int tag = input.readTag();
+          switch (tag) {
+            case 0:
+              done = true;
+              break;
+            default: {
+              if (!parseUnknownField(input, unknownFields,
+                                     extensionRegistry, tag)) {
+                done = true;
+              }
+              break;
+            }
+            case 10: {
+              bitField0_ |= 0x00000001;
+              name_ = input.readBytes();
+              break;
+            }
+            case 18: {
+              bitField0_ |= 0x00000002;
+              value_ = input.readBytes();
+              break;
+            }
+          }
+        }
+      } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+        throw e.setUnfinishedMessage(this);
+      } catch (java.io.IOException e) {
+        throw new com.google.protobuf.InvalidProtocolBufferException(
+            e.getMessage()).setUnfinishedMessage(this);
+      } finally {
+        this.unknownFields = unknownFields.build();
+        makeExtensionsImmutable();
+      }
+    }
     public static final com.google.protobuf.Descriptors.Descriptor
         getDescriptor() {
       return popeye.proto.Message.internal_static_popeye_proto_Attribute_descriptor;
     }
-    
+
     protected com.google.protobuf.GeneratedMessage.FieldAccessorTable
         internalGetFieldAccessorTable() {
-      return popeye.proto.Message.internal_static_popeye_proto_Attribute_fieldAccessorTable;
+      return popeye.proto.Message.internal_static_popeye_proto_Attribute_fieldAccessorTable
+          .ensureFieldAccessorsInitialized(
+              popeye.proto.Message.Attribute.class, popeye.proto.Message.Attribute.Builder.class);
     }
-    
+
+    public static com.google.protobuf.Parser<Attribute> PARSER =
+        new com.google.protobuf.AbstractParser<Attribute>() {
+      public Attribute parsePartialFrom(
+          com.google.protobuf.CodedInputStream input,
+          com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+          throws com.google.protobuf.InvalidProtocolBufferException {
+        return new Attribute(input, extensionRegistry);
+      }
+    };
+
+    @java.lang.Override
+    public com.google.protobuf.Parser<Attribute> getParserForType() {
+      return PARSER;
+    }
+
     private int bitField0_;
     // required string name = 1;
     public static final int NAME_FIELD_NUMBER = 1;
     private java.lang.Object name_;
+    /**
+     * <code>required string name = 1;</code>
+     */
     public boolean hasName() {
       return ((bitField0_ & 0x00000001) == 0x00000001);
     }
-    public String getName() {
+    /**
+     * <code>required string name = 1;</code>
+     */
+    public java.lang.String getName() {
       java.lang.Object ref = name_;
-      if (ref instanceof String) {
-        return (String) ref;
+      if (ref instanceof java.lang.String) {
+        return (java.lang.String) ref;
       } else {
         com.google.protobuf.ByteString bs = 
             (com.google.protobuf.ByteString) ref;
-        String s = bs.toStringUtf8();
-        if (com.google.protobuf.Internal.isValidUtf8(bs)) {
+        java.lang.String s = bs.toStringUtf8();
+        if (bs.isValidUtf8()) {
           name_ = s;
         }
         return s;
       }
     }
-    private com.google.protobuf.ByteString getNameBytes() {
+    /**
+     * <code>required string name = 1;</code>
+     */
+    public com.google.protobuf.ByteString
+        getNameBytes() {
       java.lang.Object ref = name_;
-      if (ref instanceof String) {
+      if (ref instanceof java.lang.String) {
         com.google.protobuf.ByteString b = 
-            com.google.protobuf.ByteString.copyFromUtf8((String) ref);
+            com.google.protobuf.ByteString.copyFromUtf8(
+                (java.lang.String) ref);
         name_ = b;
         return b;
       } else {
         return (com.google.protobuf.ByteString) ref;
       }
     }
-    
+
     // required string value = 2;
     public static final int VALUE_FIELD_NUMBER = 2;
     private java.lang.Object value_;
+    /**
+     * <code>required string value = 2;</code>
+     */
     public boolean hasValue() {
       return ((bitField0_ & 0x00000002) == 0x00000002);
     }
-    public String getValue() {
+    /**
+     * <code>required string value = 2;</code>
+     */
+    public java.lang.String getValue() {
       java.lang.Object ref = value_;
-      if (ref instanceof String) {
-        return (String) ref;
+      if (ref instanceof java.lang.String) {
+        return (java.lang.String) ref;
       } else {
         com.google.protobuf.ByteString bs = 
             (com.google.protobuf.ByteString) ref;
-        String s = bs.toStringUtf8();
-        if (com.google.protobuf.Internal.isValidUtf8(bs)) {
+        java.lang.String s = bs.toStringUtf8();
+        if (bs.isValidUtf8()) {
           value_ = s;
         }
         return s;
       }
     }
-    private com.google.protobuf.ByteString getValueBytes() {
+    /**
+     * <code>required string value = 2;</code>
+     */
+    public com.google.protobuf.ByteString
+        getValueBytes() {
       java.lang.Object ref = value_;
-      if (ref instanceof String) {
+      if (ref instanceof java.lang.String) {
         com.google.protobuf.ByteString b = 
-            com.google.protobuf.ByteString.copyFromUtf8((String) ref);
+            com.google.protobuf.ByteString.copyFromUtf8(
+                (java.lang.String) ref);
         value_ = b;
         return b;
       } else {
         return (com.google.protobuf.ByteString) ref;
       }
     }
-    
+
     private void initFields() {
       name_ = "";
       value_ = "";
@@ -120,7 +236,7 @@ public final class Message {
     public final boolean isInitialized() {
       byte isInitialized = memoizedIsInitialized;
       if (isInitialized != -1) return isInitialized == 1;
-      
+
       if (!hasName()) {
         memoizedIsInitialized = 0;
         return false;
@@ -132,7 +248,7 @@ public final class Message {
       memoizedIsInitialized = 1;
       return true;
     }
-    
+
     public void writeTo(com.google.protobuf.CodedOutputStream output)
                         throws java.io.IOException {
       getSerializedSize();
@@ -144,12 +260,12 @@ public final class Message {
       }
       getUnknownFields().writeTo(output);
     }
-    
+
     private int memoizedSerializedSize = -1;
     public int getSerializedSize() {
       int size = memoizedSerializedSize;
       if (size != -1) return size;
-    
+
       size = 0;
       if (((bitField0_ & 0x00000001) == 0x00000001)) {
         size += com.google.protobuf.CodedOutputStream
@@ -163,94 +279,83 @@ public final class Message {
       memoizedSerializedSize = size;
       return size;
     }
-    
+
     private static final long serialVersionUID = 0L;
     @java.lang.Override
     protected java.lang.Object writeReplace()
         throws java.io.ObjectStreamException {
       return super.writeReplace();
     }
-    
+
     public static popeye.proto.Message.Attribute parseFrom(
         com.google.protobuf.ByteString data)
         throws com.google.protobuf.InvalidProtocolBufferException {
-      return newBuilder().mergeFrom(data).buildParsed();
+      return PARSER.parseFrom(data);
     }
     public static popeye.proto.Message.Attribute parseFrom(
         com.google.protobuf.ByteString data,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
         throws com.google.protobuf.InvalidProtocolBufferException {
-      return newBuilder().mergeFrom(data, extensionRegistry)
-               .buildParsed();
+      return PARSER.parseFrom(data, extensionRegistry);
     }
     public static popeye.proto.Message.Attribute parseFrom(byte[] data)
         throws com.google.protobuf.InvalidProtocolBufferException {
-      return newBuilder().mergeFrom(data).buildParsed();
+      return PARSER.parseFrom(data);
     }
     public static popeye.proto.Message.Attribute parseFrom(
         byte[] data,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
         throws com.google.protobuf.InvalidProtocolBufferException {
-      return newBuilder().mergeFrom(data, extensionRegistry)
-               .buildParsed();
+      return PARSER.parseFrom(data, extensionRegistry);
     }
     public static popeye.proto.Message.Attribute parseFrom(java.io.InputStream input)
         throws java.io.IOException {
-      return newBuilder().mergeFrom(input).buildParsed();
+      return PARSER.parseFrom(input);
     }
     public static popeye.proto.Message.Attribute parseFrom(
         java.io.InputStream input,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
         throws java.io.IOException {
-      return newBuilder().mergeFrom(input, extensionRegistry)
-               .buildParsed();
+      return PARSER.parseFrom(input, extensionRegistry);
     }
     public static popeye.proto.Message.Attribute parseDelimitedFrom(java.io.InputStream input)
         throws java.io.IOException {
-      Builder builder = newBuilder();
-      if (builder.mergeDelimitedFrom(input)) {
-        return builder.buildParsed();
-      } else {
-        return null;
-      }
+      return PARSER.parseDelimitedFrom(input);
     }
     public static popeye.proto.Message.Attribute parseDelimitedFrom(
         java.io.InputStream input,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
         throws java.io.IOException {
-      Builder builder = newBuilder();
-      if (builder.mergeDelimitedFrom(input, extensionRegistry)) {
-        return builder.buildParsed();
-      } else {
-        return null;
-      }
+      return PARSER.parseDelimitedFrom(input, extensionRegistry);
     }
     public static popeye.proto.Message.Attribute parseFrom(
         com.google.protobuf.CodedInputStream input)
         throws java.io.IOException {
-      return newBuilder().mergeFrom(input).buildParsed();
+      return PARSER.parseFrom(input);
     }
     public static popeye.proto.Message.Attribute parseFrom(
         com.google.protobuf.CodedInputStream input,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
         throws java.io.IOException {
-      return newBuilder().mergeFrom(input, extensionRegistry)
-               .buildParsed();
+      return PARSER.parseFrom(input, extensionRegistry);
     }
-    
+
     public static Builder newBuilder() { return Builder.create(); }
     public Builder newBuilderForType() { return newBuilder(); }
     public static Builder newBuilder(popeye.proto.Message.Attribute prototype) {
       return newBuilder().mergeFrom(prototype);
     }
     public Builder toBuilder() { return newBuilder(this); }
-    
+
     @java.lang.Override
     protected Builder newBuilderForType(
         com.google.protobuf.GeneratedMessage.BuilderParent parent) {
       Builder builder = new Builder(parent);
       return builder;
     }
+    /**
+     * Protobuf type {@code popeye.proto.Attribute}
+     */
     public static final class Builder extends
         com.google.protobuf.GeneratedMessage.Builder<Builder>
        implements popeye.proto.Message.AttributeOrBuilder {
@@ -258,18 +363,21 @@ public final class Message {
           getDescriptor() {
         return popeye.proto.Message.internal_static_popeye_proto_Attribute_descriptor;
       }
-      
+
       protected com.google.protobuf.GeneratedMessage.FieldAccessorTable
           internalGetFieldAccessorTable() {
-        return popeye.proto.Message.internal_static_popeye_proto_Attribute_fieldAccessorTable;
+        return popeye.proto.Message.internal_static_popeye_proto_Attribute_fieldAccessorTable
+            .ensureFieldAccessorsInitialized(
+                popeye.proto.Message.Attribute.class, popeye.proto.Message.Attribute.Builder.class);
       }
-      
+
       // Construct using popeye.proto.Message.Attribute.newBuilder()
       private Builder() {
         maybeForceBuilderInitialization();
       }
-      
-      private Builder(BuilderParent parent) {
+
+      private Builder(
+          com.google.protobuf.GeneratedMessage.BuilderParent parent) {
         super(parent);
         maybeForceBuilderInitialization();
       }
@@ -280,7 +388,7 @@ public final class Message {
       private static Builder create() {
         return new Builder();
       }
-      
+
       public Builder clear() {
         super.clear();
         name_ = "";
@@ -289,20 +397,20 @@ public final class Message {
         bitField0_ = (bitField0_ & ~0x00000002);
         return this;
       }
-      
+
       public Builder clone() {
         return create().mergeFrom(buildPartial());
       }
-      
+
       public com.google.protobuf.Descriptors.Descriptor
           getDescriptorForType() {
-        return popeye.proto.Message.Attribute.getDescriptor();
+        return popeye.proto.Message.internal_static_popeye_proto_Attribute_descriptor;
       }
-      
+
       public popeye.proto.Message.Attribute getDefaultInstanceForType() {
         return popeye.proto.Message.Attribute.getDefaultInstance();
       }
-      
+
       public popeye.proto.Message.Attribute build() {
         popeye.proto.Message.Attribute result = buildPartial();
         if (!result.isInitialized()) {
@@ -310,17 +418,7 @@ public final class Message {
         }
         return result;
       }
-      
-      private popeye.proto.Message.Attribute buildParsed()
-          throws com.google.protobuf.InvalidProtocolBufferException {
-        popeye.proto.Message.Attribute result = buildPartial();
-        if (!result.isInitialized()) {
-          throw newUninitializedMessageException(
-            result).asInvalidProtocolBufferException();
-        }
-        return result;
-      }
-      
+
       public popeye.proto.Message.Attribute buildPartial() {
         popeye.proto.Message.Attribute result = new popeye.proto.Message.Attribute(this);
         int from_bitField0_ = bitField0_;
@@ -337,7 +435,7 @@ public final class Message {
         onBuilt();
         return result;
       }
-      
+
       public Builder mergeFrom(com.google.protobuf.Message other) {
         if (other instanceof popeye.proto.Message.Attribute) {
           return mergeFrom((popeye.proto.Message.Attribute)other);
@@ -346,19 +444,23 @@ public final class Message {
           return this;
         }
       }
-      
+
       public Builder mergeFrom(popeye.proto.Message.Attribute other) {
         if (other == popeye.proto.Message.Attribute.getDefaultInstance()) return this;
         if (other.hasName()) {
-          setName(other.getName());
+          bitField0_ |= 0x00000001;
+          name_ = other.name_;
+          onChanged();
         }
         if (other.hasValue()) {
-          setValue(other.getValue());
+          bitField0_ |= 0x00000002;
+          value_ = other.value_;
+          onChanged();
         }
         this.mergeUnknownFields(other.getUnknownFields());
         return this;
       }
-      
+
       public final boolean isInitialized() {
         if (!hasName()) {
           
@@ -370,62 +472,69 @@ public final class Message {
         }
         return true;
       }
-      
+
       public Builder mergeFrom(
           com.google.protobuf.CodedInputStream input,
           com.google.protobuf.ExtensionRegistryLite extensionRegistry)
           throws java.io.IOException {
-        com.google.protobuf.UnknownFieldSet.Builder unknownFields =
-          com.google.protobuf.UnknownFieldSet.newBuilder(
-            this.getUnknownFields());
-        while (true) {
-          int tag = input.readTag();
-          switch (tag) {
-            case 0:
-              this.setUnknownFields(unknownFields.build());
-              onChanged();
-              return this;
-            default: {
-              if (!parseUnknownField(input, unknownFields,
-                                     extensionRegistry, tag)) {
-                this.setUnknownFields(unknownFields.build());
-                onChanged();
-                return this;
-              }
-              break;
-            }
-            case 10: {
-              bitField0_ |= 0x00000001;
-              name_ = input.readBytes();
-              break;
-            }
-            case 18: {
-              bitField0_ |= 0x00000002;
-              value_ = input.readBytes();
-              break;
-            }
+        popeye.proto.Message.Attribute parsedMessage = null;
+        try {
+          parsedMessage = PARSER.parsePartialFrom(input, extensionRegistry);
+        } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+          parsedMessage = (popeye.proto.Message.Attribute) e.getUnfinishedMessage();
+          throw e;
+        } finally {
+          if (parsedMessage != null) {
+            mergeFrom(parsedMessage);
           }
         }
+        return this;
       }
-      
       private int bitField0_;
-      
+
       // required string name = 1;
       private java.lang.Object name_ = "";
+      /**
+       * <code>required string name = 1;</code>
+       */
       public boolean hasName() {
         return ((bitField0_ & 0x00000001) == 0x00000001);
       }
-      public String getName() {
+      /**
+       * <code>required string name = 1;</code>
+       */
+      public java.lang.String getName() {
         java.lang.Object ref = name_;
-        if (!(ref instanceof String)) {
-          String s = ((com.google.protobuf.ByteString) ref).toStringUtf8();
+        if (!(ref instanceof java.lang.String)) {
+          java.lang.String s = ((com.google.protobuf.ByteString) ref)
+              .toStringUtf8();
           name_ = s;
           return s;
         } else {
-          return (String) ref;
+          return (java.lang.String) ref;
         }
       }
-      public Builder setName(String value) {
+      /**
+       * <code>required string name = 1;</code>
+       */
+      public com.google.protobuf.ByteString
+          getNameBytes() {
+        java.lang.Object ref = name_;
+        if (ref instanceof String) {
+          com.google.protobuf.ByteString b = 
+              com.google.protobuf.ByteString.copyFromUtf8(
+                  (java.lang.String) ref);
+          name_ = b;
+          return b;
+        } else {
+          return (com.google.protobuf.ByteString) ref;
+        }
+      }
+      /**
+       * <code>required string name = 1;</code>
+       */
+      public Builder setName(
+          java.lang.String value) {
         if (value == null) {
     throw new NullPointerException();
   }
@@ -434,34 +543,72 @@ public final class Message {
         onChanged();
         return this;
       }
+      /**
+       * <code>required string name = 1;</code>
+       */
       public Builder clearName() {
         bitField0_ = (bitField0_ & ~0x00000001);
         name_ = getDefaultInstance().getName();
         onChanged();
         return this;
       }
-      void setName(com.google.protobuf.ByteString value) {
-        bitField0_ |= 0x00000001;
+      /**
+       * <code>required string name = 1;</code>
+       */
+      public Builder setNameBytes(
+          com.google.protobuf.ByteString value) {
+        if (value == null) {
+    throw new NullPointerException();
+  }
+  bitField0_ |= 0x00000001;
         name_ = value;
         onChanged();
+        return this;
       }
-      
+
       // required string value = 2;
       private java.lang.Object value_ = "";
+      /**
+       * <code>required string value = 2;</code>
+       */
       public boolean hasValue() {
         return ((bitField0_ & 0x00000002) == 0x00000002);
       }
-      public String getValue() {
+      /**
+       * <code>required string value = 2;</code>
+       */
+      public java.lang.String getValue() {
         java.lang.Object ref = value_;
-        if (!(ref instanceof String)) {
-          String s = ((com.google.protobuf.ByteString) ref).toStringUtf8();
+        if (!(ref instanceof java.lang.String)) {
+          java.lang.String s = ((com.google.protobuf.ByteString) ref)
+              .toStringUtf8();
           value_ = s;
           return s;
         } else {
-          return (String) ref;
+          return (java.lang.String) ref;
         }
       }
-      public Builder setValue(String value) {
+      /**
+       * <code>required string value = 2;</code>
+       */
+      public com.google.protobuf.ByteString
+          getValueBytes() {
+        java.lang.Object ref = value_;
+        if (ref instanceof String) {
+          com.google.protobuf.ByteString b = 
+              com.google.protobuf.ByteString.copyFromUtf8(
+                  (java.lang.String) ref);
+          value_ = b;
+          return b;
+        } else {
+          return (com.google.protobuf.ByteString) ref;
+        }
+      }
+      /**
+       * <code>required string value = 2;</code>
+       */
+      public Builder setValue(
+          java.lang.String value) {
         if (value == null) {
     throw new NullPointerException();
   }
@@ -470,170 +617,362 @@ public final class Message {
         onChanged();
         return this;
       }
+      /**
+       * <code>required string value = 2;</code>
+       */
       public Builder clearValue() {
         bitField0_ = (bitField0_ & ~0x00000002);
         value_ = getDefaultInstance().getValue();
         onChanged();
         return this;
       }
-      void setValue(com.google.protobuf.ByteString value) {
-        bitField0_ |= 0x00000002;
+      /**
+       * <code>required string value = 2;</code>
+       */
+      public Builder setValueBytes(
+          com.google.protobuf.ByteString value) {
+        if (value == null) {
+    throw new NullPointerException();
+  }
+  bitField0_ |= 0x00000002;
         value_ = value;
         onChanged();
+        return this;
       }
-      
+
       // @@protoc_insertion_point(builder_scope:popeye.proto.Attribute)
     }
-    
+
     static {
       defaultInstance = new Attribute(true);
       defaultInstance.initFields();
     }
-    
+
     // @@protoc_insertion_point(class_scope:popeye.proto.Attribute)
   }
-  
+
   public interface PointOrBuilder
       extends com.google.protobuf.MessageOrBuilder {
-    
+
     // required string metric = 1;
+    /**
+     * <code>required string metric = 1;</code>
+     */
     boolean hasMetric();
-    String getMetric();
-    
+    /**
+     * <code>required string metric = 1;</code>
+     */
+    java.lang.String getMetric();
+    /**
+     * <code>required string metric = 1;</code>
+     */
+    com.google.protobuf.ByteString
+        getMetricBytes();
+
     // required int64 timestamp = 2;
+    /**
+     * <code>required int64 timestamp = 2;</code>
+     */
     boolean hasTimestamp();
+    /**
+     * <code>required int64 timestamp = 2;</code>
+     */
     long getTimestamp();
-    
+
     // repeated .popeye.proto.Attribute attributes = 3;
+    /**
+     * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+     */
     java.util.List<popeye.proto.Message.Attribute> 
         getAttributesList();
+    /**
+     * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+     */
     popeye.proto.Message.Attribute getAttributes(int index);
+    /**
+     * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+     */
     int getAttributesCount();
+    /**
+     * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+     */
     java.util.List<? extends popeye.proto.Message.AttributeOrBuilder> 
         getAttributesOrBuilderList();
+    /**
+     * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+     */
     popeye.proto.Message.AttributeOrBuilder getAttributesOrBuilder(
         int index);
-    
+
     // optional int64 int_value = 4;
+    /**
+     * <code>optional int64 int_value = 4;</code>
+     */
     boolean hasIntValue();
+    /**
+     * <code>optional int64 int_value = 4;</code>
+     */
     long getIntValue();
-    
+
     // optional float float_value = 5;
+    /**
+     * <code>optional float float_value = 5;</code>
+     */
     boolean hasFloatValue();
+    /**
+     * <code>optional float float_value = 5;</code>
+     */
     float getFloatValue();
   }
+  /**
+   * Protobuf type {@code popeye.proto.Point}
+   */
   public static final class Point extends
       com.google.protobuf.GeneratedMessage
       implements PointOrBuilder {
     // Use Point.newBuilder() to construct.
-    private Point(Builder builder) {
+    private Point(com.google.protobuf.GeneratedMessage.Builder<?> builder) {
       super(builder);
+      this.unknownFields = builder.getUnknownFields();
     }
-    private Point(boolean noInit) {}
-    
+    private Point(boolean noInit) { this.unknownFields = com.google.protobuf.UnknownFieldSet.getDefaultInstance(); }
+
     private static final Point defaultInstance;
     public static Point getDefaultInstance() {
       return defaultInstance;
     }
-    
+
     public Point getDefaultInstanceForType() {
       return defaultInstance;
     }
-    
+
+    private final com.google.protobuf.UnknownFieldSet unknownFields;
+    @java.lang.Override
+    public final com.google.protobuf.UnknownFieldSet
+        getUnknownFields() {
+      return this.unknownFields;
+    }
+    private Point(
+        com.google.protobuf.CodedInputStream input,
+        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+        throws com.google.protobuf.InvalidProtocolBufferException {
+      initFields();
+      int mutable_bitField0_ = 0;
+      com.google.protobuf.UnknownFieldSet.Builder unknownFields =
+          com.google.protobuf.UnknownFieldSet.newBuilder();
+      try {
+        boolean done = false;
+        while (!done) {
+          int tag = input.readTag();
+          switch (tag) {
+            case 0:
+              done = true;
+              break;
+            default: {
+              if (!parseUnknownField(input, unknownFields,
+                                     extensionRegistry, tag)) {
+                done = true;
+              }
+              break;
+            }
+            case 10: {
+              bitField0_ |= 0x00000001;
+              metric_ = input.readBytes();
+              break;
+            }
+            case 16: {
+              bitField0_ |= 0x00000002;
+              timestamp_ = input.readInt64();
+              break;
+            }
+            case 26: {
+              if (!((mutable_bitField0_ & 0x00000004) == 0x00000004)) {
+                attributes_ = new java.util.ArrayList<popeye.proto.Message.Attribute>();
+                mutable_bitField0_ |= 0x00000004;
+              }
+              attributes_.add(input.readMessage(popeye.proto.Message.Attribute.PARSER, extensionRegistry));
+              break;
+            }
+            case 32: {
+              bitField0_ |= 0x00000004;
+              intValue_ = input.readInt64();
+              break;
+            }
+            case 45: {
+              bitField0_ |= 0x00000008;
+              floatValue_ = input.readFloat();
+              break;
+            }
+          }
+        }
+      } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+        throw e.setUnfinishedMessage(this);
+      } catch (java.io.IOException e) {
+        throw new com.google.protobuf.InvalidProtocolBufferException(
+            e.getMessage()).setUnfinishedMessage(this);
+      } finally {
+        if (((mutable_bitField0_ & 0x00000004) == 0x00000004)) {
+          attributes_ = java.util.Collections.unmodifiableList(attributes_);
+        }
+        this.unknownFields = unknownFields.build();
+        makeExtensionsImmutable();
+      }
+    }
     public static final com.google.protobuf.Descriptors.Descriptor
         getDescriptor() {
       return popeye.proto.Message.internal_static_popeye_proto_Point_descriptor;
     }
-    
+
     protected com.google.protobuf.GeneratedMessage.FieldAccessorTable
         internalGetFieldAccessorTable() {
-      return popeye.proto.Message.internal_static_popeye_proto_Point_fieldAccessorTable;
+      return popeye.proto.Message.internal_static_popeye_proto_Point_fieldAccessorTable
+          .ensureFieldAccessorsInitialized(
+              popeye.proto.Message.Point.class, popeye.proto.Message.Point.Builder.class);
     }
-    
+
+    public static com.google.protobuf.Parser<Point> PARSER =
+        new com.google.protobuf.AbstractParser<Point>() {
+      public Point parsePartialFrom(
+          com.google.protobuf.CodedInputStream input,
+          com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+          throws com.google.protobuf.InvalidProtocolBufferException {
+        return new Point(input, extensionRegistry);
+      }
+    };
+
+    @java.lang.Override
+    public com.google.protobuf.Parser<Point> getParserForType() {
+      return PARSER;
+    }
+
     private int bitField0_;
     // required string metric = 1;
     public static final int METRIC_FIELD_NUMBER = 1;
     private java.lang.Object metric_;
+    /**
+     * <code>required string metric = 1;</code>
+     */
     public boolean hasMetric() {
       return ((bitField0_ & 0x00000001) == 0x00000001);
     }
-    public String getMetric() {
+    /**
+     * <code>required string metric = 1;</code>
+     */
+    public java.lang.String getMetric() {
       java.lang.Object ref = metric_;
-      if (ref instanceof String) {
-        return (String) ref;
+      if (ref instanceof java.lang.String) {
+        return (java.lang.String) ref;
       } else {
         com.google.protobuf.ByteString bs = 
             (com.google.protobuf.ByteString) ref;
-        String s = bs.toStringUtf8();
-        if (com.google.protobuf.Internal.isValidUtf8(bs)) {
+        java.lang.String s = bs.toStringUtf8();
+        if (bs.isValidUtf8()) {
           metric_ = s;
         }
         return s;
       }
     }
-    private com.google.protobuf.ByteString getMetricBytes() {
+    /**
+     * <code>required string metric = 1;</code>
+     */
+    public com.google.protobuf.ByteString
+        getMetricBytes() {
       java.lang.Object ref = metric_;
-      if (ref instanceof String) {
+      if (ref instanceof java.lang.String) {
         com.google.protobuf.ByteString b = 
-            com.google.protobuf.ByteString.copyFromUtf8((String) ref);
+            com.google.protobuf.ByteString.copyFromUtf8(
+                (java.lang.String) ref);
         metric_ = b;
         return b;
       } else {
         return (com.google.protobuf.ByteString) ref;
       }
     }
-    
+
     // required int64 timestamp = 2;
     public static final int TIMESTAMP_FIELD_NUMBER = 2;
     private long timestamp_;
+    /**
+     * <code>required int64 timestamp = 2;</code>
+     */
     public boolean hasTimestamp() {
       return ((bitField0_ & 0x00000002) == 0x00000002);
     }
+    /**
+     * <code>required int64 timestamp = 2;</code>
+     */
     public long getTimestamp() {
       return timestamp_;
     }
-    
+
     // repeated .popeye.proto.Attribute attributes = 3;
     public static final int ATTRIBUTES_FIELD_NUMBER = 3;
     private java.util.List<popeye.proto.Message.Attribute> attributes_;
+    /**
+     * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+     */
     public java.util.List<popeye.proto.Message.Attribute> getAttributesList() {
       return attributes_;
     }
+    /**
+     * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+     */
     public java.util.List<? extends popeye.proto.Message.AttributeOrBuilder> 
         getAttributesOrBuilderList() {
       return attributes_;
     }
+    /**
+     * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+     */
     public int getAttributesCount() {
       return attributes_.size();
     }
+    /**
+     * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+     */
     public popeye.proto.Message.Attribute getAttributes(int index) {
       return attributes_.get(index);
     }
+    /**
+     * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+     */
     public popeye.proto.Message.AttributeOrBuilder getAttributesOrBuilder(
         int index) {
       return attributes_.get(index);
     }
-    
+
     // optional int64 int_value = 4;
     public static final int INT_VALUE_FIELD_NUMBER = 4;
     private long intValue_;
+    /**
+     * <code>optional int64 int_value = 4;</code>
+     */
     public boolean hasIntValue() {
       return ((bitField0_ & 0x00000004) == 0x00000004);
     }
+    /**
+     * <code>optional int64 int_value = 4;</code>
+     */
     public long getIntValue() {
       return intValue_;
     }
-    
+
     // optional float float_value = 5;
     public static final int FLOAT_VALUE_FIELD_NUMBER = 5;
     private float floatValue_;
+    /**
+     * <code>optional float float_value = 5;</code>
+     */
     public boolean hasFloatValue() {
       return ((bitField0_ & 0x00000008) == 0x00000008);
     }
+    /**
+     * <code>optional float float_value = 5;</code>
+     */
     public float getFloatValue() {
       return floatValue_;
     }
-    
+
     private void initFields() {
       metric_ = "";
       timestamp_ = 0L;
@@ -645,7 +984,7 @@ public final class Message {
     public final boolean isInitialized() {
       byte isInitialized = memoizedIsInitialized;
       if (isInitialized != -1) return isInitialized == 1;
-      
+
       if (!hasMetric()) {
         memoizedIsInitialized = 0;
         return false;
@@ -663,7 +1002,7 @@ public final class Message {
       memoizedIsInitialized = 1;
       return true;
     }
-    
+
     public void writeTo(com.google.protobuf.CodedOutputStream output)
                         throws java.io.IOException {
       getSerializedSize();
@@ -684,12 +1023,12 @@ public final class Message {
       }
       getUnknownFields().writeTo(output);
     }
-    
+
     private int memoizedSerializedSize = -1;
     public int getSerializedSize() {
       int size = memoizedSerializedSize;
       if (size != -1) return size;
-    
+
       size = 0;
       if (((bitField0_ & 0x00000001) == 0x00000001)) {
         size += com.google.protobuf.CodedOutputStream
@@ -715,94 +1054,83 @@ public final class Message {
       memoizedSerializedSize = size;
       return size;
     }
-    
+
     private static final long serialVersionUID = 0L;
     @java.lang.Override
     protected java.lang.Object writeReplace()
         throws java.io.ObjectStreamException {
       return super.writeReplace();
     }
-    
+
     public static popeye.proto.Message.Point parseFrom(
         com.google.protobuf.ByteString data)
         throws com.google.protobuf.InvalidProtocolBufferException {
-      return newBuilder().mergeFrom(data).buildParsed();
+      return PARSER.parseFrom(data);
     }
     public static popeye.proto.Message.Point parseFrom(
         com.google.protobuf.ByteString data,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
         throws com.google.protobuf.InvalidProtocolBufferException {
-      return newBuilder().mergeFrom(data, extensionRegistry)
-               .buildParsed();
+      return PARSER.parseFrom(data, extensionRegistry);
     }
     public static popeye.proto.Message.Point parseFrom(byte[] data)
         throws com.google.protobuf.InvalidProtocolBufferException {
-      return newBuilder().mergeFrom(data).buildParsed();
+      return PARSER.parseFrom(data);
     }
     public static popeye.proto.Message.Point parseFrom(
         byte[] data,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
         throws com.google.protobuf.InvalidProtocolBufferException {
-      return newBuilder().mergeFrom(data, extensionRegistry)
-               .buildParsed();
+      return PARSER.parseFrom(data, extensionRegistry);
     }
     public static popeye.proto.Message.Point parseFrom(java.io.InputStream input)
         throws java.io.IOException {
-      return newBuilder().mergeFrom(input).buildParsed();
+      return PARSER.parseFrom(input);
     }
     public static popeye.proto.Message.Point parseFrom(
         java.io.InputStream input,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
         throws java.io.IOException {
-      return newBuilder().mergeFrom(input, extensionRegistry)
-               .buildParsed();
+      return PARSER.parseFrom(input, extensionRegistry);
     }
     public static popeye.proto.Message.Point parseDelimitedFrom(java.io.InputStream input)
         throws java.io.IOException {
-      Builder builder = newBuilder();
-      if (builder.mergeDelimitedFrom(input)) {
-        return builder.buildParsed();
-      } else {
-        return null;
-      }
+      return PARSER.parseDelimitedFrom(input);
     }
     public static popeye.proto.Message.Point parseDelimitedFrom(
         java.io.InputStream input,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
         throws java.io.IOException {
-      Builder builder = newBuilder();
-      if (builder.mergeDelimitedFrom(input, extensionRegistry)) {
-        return builder.buildParsed();
-      } else {
-        return null;
-      }
+      return PARSER.parseDelimitedFrom(input, extensionRegistry);
     }
     public static popeye.proto.Message.Point parseFrom(
         com.google.protobuf.CodedInputStream input)
         throws java.io.IOException {
-      return newBuilder().mergeFrom(input).buildParsed();
+      return PARSER.parseFrom(input);
     }
     public static popeye.proto.Message.Point parseFrom(
         com.google.protobuf.CodedInputStream input,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
         throws java.io.IOException {
-      return newBuilder().mergeFrom(input, extensionRegistry)
-               .buildParsed();
+      return PARSER.parseFrom(input, extensionRegistry);
     }
-    
+
     public static Builder newBuilder() { return Builder.create(); }
     public Builder newBuilderForType() { return newBuilder(); }
     public static Builder newBuilder(popeye.proto.Message.Point prototype) {
       return newBuilder().mergeFrom(prototype);
     }
     public Builder toBuilder() { return newBuilder(this); }
-    
+
     @java.lang.Override
     protected Builder newBuilderForType(
         com.google.protobuf.GeneratedMessage.BuilderParent parent) {
       Builder builder = new Builder(parent);
       return builder;
     }
+    /**
+     * Protobuf type {@code popeye.proto.Point}
+     */
     public static final class Builder extends
         com.google.protobuf.GeneratedMessage.Builder<Builder>
        implements popeye.proto.Message.PointOrBuilder {
@@ -810,18 +1138,21 @@ public final class Message {
           getDescriptor() {
         return popeye.proto.Message.internal_static_popeye_proto_Point_descriptor;
       }
-      
+
       protected com.google.protobuf.GeneratedMessage.FieldAccessorTable
           internalGetFieldAccessorTable() {
-        return popeye.proto.Message.internal_static_popeye_proto_Point_fieldAccessorTable;
+        return popeye.proto.Message.internal_static_popeye_proto_Point_fieldAccessorTable
+            .ensureFieldAccessorsInitialized(
+                popeye.proto.Message.Point.class, popeye.proto.Message.Point.Builder.class);
       }
-      
+
       // Construct using popeye.proto.Message.Point.newBuilder()
       private Builder() {
         maybeForceBuilderInitialization();
       }
-      
-      private Builder(BuilderParent parent) {
+
+      private Builder(
+          com.google.protobuf.GeneratedMessage.BuilderParent parent) {
         super(parent);
         maybeForceBuilderInitialization();
       }
@@ -833,7 +1164,7 @@ public final class Message {
       private static Builder create() {
         return new Builder();
       }
-      
+
       public Builder clear() {
         super.clear();
         metric_ = "";
@@ -852,20 +1183,20 @@ public final class Message {
         bitField0_ = (bitField0_ & ~0x00000010);
         return this;
       }
-      
+
       public Builder clone() {
         return create().mergeFrom(buildPartial());
       }
-      
+
       public com.google.protobuf.Descriptors.Descriptor
           getDescriptorForType() {
-        return popeye.proto.Message.Point.getDescriptor();
+        return popeye.proto.Message.internal_static_popeye_proto_Point_descriptor;
       }
-      
+
       public popeye.proto.Message.Point getDefaultInstanceForType() {
         return popeye.proto.Message.Point.getDefaultInstance();
       }
-      
+
       public popeye.proto.Message.Point build() {
         popeye.proto.Message.Point result = buildPartial();
         if (!result.isInitialized()) {
@@ -873,17 +1204,7 @@ public final class Message {
         }
         return result;
       }
-      
-      private popeye.proto.Message.Point buildParsed()
-          throws com.google.protobuf.InvalidProtocolBufferException {
-        popeye.proto.Message.Point result = buildPartial();
-        if (!result.isInitialized()) {
-          throw newUninitializedMessageException(
-            result).asInvalidProtocolBufferException();
-        }
-        return result;
-      }
-      
+
       public popeye.proto.Message.Point buildPartial() {
         popeye.proto.Message.Point result = new popeye.proto.Message.Point(this);
         int from_bitField0_ = bitField0_;
@@ -917,7 +1238,7 @@ public final class Message {
         onBuilt();
         return result;
       }
-      
+
       public Builder mergeFrom(com.google.protobuf.Message other) {
         if (other instanceof popeye.proto.Message.Point) {
           return mergeFrom((popeye.proto.Message.Point)other);
@@ -926,11 +1247,13 @@ public final class Message {
           return this;
         }
       }
-      
+
       public Builder mergeFrom(popeye.proto.Message.Point other) {
         if (other == popeye.proto.Message.Point.getDefaultInstance()) return this;
         if (other.hasMetric()) {
-          setMetric(other.getMetric());
+          bitField0_ |= 0x00000001;
+          metric_ = other.metric_;
+          onChanged();
         }
         if (other.hasTimestamp()) {
           setTimestamp(other.getTimestamp());
@@ -970,7 +1293,7 @@ public final class Message {
         this.mergeUnknownFields(other.getUnknownFields());
         return this;
       }
-      
+
       public final boolean isInitialized() {
         if (!hasMetric()) {
           
@@ -988,78 +1311,69 @@ public final class Message {
         }
         return true;
       }
-      
+
       public Builder mergeFrom(
           com.google.protobuf.CodedInputStream input,
           com.google.protobuf.ExtensionRegistryLite extensionRegistry)
           throws java.io.IOException {
-        com.google.protobuf.UnknownFieldSet.Builder unknownFields =
-          com.google.protobuf.UnknownFieldSet.newBuilder(
-            this.getUnknownFields());
-        while (true) {
-          int tag = input.readTag();
-          switch (tag) {
-            case 0:
-              this.setUnknownFields(unknownFields.build());
-              onChanged();
-              return this;
-            default: {
-              if (!parseUnknownField(input, unknownFields,
-                                     extensionRegistry, tag)) {
-                this.setUnknownFields(unknownFields.build());
-                onChanged();
-                return this;
-              }
-              break;
-            }
-            case 10: {
-              bitField0_ |= 0x00000001;
-              metric_ = input.readBytes();
-              break;
-            }
-            case 16: {
-              bitField0_ |= 0x00000002;
-              timestamp_ = input.readInt64();
-              break;
-            }
-            case 26: {
-              popeye.proto.Message.Attribute.Builder subBuilder = popeye.proto.Message.Attribute.newBuilder();
-              input.readMessage(subBuilder, extensionRegistry);
-              addAttributes(subBuilder.buildPartial());
-              break;
-            }
-            case 32: {
-              bitField0_ |= 0x00000008;
-              intValue_ = input.readInt64();
-              break;
-            }
-            case 45: {
-              bitField0_ |= 0x00000010;
-              floatValue_ = input.readFloat();
-              break;
-            }
+        popeye.proto.Message.Point parsedMessage = null;
+        try {
+          parsedMessage = PARSER.parsePartialFrom(input, extensionRegistry);
+        } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+          parsedMessage = (popeye.proto.Message.Point) e.getUnfinishedMessage();
+          throw e;
+        } finally {
+          if (parsedMessage != null) {
+            mergeFrom(parsedMessage);
           }
         }
+        return this;
       }
-      
       private int bitField0_;
-      
+
       // required string metric = 1;
       private java.lang.Object metric_ = "";
+      /**
+       * <code>required string metric = 1;</code>
+       */
       public boolean hasMetric() {
         return ((bitField0_ & 0x00000001) == 0x00000001);
       }
-      public String getMetric() {
+      /**
+       * <code>required string metric = 1;</code>
+       */
+      public java.lang.String getMetric() {
         java.lang.Object ref = metric_;
-        if (!(ref instanceof String)) {
-          String s = ((com.google.protobuf.ByteString) ref).toStringUtf8();
+        if (!(ref instanceof java.lang.String)) {
+          java.lang.String s = ((com.google.protobuf.ByteString) ref)
+              .toStringUtf8();
           metric_ = s;
           return s;
         } else {
-          return (String) ref;
+          return (java.lang.String) ref;
         }
       }
-      public Builder setMetric(String value) {
+      /**
+       * <code>required string metric = 1;</code>
+       */
+      public com.google.protobuf.ByteString
+          getMetricBytes() {
+        java.lang.Object ref = metric_;
+        if (ref instanceof String) {
+          com.google.protobuf.ByteString b = 
+              com.google.protobuf.ByteString.copyFromUtf8(
+                  (java.lang.String) ref);
+          metric_ = b;
+          return b;
+        } else {
+          return (com.google.protobuf.ByteString) ref;
+        }
+      }
+      /**
+       * <code>required string metric = 1;</code>
+       */
+      public Builder setMetric(
+          java.lang.String value) {
         if (value == null) {
     throw new NullPointerException();
   }
@@ -1068,39 +1382,62 @@ public final class Message {
         onChanged();
         return this;
       }
+      /**
+       * <code>required string metric = 1;</code>
+       */
       public Builder clearMetric() {
         bitField0_ = (bitField0_ & ~0x00000001);
         metric_ = getDefaultInstance().getMetric();
         onChanged();
         return this;
       }
-      void setMetric(com.google.protobuf.ByteString value) {
-        bitField0_ |= 0x00000001;
+      /**
+       * <code>required string metric = 1;</code>
+       */
+      public Builder setMetricBytes(
+          com.google.protobuf.ByteString value) {
+        if (value == null) {
+    throw new NullPointerException();
+  }
+  bitField0_ |= 0x00000001;
         metric_ = value;
         onChanged();
+        return this;
       }
-      
+
       // required int64 timestamp = 2;
       private long timestamp_ ;
+      /**
+       * <code>required int64 timestamp = 2;</code>
+       */
       public boolean hasTimestamp() {
         return ((bitField0_ & 0x00000002) == 0x00000002);
       }
+      /**
+       * <code>required int64 timestamp = 2;</code>
+       */
       public long getTimestamp() {
         return timestamp_;
       }
+      /**
+       * <code>required int64 timestamp = 2;</code>
+       */
       public Builder setTimestamp(long value) {
         bitField0_ |= 0x00000002;
         timestamp_ = value;
         onChanged();
         return this;
       }
+      /**
+       * <code>required int64 timestamp = 2;</code>
+       */
       public Builder clearTimestamp() {
         bitField0_ = (bitField0_ & ~0x00000002);
         timestamp_ = 0L;
         onChanged();
         return this;
       }
-      
+
       // repeated .popeye.proto.Attribute attributes = 3;
       private java.util.List<popeye.proto.Message.Attribute> attributes_ =
         java.util.Collections.emptyList();
@@ -1110,10 +1447,13 @@ public final class Message {
           bitField0_ |= 0x00000004;
          }
       }
-      
+
       private com.google.protobuf.RepeatedFieldBuilder<
           popeye.proto.Message.Attribute, popeye.proto.Message.Attribute.Builder, popeye.proto.Message.AttributeOrBuilder> attributesBuilder_;
-      
+
+      /**
+       * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+       */
       public java.util.List<popeye.proto.Message.Attribute> getAttributesList() {
         if (attributesBuilder_ == null) {
           return java.util.Collections.unmodifiableList(attributes_);
@@ -1121,6 +1461,9 @@ public final class Message {
           return attributesBuilder_.getMessageList();
         }
       }
+      /**
+       * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+       */
       public int getAttributesCount() {
         if (attributesBuilder_ == null) {
           return attributes_.size();
@@ -1128,6 +1471,9 @@ public final class Message {
           return attributesBuilder_.getCount();
         }
       }
+      /**
+       * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+       */
       public popeye.proto.Message.Attribute getAttributes(int index) {
         if (attributesBuilder_ == null) {
           return attributes_.get(index);
@@ -1135,6 +1481,9 @@ public final class Message {
           return attributesBuilder_.getMessage(index);
         }
       }
+      /**
+       * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+       */
       public Builder setAttributes(
           int index, popeye.proto.Message.Attribute value) {
         if (attributesBuilder_ == null) {
@@ -1149,6 +1498,9 @@ public final class Message {
         }
         return this;
       }
+      /**
+       * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+       */
       public Builder setAttributes(
           int index, popeye.proto.Message.Attribute.Builder builderForValue) {
         if (attributesBuilder_ == null) {
@@ -1160,6 +1512,9 @@ public final class Message {
         }
         return this;
       }
+      /**
+       * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+       */
       public Builder addAttributes(popeye.proto.Message.Attribute value) {
         if (attributesBuilder_ == null) {
           if (value == null) {
@@ -1173,6 +1528,9 @@ public final class Message {
         }
         return this;
       }
+      /**
+       * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+       */
       public Builder addAttributes(
           int index, popeye.proto.Message.Attribute value) {
         if (attributesBuilder_ == null) {
@@ -1187,6 +1545,9 @@ public final class Message {
         }
         return this;
       }
+      /**
+       * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+       */
       public Builder addAttributes(
           popeye.proto.Message.Attribute.Builder builderForValue) {
         if (attributesBuilder_ == null) {
@@ -1198,6 +1559,9 @@ public final class Message {
         }
         return this;
       }
+      /**
+       * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+       */
       public Builder addAttributes(
           int index, popeye.proto.Message.Attribute.Builder builderForValue) {
         if (attributesBuilder_ == null) {
@@ -1209,6 +1573,9 @@ public final class Message {
         }
         return this;
       }
+      /**
+       * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+       */
       public Builder addAllAttributes(
           java.lang.Iterable<? extends popeye.proto.Message.Attribute> values) {
         if (attributesBuilder_ == null) {
@@ -1220,6 +1587,9 @@ public final class Message {
         }
         return this;
       }
+      /**
+       * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+       */
       public Builder clearAttributes() {
         if (attributesBuilder_ == null) {
           attributes_ = java.util.Collections.emptyList();
@@ -1230,6 +1600,9 @@ public final class Message {
         }
         return this;
       }
+      /**
+       * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+       */
       public Builder removeAttributes(int index) {
         if (attributesBuilder_ == null) {
           ensureAttributesIsMutable();
@@ -1240,10 +1613,16 @@ public final class Message {
         }
         return this;
       }
+      /**
+       * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+       */
       public popeye.proto.Message.Attribute.Builder getAttributesBuilder(
           int index) {
         return getAttributesFieldBuilder().getBuilder(index);
       }
+      /**
+       * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+       */
       public popeye.proto.Message.AttributeOrBuilder getAttributesOrBuilder(
           int index) {
         if (attributesBuilder_ == null) {
@@ -1251,6 +1630,9 @@ public final class Message {
           return attributesBuilder_.getMessageOrBuilder(index);
         }
       }
+      /**
+       * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+       */
       public java.util.List<? extends popeye.proto.Message.AttributeOrBuilder> 
            getAttributesOrBuilderList() {
         if (attributesBuilder_ != null) {
@@ -1259,15 +1641,24 @@ public final class Message {
           return java.util.Collections.unmodifiableList(attributes_);
         }
       }
+      /**
+       * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+       */
       public popeye.proto.Message.Attribute.Builder addAttributesBuilder() {
         return getAttributesFieldBuilder().addBuilder(
             popeye.proto.Message.Attribute.getDefaultInstance());
       }
+      /**
+       * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+       */
       public popeye.proto.Message.Attribute.Builder addAttributesBuilder(
           int index) {
         return getAttributesFieldBuilder().addBuilder(
             index, popeye.proto.Message.Attribute.getDefaultInstance());
       }
+      /**
+       * <code>repeated .popeye.proto.Attribute attributes = 3;</code>
+       */
       public java.util.List<popeye.proto.Message.Attribute.Builder> 
            getAttributesBuilderList() {
         return getAttributesFieldBuilder().getBuilderList();
@@ -1286,137 +1677,281 @@ public final class Message {
         }
         return attributesBuilder_;
       }
-      
+
       // optional int64 int_value = 4;
       private long intValue_ ;
+      /**
+       * <code>optional int64 int_value = 4;</code>
+       */
       public boolean hasIntValue() {
         return ((bitField0_ & 0x00000008) == 0x00000008);
       }
+      /**
+       * <code>optional int64 int_value = 4;</code>
+       */
       public long getIntValue() {
         return intValue_;
       }
+      /**
+       * <code>optional int64 int_value = 4;</code>
+       */
       public Builder setIntValue(long value) {
         bitField0_ |= 0x00000008;
         intValue_ = value;
         onChanged();
         return this;
       }
+      /**
+       * <code>optional int64 int_value = 4;</code>
+       */
       public Builder clearIntValue() {
         bitField0_ = (bitField0_ & ~0x00000008);
         intValue_ = 0L;
         onChanged();
         return this;
       }
-      
+
       // optional float float_value = 5;
       private float floatValue_ ;
+      /**
+       * <code>optional float float_value = 5;</code>
+       */
       public boolean hasFloatValue() {
         return ((bitField0_ & 0x00000010) == 0x00000010);
       }
+      /**
+       * <code>optional float float_value = 5;</code>
+       */
       public float getFloatValue() {
         return floatValue_;
       }
+      /**
+       * <code>optional float float_value = 5;</code>
+       */
       public Builder setFloatValue(float value) {
         bitField0_ |= 0x00000010;
         floatValue_ = value;
         onChanged();
         return this;
       }
+      /**
+       * <code>optional float float_value = 5;</code>
+       */
       public Builder clearFloatValue() {
         bitField0_ = (bitField0_ & ~0x00000010);
         floatValue_ = 0F;
         onChanged();
         return this;
       }
-      
+
       // @@protoc_insertion_point(builder_scope:popeye.proto.Point)
     }
-    
+
     static {
       defaultInstance = new Point(true);
       defaultInstance.initFields();
     }
-    
+
     // @@protoc_insertion_point(class_scope:popeye.proto.Point)
   }
-  
+
   public interface BatchOrBuilder
       extends com.google.protobuf.MessageOrBuilder {
-    
+
     // repeated .popeye.proto.Point point = 1;
+    /**
+     * <code>repeated .popeye.proto.Point point = 1;</code>
+     */
     java.util.List<popeye.proto.Message.Point> 
         getPointList();
+    /**
+     * <code>repeated .popeye.proto.Point point = 1;</code>
+     */
     popeye.proto.Message.Point getPoint(int index);
+    /**
+     * <code>repeated .popeye.proto.Point point = 1;</code>
+     */
     int getPointCount();
+    /**
+     * <code>repeated .popeye.proto.Point point = 1;</code>
+     */
     java.util.List<? extends popeye.proto.Message.PointOrBuilder> 
         getPointOrBuilderList();
+    /**
+     * <code>repeated .popeye.proto.Point point = 1;</code>
+     */
     popeye.proto.Message.PointOrBuilder getPointOrBuilder(
         int index);
-    
+
     // optional int64 correlation = 2;
+    /**
+     * <code>optional int64 correlation = 2;</code>
+     */
     boolean hasCorrelation();
+    /**
+     * <code>optional int64 correlation = 2;</code>
+     */
     long getCorrelation();
   }
+  /**
+   * Protobuf type {@code popeye.proto.Batch}
+   */
   public static final class Batch extends
       com.google.protobuf.GeneratedMessage
       implements BatchOrBuilder {
     // Use Batch.newBuilder() to construct.
-    private Batch(Builder builder) {
+    private Batch(com.google.protobuf.GeneratedMessage.Builder<?> builder) {
       super(builder);
+      this.unknownFields = builder.getUnknownFields();
     }
-    private Batch(boolean noInit) {}
-    
+    private Batch(boolean noInit) { this.unknownFields = com.google.protobuf.UnknownFieldSet.getDefaultInstance(); }
+
     private static final Batch defaultInstance;
     public static Batch getDefaultInstance() {
       return defaultInstance;
     }
-    
+
     public Batch getDefaultInstanceForType() {
       return defaultInstance;
     }
-    
+
+    private final com.google.protobuf.UnknownFieldSet unknownFields;
+    @java.lang.Override
+    public final com.google.protobuf.UnknownFieldSet
+        getUnknownFields() {
+      return this.unknownFields;
+    }
+    private Batch(
+        com.google.protobuf.CodedInputStream input,
+        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+        throws com.google.protobuf.InvalidProtocolBufferException {
+      initFields();
+      int mutable_bitField0_ = 0;
+      com.google.protobuf.UnknownFieldSet.Builder unknownFields =
+          com.google.protobuf.UnknownFieldSet.newBuilder();
+      try {
+        boolean done = false;
+        while (!done) {
+          int tag = input.readTag();
+          switch (tag) {
+            case 0:
+              done = true;
+              break;
+            default: {
+              if (!parseUnknownField(input, unknownFields,
+                                     extensionRegistry, tag)) {
+                done = true;
+              }
+              break;
+            }
+            case 10: {
+              if (!((mutable_bitField0_ & 0x00000001) == 0x00000001)) {
+                point_ = new java.util.ArrayList<popeye.proto.Message.Point>();
+                mutable_bitField0_ |= 0x00000001;
+              }
+              point_.add(input.readMessage(popeye.proto.Message.Point.PARSER, extensionRegistry));
+              break;
+            }
+            case 16: {
+              bitField0_ |= 0x00000001;
+              correlation_ = input.readInt64();
+              break;
+            }
+          }
+        }
+      } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+        throw e.setUnfinishedMessage(this);
+      } catch (java.io.IOException e) {
+        throw new com.google.protobuf.InvalidProtocolBufferException(
+            e.getMessage()).setUnfinishedMessage(this);
+      } finally {
+        if (((mutable_bitField0_ & 0x00000001) == 0x00000001)) {
+          point_ = java.util.Collections.unmodifiableList(point_);
+        }
+        this.unknownFields = unknownFields.build();
+        makeExtensionsImmutable();
+      }
+    }
     public static final com.google.protobuf.Descriptors.Descriptor
         getDescriptor() {
       return popeye.proto.Message.internal_static_popeye_proto_Batch_descriptor;
     }
-    
+
     protected com.google.protobuf.GeneratedMessage.FieldAccessorTable
         internalGetFieldAccessorTable() {
-      return popeye.proto.Message.internal_static_popeye_proto_Batch_fieldAccessorTable;
+      return popeye.proto.Message.internal_static_popeye_proto_Batch_fieldAccessorTable
+          .ensureFieldAccessorsInitialized(
+              popeye.proto.Message.Batch.class, popeye.proto.Message.Batch.Builder.class);
     }
-    
+
+    public static com.google.protobuf.Parser<Batch> PARSER =
+        new com.google.protobuf.AbstractParser<Batch>() {
+      public Batch parsePartialFrom(
+          com.google.protobuf.CodedInputStream input,
+          com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+          throws com.google.protobuf.InvalidProtocolBufferException {
+        return new Batch(input, extensionRegistry);
+      }
+    };
+
+    @java.lang.Override
+    public com.google.protobuf.Parser<Batch> getParserForType() {
+      return PARSER;
+    }
+
     private int bitField0_;
     // repeated .popeye.proto.Point point = 1;
     public static final int POINT_FIELD_NUMBER = 1;
     private java.util.List<popeye.proto.Message.Point> point_;
+    /**
+     * <code>repeated .popeye.proto.Point point = 1;</code>
+     */
     public java.util.List<popeye.proto.Message.Point> getPointList() {
       return point_;
     }
+    /**
+     * <code>repeated .popeye.proto.Point point = 1;</code>
+     */
     public java.util.List<? extends popeye.proto.Message.PointOrBuilder> 
         getPointOrBuilderList() {
       return point_;
     }
+    /**
+     * <code>repeated .popeye.proto.Point point = 1;</code>
+     */
     public int getPointCount() {
       return point_.size();
     }
+    /**
+     * <code>repeated .popeye.proto.Point point = 1;</code>
+     */
     public popeye.proto.Message.Point getPoint(int index) {
       return point_.get(index);
     }
+    /**
+     * <code>repeated .popeye.proto.Point point = 1;</code>
+     */
     public popeye.proto.Message.PointOrBuilder getPointOrBuilder(
         int index) {
       return point_.get(index);
     }
-    
+
     // optional int64 correlation = 2;
     public static final int CORRELATION_FIELD_NUMBER = 2;
     private long correlation_;
+    /**
+     * <code>optional int64 correlation = 2;</code>
+     */
     public boolean hasCorrelation() {
       return ((bitField0_ & 0x00000001) == 0x00000001);
     }
+    /**
+     * <code>optional int64 correlation = 2;</code>
+     */
     public long getCorrelation() {
       return correlation_;
     }
-    
+
     private void initFields() {
       point_ = java.util.Collections.emptyList();
       correlation_ = 0L;
@@ -1425,7 +1960,7 @@ public final class Message {
     public final boolean isInitialized() {
       byte isInitialized = memoizedIsInitialized;
       if (isInitialized != -1) return isInitialized == 1;
-      
+
       for (int i = 0; i < getPointCount(); i++) {
         if (!getPoint(i).isInitialized()) {
           memoizedIsInitialized = 0;
@@ -1435,7 +1970,7 @@ public final class Message {
       memoizedIsInitialized = 1;
       return true;
     }
-    
+
     public void writeTo(com.google.protobuf.CodedOutputStream output)
                         throws java.io.IOException {
       getSerializedSize();
@@ -1447,12 +1982,12 @@ public final class Message {
       }
       getUnknownFields().writeTo(output);
     }
-    
+
     private int memoizedSerializedSize = -1;
     public int getSerializedSize() {
       int size = memoizedSerializedSize;
       if (size != -1) return size;
-    
+
       size = 0;
       for (int i = 0; i < point_.size(); i++) {
         size += com.google.protobuf.CodedOutputStream
@@ -1466,94 +2001,83 @@ public final class Message {
       memoizedSerializedSize = size;
       return size;
     }
-    
+
     private static final long serialVersionUID = 0L;
     @java.lang.Override
     protected java.lang.Object writeReplace()
         throws java.io.ObjectStreamException {
       return super.writeReplace();
     }
-    
+
     public static popeye.proto.Message.Batch parseFrom(
         com.google.protobuf.ByteString data)
         throws com.google.protobuf.InvalidProtocolBufferException {
-      return newBuilder().mergeFrom(data).buildParsed();
+      return PARSER.parseFrom(data);
     }
     public static popeye.proto.Message.Batch parseFrom(
         com.google.protobuf.ByteString data,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
         throws com.google.protobuf.InvalidProtocolBufferException {
-      return newBuilder().mergeFrom(data, extensionRegistry)
-               .buildParsed();
+      return PARSER.parseFrom(data, extensionRegistry);
     }
     public static popeye.proto.Message.Batch parseFrom(byte[] data)
         throws com.google.protobuf.InvalidProtocolBufferException {
-      return newBuilder().mergeFrom(data).buildParsed();
+      return PARSER.parseFrom(data);
     }
     public static popeye.proto.Message.Batch parseFrom(
         byte[] data,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
         throws com.google.protobuf.InvalidProtocolBufferException {
-      return newBuilder().mergeFrom(data, extensionRegistry)
-               .buildParsed();
+      return PARSER.parseFrom(data, extensionRegistry);
     }
     public static popeye.proto.Message.Batch parseFrom(java.io.InputStream input)
         throws java.io.IOException {
-      return newBuilder().mergeFrom(input).buildParsed();
+      return PARSER.parseFrom(input);
     }
     public static popeye.proto.Message.Batch parseFrom(
         java.io.InputStream input,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
         throws java.io.IOException {
-      return newBuilder().mergeFrom(input, extensionRegistry)
-               .buildParsed();
+      return PARSER.parseFrom(input, extensionRegistry);
     }
     public static popeye.proto.Message.Batch parseDelimitedFrom(java.io.InputStream input)
         throws java.io.IOException {
-      Builder builder = newBuilder();
-      if (builder.mergeDelimitedFrom(input)) {
-        return builder.buildParsed();
-      } else {
-        return null;
-      }
+      return PARSER.parseDelimitedFrom(input);
     }
     public static popeye.proto.Message.Batch parseDelimitedFrom(
         java.io.InputStream input,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
         throws java.io.IOException {
-      Builder builder = newBuilder();
-      if (builder.mergeDelimitedFrom(input, extensionRegistry)) {
-        return builder.buildParsed();
-      } else {
-        return null;
-      }
+      return PARSER.parseDelimitedFrom(input, extensionRegistry);
     }
     public static popeye.proto.Message.Batch parseFrom(
         com.google.protobuf.CodedInputStream input)
         throws java.io.IOException {
-      return newBuilder().mergeFrom(input).buildParsed();
+      return PARSER.parseFrom(input);
     }
     public static popeye.proto.Message.Batch parseFrom(
         com.google.protobuf.CodedInputStream input,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
         throws java.io.IOException {
-      return newBuilder().mergeFrom(input, extensionRegistry)
-               .buildParsed();
+      return PARSER.parseFrom(input, extensionRegistry);
     }
-    
+
     public static Builder newBuilder() { return Builder.create(); }
     public Builder newBuilderForType() { return newBuilder(); }
     public static Builder newBuilder(popeye.proto.Message.Batch prototype) {
       return newBuilder().mergeFrom(prototype);
     }
     public Builder toBuilder() { return newBuilder(this); }
-    
+
     @java.lang.Override
     protected Builder newBuilderForType(
         com.google.protobuf.GeneratedMessage.BuilderParent parent) {
       Builder builder = new Builder(parent);
       return builder;
     }
+    /**
+     * Protobuf type {@code popeye.proto.Batch}
+     */
     public static final class Builder extends
         com.google.protobuf.GeneratedMessage.Builder<Builder>
        implements popeye.proto.Message.BatchOrBuilder {
@@ -1561,18 +2085,21 @@ public final class Message {
           getDescriptor() {
         return popeye.proto.Message.internal_static_popeye_proto_Batch_descriptor;
       }
-      
+
       protected com.google.protobuf.GeneratedMessage.FieldAccessorTable
           internalGetFieldAccessorTable() {
-        return popeye.proto.Message.internal_static_popeye_proto_Batch_fieldAccessorTable;
+        return popeye.proto.Message.internal_static_popeye_proto_Batch_fieldAccessorTable
+            .ensureFieldAccessorsInitialized(
+                popeye.proto.Message.Batch.class, popeye.proto.Message.Batch.Builder.class);
       }
-      
+
       // Construct using popeye.proto.Message.Batch.newBuilder()
       private Builder() {
         maybeForceBuilderInitialization();
       }
-      
-      private Builder(BuilderParent parent) {
+
+      private Builder(
+          com.google.protobuf.GeneratedMessage.BuilderParent parent) {
         super(parent);
         maybeForceBuilderInitialization();
       }
@@ -1584,7 +2111,7 @@ public final class Message {
       private static Builder create() {
         return new Builder();
       }
-      
+
       public Builder clear() {
         super.clear();
         if (pointBuilder_ == null) {
@@ -1597,20 +2124,20 @@ public final class Message {
         bitField0_ = (bitField0_ & ~0x00000002);
         return this;
       }
-      
+
       public Builder clone() {
         return create().mergeFrom(buildPartial());
       }
-      
+
       public com.google.protobuf.Descriptors.Descriptor
           getDescriptorForType() {
-        return popeye.proto.Message.Batch.getDescriptor();
+        return popeye.proto.Message.internal_static_popeye_proto_Batch_descriptor;
       }
-      
+
       public popeye.proto.Message.Batch getDefaultInstanceForType() {
         return popeye.proto.Message.Batch.getDefaultInstance();
       }
-      
+
       public popeye.proto.Message.Batch build() {
         popeye.proto.Message.Batch result = buildPartial();
         if (!result.isInitialized()) {
@@ -1618,17 +2145,7 @@ public final class Message {
         }
         return result;
       }
-      
-      private popeye.proto.Message.Batch buildParsed()
-          throws com.google.protobuf.InvalidProtocolBufferException {
-        popeye.proto.Message.Batch result = buildPartial();
-        if (!result.isInitialized()) {
-          throw newUninitializedMessageException(
-            result).asInvalidProtocolBufferException();
-        }
-        return result;
-      }
-      
+
       public popeye.proto.Message.Batch buildPartial() {
         popeye.proto.Message.Batch result = new popeye.proto.Message.Batch(this);
         int from_bitField0_ = bitField0_;
@@ -1650,7 +2167,7 @@ public final class Message {
         onBuilt();
         return result;
       }
-      
+
       public Builder mergeFrom(com.google.protobuf.Message other) {
         if (other instanceof popeye.proto.Message.Batch) {
           return mergeFrom((popeye.proto.Message.Batch)other);
@@ -1659,7 +2176,7 @@ public final class Message {
           return this;
         }
       }
-      
+
       public Builder mergeFrom(popeye.proto.Message.Batch other) {
         if (other == popeye.proto.Message.Batch.getDefaultInstance()) return this;
         if (pointBuilder_ == null) {
@@ -1694,7 +2211,7 @@ public final class Message {
         this.mergeUnknownFields(other.getUnknownFields());
         return this;
       }
-      
+
       public final boolean isInitialized() {
         for (int i = 0; i < getPointCount(); i++) {
           if (!getPoint(i).isInitialized()) {
@@ -1704,47 +2221,26 @@ public final class Message {
         }
         return true;
       }
-      
+
       public Builder mergeFrom(
           com.google.protobuf.CodedInputStream input,
           com.google.protobuf.ExtensionRegistryLite extensionRegistry)
           throws java.io.IOException {
-        com.google.protobuf.UnknownFieldSet.Builder unknownFields =
-          com.google.protobuf.UnknownFieldSet.newBuilder(
-            this.getUnknownFields());
-        while (true) {
-          int tag = input.readTag();
-          switch (tag) {
-            case 0:
-              this.setUnknownFields(unknownFields.build());
-              onChanged();
-              return this;
-            default: {
-              if (!parseUnknownField(input, unknownFields,
-                                     extensionRegistry, tag)) {
-                this.setUnknownFields(unknownFields.build());
-                onChanged();
-                return this;
-              }
-              break;
-            }
-            case 10: {
-              popeye.proto.Message.Point.Builder subBuilder = popeye.proto.Message.Point.newBuilder();
-              input.readMessage(subBuilder, extensionRegistry);
-              addPoint(subBuilder.buildPartial());
-              break;
-            }
-            case 16: {
-              bitField0_ |= 0x00000002;
-              correlation_ = input.readInt64();
-              break;
-            }
+        popeye.proto.Message.Batch parsedMessage = null;
+        try {
+          parsedMessage = PARSER.parsePartialFrom(input, extensionRegistry);
+        } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+          parsedMessage = (popeye.proto.Message.Batch) e.getUnfinishedMessage();
+          throw e;
+        } finally {
+          if (parsedMessage != null) {
+            mergeFrom(parsedMessage);
           }
         }
+        return this;
       }
-      
       private int bitField0_;
-      
+
       // repeated .popeye.proto.Point point = 1;
       private java.util.List<popeye.proto.Message.Point> point_ =
         java.util.Collections.emptyList();
@@ -1754,10 +2250,13 @@ public final class Message {
           bitField0_ |= 0x00000001;
          }
       }
-      
+
       private com.google.protobuf.RepeatedFieldBuilder<
           popeye.proto.Message.Point, popeye.proto.Message.Point.Builder, popeye.proto.Message.PointOrBuilder> pointBuilder_;
-      
+
+      /**
+       * <code>repeated .popeye.proto.Point point = 1;</code>
+       */
       public java.util.List<popeye.proto.Message.Point> getPointList() {
         if (pointBuilder_ == null) {
           return java.util.Collections.unmodifiableList(point_);
@@ -1765,6 +2264,9 @@ public final class Message {
           return pointBuilder_.getMessageList();
         }
       }
+      /**
+       * <code>repeated .popeye.proto.Point point = 1;</code>
+       */
       public int getPointCount() {
         if (pointBuilder_ == null) {
           return point_.size();
@@ -1772,6 +2274,9 @@ public final class Message {
           return pointBuilder_.getCount();
         }
       }
+      /**
+       * <code>repeated .popeye.proto.Point point = 1;</code>
+       */
       public popeye.proto.Message.Point getPoint(int index) {
         if (pointBuilder_ == null) {
           return point_.get(index);
@@ -1779,6 +2284,9 @@ public final class Message {
           return pointBuilder_.getMessage(index);
         }
       }
+      /**
+       * <code>repeated .popeye.proto.Point point = 1;</code>
+       */
       public Builder setPoint(
           int index, popeye.proto.Message.Point value) {
         if (pointBuilder_ == null) {
@@ -1793,6 +2301,9 @@ public final class Message {
         }
         return this;
       }
+      /**
+       * <code>repeated .popeye.proto.Point point = 1;</code>
+       */
       public Builder setPoint(
           int index, popeye.proto.Message.Point.Builder builderForValue) {
         if (pointBuilder_ == null) {
@@ -1804,6 +2315,9 @@ public final class Message {
         }
         return this;
       }
+      /**
+       * <code>repeated .popeye.proto.Point point = 1;</code>
+       */
       public Builder addPoint(popeye.proto.Message.Point value) {
         if (pointBuilder_ == null) {
           if (value == null) {
@@ -1817,6 +2331,9 @@ public final class Message {
         }
         return this;
       }
+      /**
+       * <code>repeated .popeye.proto.Point point = 1;</code>
+       */
       public Builder addPoint(
           int index, popeye.proto.Message.Point value) {
         if (pointBuilder_ == null) {
@@ -1831,6 +2348,9 @@ public final class Message {
         }
         return this;
       }
+      /**
+       * <code>repeated .popeye.proto.Point point = 1;</code>
+       */
       public Builder addPoint(
           popeye.proto.Message.Point.Builder builderForValue) {
         if (pointBuilder_ == null) {
@@ -1842,6 +2362,9 @@ public final class Message {
         }
         return this;
       }
+      /**
+       * <code>repeated .popeye.proto.Point point = 1;</code>
+       */
       public Builder addPoint(
           int index, popeye.proto.Message.Point.Builder builderForValue) {
         if (pointBuilder_ == null) {
@@ -1853,6 +2376,9 @@ public final class Message {
         }
         return this;
       }
+      /**
+       * <code>repeated .popeye.proto.Point point = 1;</code>
+       */
       public Builder addAllPoint(
           java.lang.Iterable<? extends popeye.proto.Message.Point> values) {
         if (pointBuilder_ == null) {
@@ -1864,6 +2390,9 @@ public final class Message {
         }
         return this;
       }
+      /**
+       * <code>repeated .popeye.proto.Point point = 1;</code>
+       */
       public Builder clearPoint() {
         if (pointBuilder_ == null) {
           point_ = java.util.Collections.emptyList();
@@ -1874,6 +2403,9 @@ public final class Message {
         }
         return this;
       }
+      /**
+       * <code>repeated .popeye.proto.Point point = 1;</code>
+       */
       public Builder removePoint(int index) {
         if (pointBuilder_ == null) {
           ensurePointIsMutable();
@@ -1884,10 +2416,16 @@ public final class Message {
         }
         return this;
       }
+      /**
+       * <code>repeated .popeye.proto.Point point = 1;</code>
+       */
       public popeye.proto.Message.Point.Builder getPointBuilder(
           int index) {
         return getPointFieldBuilder().getBuilder(index);
       }
+      /**
+       * <code>repeated .popeye.proto.Point point = 1;</code>
+       */
       public popeye.proto.Message.PointOrBuilder getPointOrBuilder(
           int index) {
         if (pointBuilder_ == null) {
@@ -1895,6 +2433,9 @@ public final class Message {
           return pointBuilder_.getMessageOrBuilder(index);
         }
       }
+      /**
+       * <code>repeated .popeye.proto.Point point = 1;</code>
+       */
       public java.util.List<? extends popeye.proto.Message.PointOrBuilder> 
            getPointOrBuilderList() {
         if (pointBuilder_ != null) {
@@ -1903,15 +2444,24 @@ public final class Message {
           return java.util.Collections.unmodifiableList(point_);
         }
       }
+      /**
+       * <code>repeated .popeye.proto.Point point = 1;</code>
+       */
       public popeye.proto.Message.Point.Builder addPointBuilder() {
         return getPointFieldBuilder().addBuilder(
             popeye.proto.Message.Point.getDefaultInstance());
       }
+      /**
+       * <code>repeated .popeye.proto.Point point = 1;</code>
+       */
       public popeye.proto.Message.Point.Builder addPointBuilder(
           int index) {
         return getPointFieldBuilder().addBuilder(
             index, popeye.proto.Message.Point.getDefaultInstance());
       }
+      /**
+       * <code>repeated .popeye.proto.Point point = 1;</code>
+       */
       public java.util.List<popeye.proto.Message.Point.Builder> 
            getPointBuilderList() {
         return getPointFieldBuilder().getBuilderList();
@@ -1930,486 +2480,132 @@ public final class Message {
         }
         return pointBuilder_;
       }
-      
+
       // optional int64 correlation = 2;
       private long correlation_ ;
+      /**
+       * <code>optional int64 correlation = 2;</code>
+       */
       public boolean hasCorrelation() {
         return ((bitField0_ & 0x00000002) == 0x00000002);
       }
+      /**
+       * <code>optional int64 correlation = 2;</code>
+       */
       public long getCorrelation() {
         return correlation_;
       }
+      /**
+       * <code>optional int64 correlation = 2;</code>
+       */
       public Builder setCorrelation(long value) {
         bitField0_ |= 0x00000002;
         correlation_ = value;
         onChanged();
         return this;
       }
+      /**
+       * <code>optional int64 correlation = 2;</code>
+       */
       public Builder clearCorrelation() {
         bitField0_ = (bitField0_ & ~0x00000002);
         correlation_ = 0L;
         onChanged();
         return this;
       }
-      
+
       // @@protoc_insertion_point(builder_scope:popeye.proto.Batch)
     }
-    
+
     static {
       defaultInstance = new Batch(true);
       defaultInstance.initFields();
     }
-    
+
     // @@protoc_insertion_point(class_scope:popeye.proto.Batch)
   }
-  
+
   public interface BatchReplyOrBuilder
       extends com.google.protobuf.MessageOrBuilder {
-    
+
     // required int64 correlation = 1;
+    /**
+     * <code>required int64 correlation = 1;</code>
+     */
     boolean hasCorrelation();
+    /**
+     * <code>required int64 correlation = 1;</code>
+     */
     long getCorrelation();
-    
+
     // required int64 batchId = 2;
+    /**
+     * <code>required int64 batchId = 2;</code>
+     */
     boolean hasBatchId();
+    /**
+     * <code>required int64 batchId = 2;</code>
+     */
     long getBatchId();
-    
+
     // required .popeye.proto.BatchReply.Status status = 3;
+    /**
+     * <code>required .popeye.proto.BatchReply.Status status = 3;</code>
+     */
     boolean hasStatus();
+    /**
+     * <code>required .popeye.proto.BatchReply.Status status = 3;</code>
+     */
     popeye.proto.Message.BatchReply.Status getStatus();
   }
+  /**
+   * Protobuf type {@code popeye.proto.BatchReply}
+   */
   public static final class BatchReply extends
       com.google.protobuf.GeneratedMessage
       implements BatchReplyOrBuilder {
     // Use BatchReply.newBuilder() to construct.
-    private BatchReply(Builder builder) {
+    private BatchReply(com.google.protobuf.GeneratedMessage.Builder<?> builder) {
       super(builder);
+      this.unknownFields = builder.getUnknownFields();
     }
-    private BatchReply(boolean noInit) {}
-    
+    private BatchReply(boolean noInit) { this.unknownFields = com.google.protobuf.UnknownFieldSet.getDefaultInstance(); }
+
     private static final BatchReply defaultInstance;
     public static BatchReply getDefaultInstance() {
       return defaultInstance;
     }
-    
+
     public BatchReply getDefaultInstanceForType() {
       return defaultInstance;
     }
-    
-    public static final com.google.protobuf.Descriptors.Descriptor
-        getDescriptor() {
-      return popeye.proto.Message.internal_static_popeye_proto_BatchReply_descriptor;
-    }
-    
-    protected com.google.protobuf.GeneratedMessage.FieldAccessorTable
-        internalGetFieldAccessorTable() {
-      return popeye.proto.Message.internal_static_popeye_proto_BatchReply_fieldAccessorTable;
-    }
-    
-    public enum Status
-        implements com.google.protobuf.ProtocolMessageEnum {
-      OK(0, 1),
-      FAIL(1, 2),
-      ;
-      
-      public static final int OK_VALUE = 1;
-      public static final int FAIL_VALUE = 2;
-      
-      
-      public final int getNumber() { return value; }
-      
-      public static Status valueOf(int value) {
-        switch (value) {
-          case 1: return OK;
-          case 2: return FAIL;
-          default: return null;
-        }
-      }
-      
-      public static com.google.protobuf.Internal.EnumLiteMap<Status>
-          internalGetValueMap() {
-        return internalValueMap;
-      }
-      private static com.google.protobuf.Internal.EnumLiteMap<Status>
-          internalValueMap =
-            new com.google.protobuf.Internal.EnumLiteMap<Status>() {
-              public Status findValueByNumber(int number) {
-                return Status.valueOf(number);
-              }
-            };
-      
-      public final com.google.protobuf.Descriptors.EnumValueDescriptor
-          getValueDescriptor() {
-        return getDescriptor().getValues().get(index);
-      }
-      public final com.google.protobuf.Descriptors.EnumDescriptor
-          getDescriptorForType() {
-        return getDescriptor();
-      }
-      public static final com.google.protobuf.Descriptors.EnumDescriptor
-          getDescriptor() {
-        return popeye.proto.Message.BatchReply.getDescriptor().getEnumTypes().get(0);
-      }
-      
-      private static final Status[] VALUES = {
-        OK, FAIL, 
-      };
-      
-      public static Status valueOf(
-          com.google.protobuf.Descriptors.EnumValueDescriptor desc) {
-        if (desc.getType() != getDescriptor()) {
-          throw new java.lang.IllegalArgumentException(
-            "EnumValueDescriptor is not for this type.");
-        }
-        return VALUES[desc.getIndex()];
-      }
-      
-      private final int index;
-      private final int value;
-      
-      private Status(int index, int value) {
-        this.index = index;
-        this.value = value;
-      }
-      
-      // @@protoc_insertion_point(enum_scope:popeye.proto.BatchReply.Status)
-    }
-    
-    private int bitField0_;
-    // required int64 correlation = 1;
-    public static final int CORRELATION_FIELD_NUMBER = 1;
-    private long correlation_;
-    public boolean hasCorrelation() {
-      return ((bitField0_ & 0x00000001) == 0x00000001);
-    }
-    public long getCorrelation() {
-      return correlation_;
-    }
-    
-    // required int64 batchId = 2;
-    public static final int BATCHID_FIELD_NUMBER = 2;
-    private long batchId_;
-    public boolean hasBatchId() {
-      return ((bitField0_ & 0x00000002) == 0x00000002);
-    }
-    public long getBatchId() {
-      return batchId_;
-    }
-    
-    // required .popeye.proto.BatchReply.Status status = 3;
-    public static final int STATUS_FIELD_NUMBER = 3;
-    private popeye.proto.Message.BatchReply.Status status_;
-    public boolean hasStatus() {
-      return ((bitField0_ & 0x00000004) == 0x00000004);
-    }
-    public popeye.proto.Message.BatchReply.Status getStatus() {
-      return status_;
-    }
-    
-    private void initFields() {
-      correlation_ = 0L;
-      batchId_ = 0L;
-      status_ = popeye.proto.Message.BatchReply.Status.OK;
-    }
-    private byte memoizedIsInitialized = -1;
-    public final boolean isInitialized() {
-      byte isInitialized = memoizedIsInitialized;
-      if (isInitialized != -1) return isInitialized == 1;
-      
-      if (!hasCorrelation()) {
-        memoizedIsInitialized = 0;
-        return false;
-      }
-      if (!hasBatchId()) {
-        memoizedIsInitialized = 0;
-        return false;
-      }
-      if (!hasStatus()) {
-        memoizedIsInitialized = 0;
-        return false;
-      }
-      memoizedIsInitialized = 1;
-      return true;
-    }
-    
-    public void writeTo(com.google.protobuf.CodedOutputStream output)
-                        throws java.io.IOException {
-      getSerializedSize();
-      if (((bitField0_ & 0x00000001) == 0x00000001)) {
-        output.writeInt64(1, correlation_);
-      }
-      if (((bitField0_ & 0x00000002) == 0x00000002)) {
-        output.writeInt64(2, batchId_);
-      }
-      if (((bitField0_ & 0x00000004) == 0x00000004)) {
-        output.writeEnum(3, status_.getNumber());
-      }
-      getUnknownFields().writeTo(output);
-    }
-    
-    private int memoizedSerializedSize = -1;
-    public int getSerializedSize() {
-      int size = memoizedSerializedSize;
-      if (size != -1) return size;
-    
-      size = 0;
-      if (((bitField0_ & 0x00000001) == 0x00000001)) {
-        size += com.google.protobuf.CodedOutputStream
-          .computeInt64Size(1, correlation_);
-      }
-      if (((bitField0_ & 0x00000002) == 0x00000002)) {
-        size += com.google.protobuf.CodedOutputStream
-          .computeInt64Size(2, batchId_);
-      }
-      if (((bitField0_ & 0x00000004) == 0x00000004)) {
-        size += com.google.protobuf.CodedOutputStream
-          .computeEnumSize(3, status_.getNumber());
-      }
-      size += getUnknownFields().getSerializedSize();
-      memoizedSerializedSize = size;
-      return size;
-    }
-    
-    private static final long serialVersionUID = 0L;
+
+    private final com.google.protobuf.UnknownFieldSet unknownFields;
     @java.lang.Override
-    protected java.lang.Object writeReplace()
-        throws java.io.ObjectStreamException {
-      return super.writeReplace();
+    public final com.google.protobuf.UnknownFieldSet
+        getUnknownFields() {
+      return this.unknownFields;
     }
-    
-    public static popeye.proto.Message.BatchReply parseFrom(
-        com.google.protobuf.ByteString data)
-        throws com.google.protobuf.InvalidProtocolBufferException {
-      return newBuilder().mergeFrom(data).buildParsed();
-    }
-    public static popeye.proto.Message.BatchReply parseFrom(
-        com.google.protobuf.ByteString data,
-        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-        throws com.google.protobuf.InvalidProtocolBufferException {
-      return newBuilder().mergeFrom(data, extensionRegistry)
-               .buildParsed();
-    }
-    public static popeye.proto.Message.BatchReply parseFrom(byte[] data)
-        throws com.google.protobuf.InvalidProtocolBufferException {
-      return newBuilder().mergeFrom(data).buildParsed();
-    }
-    public static popeye.proto.Message.BatchReply parseFrom(
-        byte[] data,
-        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-        throws com.google.protobuf.InvalidProtocolBufferException {
-      return newBuilder().mergeFrom(data, extensionRegistry)
-               .buildParsed();
-    }
-    public static popeye.proto.Message.BatchReply parseFrom(java.io.InputStream input)
-        throws java.io.IOException {
-      return newBuilder().mergeFrom(input).buildParsed();
-    }
-    public static popeye.proto.Message.BatchReply parseFrom(
-        java.io.InputStream input,
-        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-        throws java.io.IOException {
-      return newBuilder().mergeFrom(input, extensionRegistry)
-               .buildParsed();
-    }
-    public static popeye.proto.Message.BatchReply parseDelimitedFrom(java.io.InputStream input)
-        throws java.io.IOException {
-      Builder builder = newBuilder();
-      if (builder.mergeDelimitedFrom(input)) {
-        return builder.buildParsed();
-      } else {
-        return null;
-      }
-    }
-    public static popeye.proto.Message.BatchReply parseDelimitedFrom(
-        java.io.InputStream input,
-        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-        throws java.io.IOException {
-      Builder builder = newBuilder();
-      if (builder.mergeDelimitedFrom(input, extensionRegistry)) {
-        return builder.buildParsed();
-      } else {
-        return null;
-      }
-    }
-    public static popeye.proto.Message.BatchReply parseFrom(
-        com.google.protobuf.CodedInputStream input)
-        throws java.io.IOException {
-      return newBuilder().mergeFrom(input).buildParsed();
-    }
-    public static popeye.proto.Message.BatchReply parseFrom(
+    private BatchReply(
         com.google.protobuf.CodedInputStream input,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-        throws java.io.IOException {
-      return newBuilder().mergeFrom(input, extensionRegistry)
-               .buildParsed();
-    }
-    
-    public static Builder newBuilder() { return Builder.create(); }
-    public Builder newBuilderForType() { return newBuilder(); }
-    public static Builder newBuilder(popeye.proto.Message.BatchReply prototype) {
-      return newBuilder().mergeFrom(prototype);
-    }
-    public Builder toBuilder() { return newBuilder(this); }
-    
-    @java.lang.Override
-    protected Builder newBuilderForType(
-        com.google.protobuf.GeneratedMessage.BuilderParent parent) {
-      Builder builder = new Builder(parent);
-      return builder;
-    }
-    public static final class Builder extends
-        com.google.protobuf.GeneratedMessage.Builder<Builder>
-       implements popeye.proto.Message.BatchReplyOrBuilder {
-      public static final com.google.protobuf.Descriptors.Descriptor
-          getDescriptor() {
-        return popeye.proto.Message.internal_static_popeye_proto_BatchReply_descriptor;
-      }
-      
-      protected com.google.protobuf.GeneratedMessage.FieldAccessorTable
-          internalGetFieldAccessorTable() {
-        return popeye.proto.Message.internal_static_popeye_proto_BatchReply_fieldAccessorTable;
-      }
-      
-      // Construct using popeye.proto.Message.BatchReply.newBuilder()
-      private Builder() {
-        maybeForceBuilderInitialization();
-      }
-      
-      private Builder(BuilderParent parent) {
-        super(parent);
-        maybeForceBuilderInitialization();
-      }
-      private void maybeForceBuilderInitialization() {
-        if (com.google.protobuf.GeneratedMessage.alwaysUseFieldBuilders) {
-        }
-      }
-      private static Builder create() {
-        return new Builder();
-      }
-      
-      public Builder clear() {
-        super.clear();
-        correlation_ = 0L;
-        bitField0_ = (bitField0_ & ~0x00000001);
-        batchId_ = 0L;
-        bitField0_ = (bitField0_ & ~0x00000002);
-        status_ = popeye.proto.Message.BatchReply.Status.OK;
-        bitField0_ = (bitField0_ & ~0x00000004);
-        return this;
-      }
-      
-      public Builder clone() {
-        return create().mergeFrom(buildPartial());
-      }
-      
-      public com.google.protobuf.Descriptors.Descriptor
-          getDescriptorForType() {
-        return popeye.proto.Message.BatchReply.getDescriptor();
-      }
-      
-      public popeye.proto.Message.BatchReply getDefaultInstanceForType() {
-        return popeye.proto.Message.BatchReply.getDefaultInstance();
-      }
-      
-      public popeye.proto.Message.BatchReply build() {
-        popeye.proto.Message.BatchReply result = buildPartial();
-        if (!result.isInitialized()) {
-          throw newUninitializedMessageException(result);
-        }
-        return result;
-      }
-      
-      private popeye.proto.Message.BatchReply buildParsed()
-          throws com.google.protobuf.InvalidProtocolBufferException {
-        popeye.proto.Message.BatchReply result = buildPartial();
-        if (!result.isInitialized()) {
-          throw newUninitializedMessageException(
-            result).asInvalidProtocolBufferException();
-        }
-        return result;
-      }
-      
-      public popeye.proto.Message.BatchReply buildPartial() {
-        popeye.proto.Message.BatchReply result = new popeye.proto.Message.BatchReply(this);
-        int from_bitField0_ = bitField0_;
-        int to_bitField0_ = 0;
-        if (((from_bitField0_ & 0x00000001) == 0x00000001)) {
-          to_bitField0_ |= 0x00000001;
-        }
-        result.correlation_ = correlation_;
-        if (((from_bitField0_ & 0x00000002) == 0x00000002)) {
-          to_bitField0_ |= 0x00000002;
-        }
-        result.batchId_ = batchId_;
-        if (((from_bitField0_ & 0x00000004) == 0x00000004)) {
-          to_bitField0_ |= 0x00000004;
-        }
-        result.status_ = status_;
-        result.bitField0_ = to_bitField0_;
-        onBuilt();
-        return result;
-      }
-      
-      public Builder mergeFrom(com.google.protobuf.Message other) {
-        if (other instanceof popeye.proto.Message.BatchReply) {
-          return mergeFrom((popeye.proto.Message.BatchReply)other);
-        } else {
-          super.mergeFrom(other);
-          return this;
-        }
-      }
-      
-      public Builder mergeFrom(popeye.proto.Message.BatchReply other) {
-        if (other == popeye.proto.Message.BatchReply.getDefaultInstance()) return this;
-        if (other.hasCorrelation()) {
-          setCorrelation(other.getCorrelation());
-        }
-        if (other.hasBatchId()) {
-          setBatchId(other.getBatchId());
-        }
-        if (other.hasStatus()) {
-          setStatus(other.getStatus());
-        }
-        this.mergeUnknownFields(other.getUnknownFields());
-        return this;
-      }
-      
-      public final boolean isInitialized() {
-        if (!hasCorrelation()) {
-          
-          return false;
-        }
-        if (!hasBatchId()) {
-          
-          return false;
-        }
-        if (!hasStatus()) {
-          
-          return false;
-        }
-        return true;
-      }
-      
-      public Builder mergeFrom(
-          com.google.protobuf.CodedInputStream input,
-          com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-          throws java.io.IOException {
-        com.google.protobuf.UnknownFieldSet.Builder unknownFields =
-          com.google.protobuf.UnknownFieldSet.newBuilder(
-            this.getUnknownFields());
-        while (true) {
+        throws com.google.protobuf.InvalidProtocolBufferException {
+      initFields();
+      int mutable_bitField0_ = 0;
+      com.google.protobuf.UnknownFieldSet.Builder unknownFields =
+          com.google.protobuf.UnknownFieldSet.newBuilder();
+      try {
+        boolean done = false;
+        while (!done) {
           int tag = input.readTag();
           switch (tag) {
             case 0:
-              this.setUnknownFields(unknownFields.build());
-              onChanged();
-              return this;
+              done = true;
+              break;
             default: {
               if (!parseUnknownField(input, unknownFields,
                                      extensionRegistry, tag)) {
-                this.setUnknownFields(unknownFields.build());
-                onChanged();
-                return this;
+                done = true;
               }
               break;
             }
@@ -2436,60 +2632,542 @@ public final class Message {
             }
           }
         }
+      } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+        throw e.setUnfinishedMessage(this);
+      } catch (java.io.IOException e) {
+        throw new com.google.protobuf.InvalidProtocolBufferException(
+            e.getMessage()).setUnfinishedMessage(this);
+      } finally {
+        this.unknownFields = unknownFields.build();
+        makeExtensionsImmutable();
       }
-      
+    }
+    public static final com.google.protobuf.Descriptors.Descriptor
+        getDescriptor() {
+      return popeye.proto.Message.internal_static_popeye_proto_BatchReply_descriptor;
+    }
+
+    protected com.google.protobuf.GeneratedMessage.FieldAccessorTable
+        internalGetFieldAccessorTable() {
+      return popeye.proto.Message.internal_static_popeye_proto_BatchReply_fieldAccessorTable
+          .ensureFieldAccessorsInitialized(
+              popeye.proto.Message.BatchReply.class, popeye.proto.Message.BatchReply.Builder.class);
+    }
+
+    public static com.google.protobuf.Parser<BatchReply> PARSER =
+        new com.google.protobuf.AbstractParser<BatchReply>() {
+      public BatchReply parsePartialFrom(
+          com.google.protobuf.CodedInputStream input,
+          com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+          throws com.google.protobuf.InvalidProtocolBufferException {
+        return new BatchReply(input, extensionRegistry);
+      }
+    };
+
+    @java.lang.Override
+    public com.google.protobuf.Parser<BatchReply> getParserForType() {
+      return PARSER;
+    }
+
+    /**
+     * Protobuf enum {@code popeye.proto.BatchReply.Status}
+     */
+    public enum Status
+        implements com.google.protobuf.ProtocolMessageEnum {
+      /**
+       * <code>OK = 1;</code>
+       */
+      OK(0, 1),
+      /**
+       * <code>FAIL = 2;</code>
+       */
+      FAIL(1, 2),
+      ;
+
+      /**
+       * <code>OK = 1;</code>
+       */
+      public static final int OK_VALUE = 1;
+      /**
+       * <code>FAIL = 2;</code>
+       */
+      public static final int FAIL_VALUE = 2;
+
+
+      public final int getNumber() { return value; }
+
+      public static Status valueOf(int value) {
+        switch (value) {
+          case 1: return OK;
+          case 2: return FAIL;
+          default: return null;
+        }
+      }
+
+      public static com.google.protobuf.Internal.EnumLiteMap<Status>
+          internalGetValueMap() {
+        return internalValueMap;
+      }
+      private static com.google.protobuf.Internal.EnumLiteMap<Status>
+          internalValueMap =
+            new com.google.protobuf.Internal.EnumLiteMap<Status>() {
+              public Status findValueByNumber(int number) {
+                return Status.valueOf(number);
+              }
+            };
+
+      public final com.google.protobuf.Descriptors.EnumValueDescriptor
+          getValueDescriptor() {
+        return getDescriptor().getValues().get(index);
+      }
+      public final com.google.protobuf.Descriptors.EnumDescriptor
+          getDescriptorForType() {
+        return getDescriptor();
+      }
+      public static final com.google.protobuf.Descriptors.EnumDescriptor
+          getDescriptor() {
+        return popeye.proto.Message.BatchReply.getDescriptor().getEnumTypes().get(0);
+      }
+
+      private static final Status[] VALUES = values();
+
+      public static Status valueOf(
+          com.google.protobuf.Descriptors.EnumValueDescriptor desc) {
+        if (desc.getType() != getDescriptor()) {
+          throw new java.lang.IllegalArgumentException(
+            "EnumValueDescriptor is not for this type.");
+        }
+        return VALUES[desc.getIndex()];
+      }
+
+      private final int index;
+      private final int value;
+
+      private Status(int index, int value) {
+        this.index = index;
+        this.value = value;
+      }
+
+      // @@protoc_insertion_point(enum_scope:popeye.proto.BatchReply.Status)
+    }
+
+    private int bitField0_;
+    // required int64 correlation = 1;
+    public static final int CORRELATION_FIELD_NUMBER = 1;
+    private long correlation_;
+    /**
+     * <code>required int64 correlation = 1;</code>
+     */
+    public boolean hasCorrelation() {
+      return ((bitField0_ & 0x00000001) == 0x00000001);
+    }
+    /**
+     * <code>required int64 correlation = 1;</code>
+     */
+    public long getCorrelation() {
+      return correlation_;
+    }
+
+    // required int64 batchId = 2;
+    public static final int BATCHID_FIELD_NUMBER = 2;
+    private long batchId_;
+    /**
+     * <code>required int64 batchId = 2;</code>
+     */
+    public boolean hasBatchId() {
+      return ((bitField0_ & 0x00000002) == 0x00000002);
+    }
+    /**
+     * <code>required int64 batchId = 2;</code>
+     */
+    public long getBatchId() {
+      return batchId_;
+    }
+
+    // required .popeye.proto.BatchReply.Status status = 3;
+    public static final int STATUS_FIELD_NUMBER = 3;
+    private popeye.proto.Message.BatchReply.Status status_;
+    /**
+     * <code>required .popeye.proto.BatchReply.Status status = 3;</code>
+     */
+    public boolean hasStatus() {
+      return ((bitField0_ & 0x00000004) == 0x00000004);
+    }
+    /**
+     * <code>required .popeye.proto.BatchReply.Status status = 3;</code>
+     */
+    public popeye.proto.Message.BatchReply.Status getStatus() {
+      return status_;
+    }
+
+    private void initFields() {
+      correlation_ = 0L;
+      batchId_ = 0L;
+      status_ = popeye.proto.Message.BatchReply.Status.OK;
+    }
+    private byte memoizedIsInitialized = -1;
+    public final boolean isInitialized() {
+      byte isInitialized = memoizedIsInitialized;
+      if (isInitialized != -1) return isInitialized == 1;
+
+      if (!hasCorrelation()) {
+        memoizedIsInitialized = 0;
+        return false;
+      }
+      if (!hasBatchId()) {
+        memoizedIsInitialized = 0;
+        return false;
+      }
+      if (!hasStatus()) {
+        memoizedIsInitialized = 0;
+        return false;
+      }
+      memoizedIsInitialized = 1;
+      return true;
+    }
+
+    public void writeTo(com.google.protobuf.CodedOutputStream output)
+                        throws java.io.IOException {
+      getSerializedSize();
+      if (((bitField0_ & 0x00000001) == 0x00000001)) {
+        output.writeInt64(1, correlation_);
+      }
+      if (((bitField0_ & 0x00000002) == 0x00000002)) {
+        output.writeInt64(2, batchId_);
+      }
+      if (((bitField0_ & 0x00000004) == 0x00000004)) {
+        output.writeEnum(3, status_.getNumber());
+      }
+      getUnknownFields().writeTo(output);
+    }
+
+    private int memoizedSerializedSize = -1;
+    public int getSerializedSize() {
+      int size = memoizedSerializedSize;
+      if (size != -1) return size;
+
+      size = 0;
+      if (((bitField0_ & 0x00000001) == 0x00000001)) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeInt64Size(1, correlation_);
+      }
+      if (((bitField0_ & 0x00000002) == 0x00000002)) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeInt64Size(2, batchId_);
+      }
+      if (((bitField0_ & 0x00000004) == 0x00000004)) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeEnumSize(3, status_.getNumber());
+      }
+      size += getUnknownFields().getSerializedSize();
+      memoizedSerializedSize = size;
+      return size;
+    }
+
+    private static final long serialVersionUID = 0L;
+    @java.lang.Override
+    protected java.lang.Object writeReplace()
+        throws java.io.ObjectStreamException {
+      return super.writeReplace();
+    }
+
+    public static popeye.proto.Message.BatchReply parseFrom(
+        com.google.protobuf.ByteString data)
+        throws com.google.protobuf.InvalidProtocolBufferException {
+      return PARSER.parseFrom(data);
+    }
+    public static popeye.proto.Message.BatchReply parseFrom(
+        com.google.protobuf.ByteString data,
+        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+        throws com.google.protobuf.InvalidProtocolBufferException {
+      return PARSER.parseFrom(data, extensionRegistry);
+    }
+    public static popeye.proto.Message.BatchReply parseFrom(byte[] data)
+        throws com.google.protobuf.InvalidProtocolBufferException {
+      return PARSER.parseFrom(data);
+    }
+    public static popeye.proto.Message.BatchReply parseFrom(
+        byte[] data,
+        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+        throws com.google.protobuf.InvalidProtocolBufferException {
+      return PARSER.parseFrom(data, extensionRegistry);
+    }
+    public static popeye.proto.Message.BatchReply parseFrom(java.io.InputStream input)
+        throws java.io.IOException {
+      return PARSER.parseFrom(input);
+    }
+    public static popeye.proto.Message.BatchReply parseFrom(
+        java.io.InputStream input,
+        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+        throws java.io.IOException {
+      return PARSER.parseFrom(input, extensionRegistry);
+    }
+    public static popeye.proto.Message.BatchReply parseDelimitedFrom(java.io.InputStream input)
+        throws java.io.IOException {
+      return PARSER.parseDelimitedFrom(input);
+    }
+    public static popeye.proto.Message.BatchReply parseDelimitedFrom(
+        java.io.InputStream input,
+        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+        throws java.io.IOException {
+      return PARSER.parseDelimitedFrom(input, extensionRegistry);
+    }
+    public static popeye.proto.Message.BatchReply parseFrom(
+        com.google.protobuf.CodedInputStream input)
+        throws java.io.IOException {
+      return PARSER.parseFrom(input);
+    }
+    public static popeye.proto.Message.BatchReply parseFrom(
+        com.google.protobuf.CodedInputStream input,
+        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+        throws java.io.IOException {
+      return PARSER.parseFrom(input, extensionRegistry);
+    }
+
+    public static Builder newBuilder() { return Builder.create(); }
+    public Builder newBuilderForType() { return newBuilder(); }
+    public static Builder newBuilder(popeye.proto.Message.BatchReply prototype) {
+      return newBuilder().mergeFrom(prototype);
+    }
+    public Builder toBuilder() { return newBuilder(this); }
+
+    @java.lang.Override
+    protected Builder newBuilderForType(
+        com.google.protobuf.GeneratedMessage.BuilderParent parent) {
+      Builder builder = new Builder(parent);
+      return builder;
+    }
+    /**
+     * Protobuf type {@code popeye.proto.BatchReply}
+     */
+    public static final class Builder extends
+        com.google.protobuf.GeneratedMessage.Builder<Builder>
+       implements popeye.proto.Message.BatchReplyOrBuilder {
+      public static final com.google.protobuf.Descriptors.Descriptor
+          getDescriptor() {
+        return popeye.proto.Message.internal_static_popeye_proto_BatchReply_descriptor;
+      }
+
+      protected com.google.protobuf.GeneratedMessage.FieldAccessorTable
+          internalGetFieldAccessorTable() {
+        return popeye.proto.Message.internal_static_popeye_proto_BatchReply_fieldAccessorTable
+            .ensureFieldAccessorsInitialized(
+                popeye.proto.Message.BatchReply.class, popeye.proto.Message.BatchReply.Builder.class);
+      }
+
+      // Construct using popeye.proto.Message.BatchReply.newBuilder()
+      private Builder() {
+        maybeForceBuilderInitialization();
+      }
+
+      private Builder(
+          com.google.protobuf.GeneratedMessage.BuilderParent parent) {
+        super(parent);
+        maybeForceBuilderInitialization();
+      }
+      private void maybeForceBuilderInitialization() {
+        if (com.google.protobuf.GeneratedMessage.alwaysUseFieldBuilders) {
+        }
+      }
+      private static Builder create() {
+        return new Builder();
+      }
+
+      public Builder clear() {
+        super.clear();
+        correlation_ = 0L;
+        bitField0_ = (bitField0_ & ~0x00000001);
+        batchId_ = 0L;
+        bitField0_ = (bitField0_ & ~0x00000002);
+        status_ = popeye.proto.Message.BatchReply.Status.OK;
+        bitField0_ = (bitField0_ & ~0x00000004);
+        return this;
+      }
+
+      public Builder clone() {
+        return create().mergeFrom(buildPartial());
+      }
+
+      public com.google.protobuf.Descriptors.Descriptor
+          getDescriptorForType() {
+        return popeye.proto.Message.internal_static_popeye_proto_BatchReply_descriptor;
+      }
+
+      public popeye.proto.Message.BatchReply getDefaultInstanceForType() {
+        return popeye.proto.Message.BatchReply.getDefaultInstance();
+      }
+
+      public popeye.proto.Message.BatchReply build() {
+        popeye.proto.Message.BatchReply result = buildPartial();
+        if (!result.isInitialized()) {
+          throw newUninitializedMessageException(result);
+        }
+        return result;
+      }
+
+      public popeye.proto.Message.BatchReply buildPartial() {
+        popeye.proto.Message.BatchReply result = new popeye.proto.Message.BatchReply(this);
+        int from_bitField0_ = bitField0_;
+        int to_bitField0_ = 0;
+        if (((from_bitField0_ & 0x00000001) == 0x00000001)) {
+          to_bitField0_ |= 0x00000001;
+        }
+        result.correlation_ = correlation_;
+        if (((from_bitField0_ & 0x00000002) == 0x00000002)) {
+          to_bitField0_ |= 0x00000002;
+        }
+        result.batchId_ = batchId_;
+        if (((from_bitField0_ & 0x00000004) == 0x00000004)) {
+          to_bitField0_ |= 0x00000004;
+        }
+        result.status_ = status_;
+        result.bitField0_ = to_bitField0_;
+        onBuilt();
+        return result;
+      }
+
+      public Builder mergeFrom(com.google.protobuf.Message other) {
+        if (other instanceof popeye.proto.Message.BatchReply) {
+          return mergeFrom((popeye.proto.Message.BatchReply)other);
+        } else {
+          super.mergeFrom(other);
+          return this;
+        }
+      }
+
+      public Builder mergeFrom(popeye.proto.Message.BatchReply other) {
+        if (other == popeye.proto.Message.BatchReply.getDefaultInstance()) return this;
+        if (other.hasCorrelation()) {
+          setCorrelation(other.getCorrelation());
+        }
+        if (other.hasBatchId()) {
+          setBatchId(other.getBatchId());
+        }
+        if (other.hasStatus()) {
+          setStatus(other.getStatus());
+        }
+        this.mergeUnknownFields(other.getUnknownFields());
+        return this;
+      }
+
+      public final boolean isInitialized() {
+        if (!hasCorrelation()) {
+          
+          return false;
+        }
+        if (!hasBatchId()) {
+          
+          return false;
+        }
+        if (!hasStatus()) {
+          
+          return false;
+        }
+        return true;
+      }
+
+      public Builder mergeFrom(
+          com.google.protobuf.CodedInputStream input,
+          com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+          throws java.io.IOException {
+        popeye.proto.Message.BatchReply parsedMessage = null;
+        try {
+          parsedMessage = PARSER.parsePartialFrom(input, extensionRegistry);
+        } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+          parsedMessage = (popeye.proto.Message.BatchReply) e.getUnfinishedMessage();
+          throw e;
+        } finally {
+          if (parsedMessage != null) {
+            mergeFrom(parsedMessage);
+          }
+        }
+        return this;
+      }
       private int bitField0_;
-      
+
       // required int64 correlation = 1;
       private long correlation_ ;
+      /**
+       * <code>required int64 correlation = 1;</code>
+       */
       public boolean hasCorrelation() {
         return ((bitField0_ & 0x00000001) == 0x00000001);
       }
+      /**
+       * <code>required int64 correlation = 1;</code>
+       */
       public long getCorrelation() {
         return correlation_;
       }
+      /**
+       * <code>required int64 correlation = 1;</code>
+       */
       public Builder setCorrelation(long value) {
         bitField0_ |= 0x00000001;
         correlation_ = value;
         onChanged();
         return this;
       }
+      /**
+       * <code>required int64 correlation = 1;</code>
+       */
       public Builder clearCorrelation() {
         bitField0_ = (bitField0_ & ~0x00000001);
         correlation_ = 0L;
         onChanged();
         return this;
       }
-      
+
       // required int64 batchId = 2;
       private long batchId_ ;
+      /**
+       * <code>required int64 batchId = 2;</code>
+       */
       public boolean hasBatchId() {
         return ((bitField0_ & 0x00000002) == 0x00000002);
       }
+      /**
+       * <code>required int64 batchId = 2;</code>
+       */
       public long getBatchId() {
         return batchId_;
       }
+      /**
+       * <code>required int64 batchId = 2;</code>
+       */
       public Builder setBatchId(long value) {
         bitField0_ |= 0x00000002;
         batchId_ = value;
         onChanged();
         return this;
       }
+      /**
+       * <code>required int64 batchId = 2;</code>
+       */
       public Builder clearBatchId() {
         bitField0_ = (bitField0_ & ~0x00000002);
         batchId_ = 0L;
         onChanged();
         return this;
       }
-      
+
       // required .popeye.proto.BatchReply.Status status = 3;
       private popeye.proto.Message.BatchReply.Status status_ = popeye.proto.Message.BatchReply.Status.OK;
+      /**
+       * <code>required .popeye.proto.BatchReply.Status status = 3;</code>
+       */
       public boolean hasStatus() {
         return ((bitField0_ & 0x00000004) == 0x00000004);
       }
+      /**
+       * <code>required .popeye.proto.BatchReply.Status status = 3;</code>
+       */
       public popeye.proto.Message.BatchReply.Status getStatus() {
         return status_;
       }
+      /**
+       * <code>required .popeye.proto.BatchReply.Status status = 3;</code>
+       */
       public Builder setStatus(popeye.proto.Message.BatchReply.Status value) {
         if (value == null) {
           throw new NullPointerException();
@@ -2499,24 +3177,27 @@ public final class Message {
         onChanged();
         return this;
       }
+      /**
+       * <code>required .popeye.proto.BatchReply.Status status = 3;</code>
+       */
       public Builder clearStatus() {
         bitField0_ = (bitField0_ & ~0x00000004);
         status_ = popeye.proto.Message.BatchReply.Status.OK;
         onChanged();
         return this;
       }
-      
+
       // @@protoc_insertion_point(builder_scope:popeye.proto.BatchReply)
     }
-    
+
     static {
       defaultInstance = new BatchReply(true);
       defaultInstance.initFields();
     }
-    
+
     // @@protoc_insertion_point(class_scope:popeye.proto.BatchReply)
   }
-  
+
   private static com.google.protobuf.Descriptors.Descriptor
     internal_static_popeye_proto_Attribute_descriptor;
   private static
@@ -2537,7 +3218,7 @@ public final class Message {
   private static
     com.google.protobuf.GeneratedMessage.FieldAccessorTable
       internal_static_popeye_proto_BatchReply_fieldAccessorTable;
-  
+
   public static com.google.protobuf.Descriptors.FileDescriptor
       getDescriptor() {
     return descriptor;
@@ -2568,33 +3249,25 @@ public final class Message {
           internal_static_popeye_proto_Attribute_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_popeye_proto_Attribute_descriptor,
-              new java.lang.String[] { "Name", "Value", },
-              popeye.proto.Message.Attribute.class,
-              popeye.proto.Message.Attribute.Builder.class);
+              new java.lang.String[] { "Name", "Value", });
           internal_static_popeye_proto_Point_descriptor =
             getDescriptor().getMessageTypes().get(1);
           internal_static_popeye_proto_Point_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_popeye_proto_Point_descriptor,
-              new java.lang.String[] { "Metric", "Timestamp", "Attributes", "IntValue", "FloatValue", },
-              popeye.proto.Message.Point.class,
-              popeye.proto.Message.Point.Builder.class);
+              new java.lang.String[] { "Metric", "Timestamp", "Attributes", "IntValue", "FloatValue", });
           internal_static_popeye_proto_Batch_descriptor =
             getDescriptor().getMessageTypes().get(2);
           internal_static_popeye_proto_Batch_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_popeye_proto_Batch_descriptor,
-              new java.lang.String[] { "Point", "Correlation", },
-              popeye.proto.Message.Batch.class,
-              popeye.proto.Message.Batch.Builder.class);
+              new java.lang.String[] { "Point", "Correlation", });
           internal_static_popeye_proto_BatchReply_descriptor =
             getDescriptor().getMessageTypes().get(3);
           internal_static_popeye_proto_BatchReply_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_popeye_proto_BatchReply_descriptor,
-              new java.lang.String[] { "Correlation", "BatchId", "Status", },
-              popeye.proto.Message.BatchReply.class,
-              popeye.proto.Message.BatchReply.Builder.class);
+              new java.lang.String[] { "Correlation", "BatchId", "Status", });
           return null;
         }
       };
@@ -2603,6 +3276,6 @@ public final class Message {
         new com.google.protobuf.Descriptors.FileDescriptor[] {
         }, assigner);
   }
-  
+
   // @@protoc_insertion_point(outer_class_scope)
 }

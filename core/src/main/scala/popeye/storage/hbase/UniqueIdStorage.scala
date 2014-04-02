@@ -28,7 +28,7 @@ class UniqueIdStorage(tableName: String, hTablePool: HTablePool, kindWidths: Map
   import UniqueIdStorage._
 
   def kindWidth(kind: String): Short = {
-    kindWidths.getOrElse(kind, throw new IllegalArgumentException(s"Unknwon kind $kind"))
+    kindWidths.getOrElse(kind, throw new IllegalArgumentException(s"Unknown kind $kind"))
   }
 
   /**
@@ -40,10 +40,10 @@ class UniqueIdStorage(tableName: String, hTablePool: HTablePool, kindWidths: Map
       qname => new Get(qname.name.getBytes(Encoding)).addColumn(IdFamily, Bytes.toBytes(qname.kind))
     }
     withHTable { hTable =>
-      for (
-        r <- hTable.get(gets);
+      for {
+        r <- hTable.get(gets) if !r.isEmpty
         k <- r.raw()
-      ) yield {
+      } yield {
         ResolvedName(
           Bytes.toString(k.getQualifier),
           Bytes.toString(k.getRow),
@@ -71,10 +71,10 @@ class UniqueIdStorage(tableName: String, hTablePool: HTablePool, kindWidths: Map
     }
 
     withHTable { hTable =>
-      val r = for (
-        r <- hTable.get(gets);
+      val r = for {
+        r <- hTable.get(gets) if !r.isEmpty
         k <- r.raw
-      ) yield {
+      } yield {
         ResolvedName(
           Bytes.toString(k.getQualifier),
           Bytes.toString(k.getValue),
@@ -95,7 +95,7 @@ class UniqueIdStorage(tableName: String, hTablePool: HTablePool, kindWidths: Map
       val idBytes = Bytes.toBytes(id)
       // check, that produced id is not larger, then required id width
       validateLen(idBytes, idWidth)
-      val row = java.util.Arrays.copyOfRange(idBytes, idBytes.length - idWidth, idBytes.length)
+      val row = java.util.Arrays.copyOfRange(idBytes, idBytes.length - idWidth, idBytes.length).reverse
       if (!cas(hTable, row, NameFamily, kindQual, nameBytes)) {
         val msg = s"Failed assignment: $id -> $qname, already assigned $id, unbelievable"
         log.error(msg)

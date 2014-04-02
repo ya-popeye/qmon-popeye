@@ -8,7 +8,7 @@ import popeye.proto.Message
 import scala.collection.JavaConversions.iterableAsScalaIterable
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
-import popeye.pipeline.{PointsSourceFactory, PointsSource}
+import popeye.pipeline.PointsSource
 
 /**
  * @author Andrey Stepachev
@@ -57,13 +57,6 @@ object PopeyeTestUtils {
       .setName("host")
       .setValue(host)
     ).build()
-  }
-
-  class MockPopeyeConsumerFacotory extends PointsSourceFactory {
-
-    val consumer = new MockPopeyeConsumer
-
-    def newConsumer(topic: String): PointsSource = consumer
   }
 
   class MockPopeyeConsumer extends PointsSource {

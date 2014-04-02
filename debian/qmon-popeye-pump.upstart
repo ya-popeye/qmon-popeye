@@ -2,11 +2,11 @@ description "QMon Popeye Pump Service"
 setuid qmon-popeye-pump
 limit nofile 30000 30000
 console log
-env QMON_CONF=/etc/qmon-popeye-pump
+env QMON_CONF=/etc/yandex/qmon-popeye-pump/conf
 env QMON_LOGDIR=/var/log/qmon-popeye-pump
 pre-start script
-  if ! -d /etc/qmon-popeye-pump/pump.conf ; then
+  if [ ! -f $QMON_CONF/pump.conf ] ; then
     stop ; exit 0
   fi
 end script
-exec /usr/share/qmon-popeye-pump/bin/start pipeline -c /etc/qmon-popeye-pump/pump.conf
+exec /usr/share/qmon-popeye-pump/bin/start pipeline -c $QMON_CONF/pump.conf

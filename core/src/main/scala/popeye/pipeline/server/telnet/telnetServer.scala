@@ -22,11 +22,12 @@ class TelnetPointsMetrics(prefix: String, override val metricRegistry: MetricReg
   val requestTimer = metrics.timer(s"$prefix.request-time")
   val commitTimer = metrics.timer(s"$prefix.commit-time")
   val pointsRcvMeter = metrics.meter(s"$prefix.points-received")
-  val pointsCommitMeter = metrics.meter(s"$prefix.points-commited")
+  val batchesCommitMeter = metrics.meter(s"$prefix.batches-commited")
   val connections = new AtomicInteger(0)
   val connectionsGauge = metrics.gauge(s"$prefix.connections") {
     connections.get()
   }
+  val tcpSuspend = metrics.meter(s"$prefix.tcp-suspend")
 }
 
 class TelnetPointsServerConfig(config: Config) {
@@ -124,7 +125,7 @@ class TelnetPointsHandler(connection: ActorRef,
 
       pendingCorrelations --= completeCorrelationId
       val commitedSize: Long = completeCorrelationId.size
-      metrics.pointsCommitMeter.mark(commitedSize)
+      metrics.batchesCommitMeter.mark(commitedSize)
       tryReplyOk()
       throttle()
 
@@ -193,6 +194,7 @@ class TelnetPointsHandler(connection: ActorRef,
         debug(s"Pausing reads: $size > ${config.hwPendingPoints}")
         context.setReceiveTimeout(1 millisecond)
       }
+      metrics.tcpSuspend.mark()
       connection ! Tcp.SuspendReading
     }
 
