@@ -1,0 +1,12 @@
+Source: qmon-popeye-conf
+Section: misc
+Priority: extra
+Maintainer: Vasily Kolpakov <quasi@yandex-team.ru>
+Build-Depends: debhelper (>= 8.0.0)
+Standards-Version: 3.9.2
+Homepage: https://github.com/octo47/qmon-popeye
+
+Package: qmon-popeye-conf
+Architecture: all
+Depends: ${misc:Depends}, qmon-popeye-slicer | qmon-popeye-pump | qmon-popeye-query
+Description: QMon Popeye metrics config

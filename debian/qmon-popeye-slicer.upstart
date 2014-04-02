@@ -2,11 +2,11 @@ description "QMon Popeye Slicer Service"
 setuid qmon-popeye-slicer
 limit nofile 150000 150000
 console log
-env QMON_CONF=/etc/qmon-popeye-slicer
+env QMON_CONF=/etc/yandex/qmon-popeye-slicer/conf
 env QMON_LOGDIR=/var/log/qmon-popeye-slicer
 pre-start script
-  if [ ! -f /etc/qmon-popeye-slicer/slicer.conf ] ; then
+  if [ ! -f $QMON_CONF/slicer.conf ] ; then
     stop ; exit 0
   fi
 end script
-exec /usr/share/qmon-popeye-slicer/bin/start pipeline -c /etc/qmon-popeye-slicer/slicer.conf
+exec /usr/share/qmon-popeye-slicer/bin/start pipeline -c $QMON_CONF/slicer.conf

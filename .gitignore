@@ -13,6 +13,7 @@ project/plugins/project/
 # Scala-IDE specific
 .scala_dependencies
 .idea/
+*.iml
 
 # Debian specific
 debian/.sbt/
@@ -20,4 +21,5 @@ debian/files
 debian/*.substvars
 debian/qmon-popeye-pump/
 debian/qmon-popeye-slicer/
+debian/qmon-popeye-query/
 debian/*.debhelper
