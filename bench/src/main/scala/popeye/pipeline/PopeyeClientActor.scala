@@ -121,13 +121,15 @@ object PopeyeClientActor {
 
   def main(args: Array[String]) {
     implicit val timeout = Timeout(5 seconds)
-    val nHosts = args(0).toInt
-    val nBatches = args(1).toInt
+    val (optionalParams, mandatoryParams) = args.partition(_.startsWith("--"))
+    val nHosts = mandatoryParams(0).toInt
+    val nBatches = mandatoryParams(1).toInt
     val address = {
-      val List(host, port) = args(2).split(":").toList
+      val List(host, port) = mandatoryParams(2).split(":").toList
       new InetSocketAddress(InetAddress.getByName(host), port.toInt)
     }
-    val metricsDir = args(3)
+    val metricsDir = mandatoryParams(3)
+    val isInteractive = optionalParams.contains("--interactive")
     val system = ActorSystem()
     val actors = (1 to nHosts).map(i => system.actorOf(PopeyeClientActor.props(address, i, nBatches)))
 
@@ -162,7 +164,7 @@ object PopeyeClientActor {
     }
     var hosts = nHosts
     val inReader = new BufferedReader(new InputStreamReader(System.in))
-    while(true) {
+    if (isInteractive) while(true) {
       inReader.readLine()
       val oldHosts = hosts + 1
       hosts += 100
