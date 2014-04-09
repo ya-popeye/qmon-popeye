@@ -8,11 +8,12 @@ import scala.concurrent.duration._
 import scala.concurrent.{Await, Promise}
 import scala.collection.mutable.ArrayBuffer
 import popeye.proto.Message.Point
+import popeye.Logging
 
 /**
  * @author Andrey Stepachev
  */
-class PointsQueueSpec extends FlatSpec with Matchers {
+class PointsQueueSpec extends FlatSpec with Matchers with Logging {
 
 
   behavior of "PointsQueue"
