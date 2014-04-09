@@ -260,7 +260,7 @@ class HBaseStorage(tableName: String,
                    resolveTimeout: Duration = 15 seconds,
                    readChunkSize: Int) extends Logging with HBaseUtils {
 
-  val tsdbFormat = new TsdbFormat(metricNames.width, attributeNames.width, attributeValues.width)
+  val tsdbFormat = new TsdbFormat()
 
   def hTablePool: HTablePool = hTablePool_
 
@@ -514,17 +514,18 @@ class HBaseStorage(tableName: String,
 
   private def resolveNames(names: Set[QualifiedName])(implicit eCtx: ExecutionContext): Future[Map[QualifiedName, BytesKey]] = {
     val groupedNames = names.groupBy(_.kind)
-    def idsMapFuture(qualifiedNames: Seq[QualifiedName], uniqueId: UniqueId): Future[Map[QualifiedName, BytesKey]] = {
-      val idsFuture = Future.traverse(qualifiedNames.map(_.name)) {
+    def idsMapFuture(qualifiedNames: Set[QualifiedName], uniqueId: UniqueId): Future[Map[QualifiedName, BytesKey]] = {
+      val namesSeq = qualifiedNames.toSeq
+      val idsFuture = Future.traverse(namesSeq.map(_.name)) {
         name => uniqueId.resolveIdByName(name, create = false)(resolveTimeout)
       }
       idsFuture.map {
-        ids => qualifiedNames.zip(ids)(scala.collection.breakOut)
+        ids => namesSeq.zip(ids)(scala.collection.breakOut)
       }
     }
-    val metricsMapFuture = idsMapFuture(groupedNames(MetricKind).toSeq, metricNames)
-    val attrNamesMapFuture = idsMapFuture(groupedNames(AttrNameKind).toSeq, attributeNames)
-    val attrValueMapFuture = idsMapFuture(groupedNames(AttrValueKind).toSeq, attributeValues)
+    val metricsMapFuture = idsMapFuture(groupedNames(MetricKind), metricNames)
+    val attrNamesMapFuture = idsMapFuture(groupedNames(AttrNameKind), attributeNames)
+    val attrValueMapFuture = idsMapFuture(groupedNames(AttrValueKind), attributeValues)
     for {
       metricsMap <- metricsMapFuture
       attrNameMap <- attrNamesMapFuture

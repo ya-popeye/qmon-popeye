@@ -10,6 +10,13 @@ import org.apache.hadoop.hbase.client.Result
 import scala.collection.mutable
 
 object TsdbFormat {
+
+  import HBaseStorage._
+
+  val metricWidth: Int = UniqueIdMapping(MetricKind)
+  val attributeNameWidth: Int = UniqueIdMapping(AttrNameKind)
+  val attributeValueWidth: Int = UniqueIdMapping(AttrValueKind)
+
   def getAllQualifiedNames(point: Message.Point): List[QualifiedName] = {
     val buffer = point.getAttributesList.asScala.flatMap {
       attr => Seq(
@@ -23,16 +30,19 @@ object TsdbFormat {
 
 }
 
-class TsdbFormat(metricWidth: Int, attributeNameWidth: Int, attributeValueWidth: Int) extends Logging {
-
-  class PartiallyConvertedPoints(val unresolvedNames: Set[QualifiedName],
-                                 val points: Seq[Message.Point],
-                                 resolvedNames: Map[QualifiedName, BytesKey]) {
-    def convert(partialIdMap: Map[QualifiedName, BytesKey]) = {
-      val idMap = resolvedNames.withDefault(partialIdMap)
-      points.map(point => convertToKeyValue(point, idMap))
-    }
+class PartiallyConvertedPoints(val unresolvedNames: Set[QualifiedName],
+                               val points: Seq[Message.Point],
+                               resolvedNames: Map[QualifiedName, BytesKey],
+                               tsdbFormat: TsdbFormat) {
+  def convert(partialIdMap: Map[QualifiedName, BytesKey]) = {
+    val idMap = resolvedNames.withDefault(partialIdMap)
+    points.map(point => tsdbFormat.convertToKeyValue(point, idMap))
   }
+}
+
+class TsdbFormat extends Logging {
+
+  import TsdbFormat._
 
   def convertToKeyValues(points: Iterable[Message.Point],
                          idCache: QualifiedName => Option[BytesKey]
@@ -42,7 +52,7 @@ class TsdbFormat(metricWidth: Int, attributeNameWidth: Int, attributeValueWidth:
     val unconvertedPoints = mutable.ArrayBuffer[Message.Point]()
     val convertedPoints = mutable.ArrayBuffer[KeyValue]()
     for (point <- points) {
-      val names = TsdbFormat.getAllQualifiedNames(point)
+      val names = getAllQualifiedNames(point)
       val nameAndIds = names.map(name => (name, idCache(name)))
       val cacheMisses = nameAndIds.collect {case (name, None) => name}
       if (cacheMisses.isEmpty) {
@@ -58,7 +68,7 @@ class TsdbFormat(metricWidth: Int, attributeNameWidth: Int, attributeValueWidth:
     if(unresolvedNames.isEmpty) require(resolvedNames.isEmpty)
 
     val partiallyConvertedPoints =
-      new PartiallyConvertedPoints(unresolvedNames.toSet, unconvertedPoints.toSeq, resolvedNames.toMap)
+      new PartiallyConvertedPoints(unresolvedNames.toSet, unconvertedPoints.toSeq, resolvedNames.toMap, this)
     (partiallyConvertedPoints, convertedPoints.toSeq)
   }
 

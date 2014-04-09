@@ -10,6 +10,8 @@ import org.apache.hadoop.hbase.client.Result
 class TsdbFormatSpec extends FlatSpec with Matchers {
   behavior of "TsdbFormat"
 
+  val tsdbFormat = new TsdbFormat
+
   val samplePoint = {
     val attrNameValues = Seq("name" -> "value", "anotherName" -> "value")
     val attributes = attrNameValues.map {
@@ -38,7 +40,6 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
   }
 
   it should "convert point to KeyValue" in {
-    val tsdbFormat = new TsdbFormat(3, 3, 3)
     val keyValue = tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap)
     val metricId = Array(0, 0, 1).map(_.toByte)
     val timestamp = samplePoint.getTimestamp.toInt
@@ -53,7 +54,6 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
   }
 
   it should "convert point if all names are in cache" in {
-    val tsdbFormat = new TsdbFormat(3, 3, 3)
     val (partiallyConvertedPoints, keyValues) = tsdbFormat.convertToKeyValues(Seq(samplePoint), sampleIdMap.get)
     partiallyConvertedPoints.points.isEmpty should be(true)
     keyValues.size should equal(1)
@@ -63,7 +63,6 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
   }
 
   it should "not convert point if not all names are in cache" in {
-    val tsdbFormat = new TsdbFormat(3, 3, 3)
     val notInCache = QualifiedName(AttrNameKind, "name")
     val idCache = (name: QualifiedName) => (sampleIdMap - notInCache).get(name)
     val (partiallyConvertedPoints, keyValues) = tsdbFormat.convertToKeyValues(Seq(samplePoint), idCache)
