@@ -8,7 +8,9 @@ import scala.collection.mutable.ArrayBuffer
 /**
  * @author Andrey Stepachev
  */
-final class PackedPoints(val avgMessageSize: Int = 100, val messagesPerExtent: Int = 100, val initialCapacity: Int = 0) {
+final class PackedPoints(val avgMessageSize: Int = 100,
+                         val messagesPerExtent: Int = 100,
+                         val initialCapacity: Int = 0) extends scala.collection.Iterable[Point] {
   private[proto] val points = new ExpandingBuffer(initialMessages * avgMessageSize)
   private val pointsCoder = CodedOutputStream.newInstance(points)
   private var pointsCount_ = 0
@@ -78,32 +80,6 @@ final class PackedPoints(val avgMessageSize: Int = 100, val messagesPerExtent: I
     this
   }
 
-  def foreach[U](f: (Point) => U): Unit = {
-    val cs = CodedInputStream.newInstance(buffer, bufferOffset, bufferLength)
-    for (message <- 0 until pointsCount) {
-      val size = cs.readRawVarint32()
-      val limit = cs.pushLimit(size)
-      val point = Point.newBuilder().mergeFrom(cs).build
-      cs.popLimit(limit)
-      f(point)
-    }
-  }
-
-  def map[U](f: (Point) => U): Seq[U] = {
-    val cs = CodedInputStream.newInstance(buffer, bufferOffset, bufferLength)
-    for (message <- 0 until pointsCount) yield {
-      val size = cs.readRawVarint32()
-      val limit = cs.pushLimit(size)
-      val point = Point.newBuilder().mergeFrom(cs).build
-      cs.popLimit(limit)
-      f(point)
-    }
-  }
-
-  def toPointsSeq: Seq[Point] = {
-    map(p => p)
-  }
-
   private[proto] def buffer = {
     pointsCoder.flush()
     points.buffer
@@ -119,6 +95,21 @@ final class PackedPoints(val avgMessageSize: Int = 100, val messagesPerExtent: I
     points.consume(amount)
   }
 
+  override def iterator: Iterator[Point] = new Iterator[Point] {
+    var index = 0
+    val cs = CodedInputStream.newInstance(buffer, bufferOffset, bufferLength)
+
+    override def next(): Point = {
+      index += 1
+      val size = cs.readRawVarint32()
+      val limit = cs.pushLimit(size)
+      val point = Point.newBuilder().mergeFrom(cs).build
+      cs.popLimit(limit)
+      point
+    }
+
+    override def hasNext: Boolean = index < pointsCount
+  }
 }
 
 object PackedPoints {

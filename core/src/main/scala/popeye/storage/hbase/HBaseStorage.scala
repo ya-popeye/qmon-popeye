@@ -8,14 +8,13 @@ import org.apache.hadoop.hbase.util.Bytes
 import popeye.proto.{PackedPoints, Message}
 import popeye.{Instrumented, Logging}
 import scala.collection.JavaConversions._
-import scala.collection.mutable
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
 import com.typesafe.config.Config
 import akka.actor.{ActorRef, Props, ActorSystem}
 import java.util.concurrent.TimeUnit
 import popeye.util.hbase.{HBaseUtils, HBaseConfigured}
-import popeye.pipeline.{PipelineSinkFactory, PointsSink}
+import popeye.pipeline.PointsSink
 import java.nio.charset.Charset
 import org.apache.hadoop.hbase.filter.{RegexStringComparator, CompareFilter, RowFilter}
 import java.nio.ByteBuffer
@@ -28,8 +27,6 @@ object HBaseStorage {
 
   /** Number of bytes on which a timestamp is encoded.  */
   final val TIMESTAMP_BYTES: Short = 4
-  /** Maximum number of tags allowed per data point.  */
-  final val MAX_NUM_TAGS: Short = 8
   /** Number of LSBs in time_deltas reserved for flags.  */
   final val FLAG_BITS: Short = 4
   /**
@@ -263,6 +260,8 @@ class HBaseStorage(tableName: String,
                    resolveTimeout: Duration = 15 seconds,
                    readChunkSize: Int) extends Logging with HBaseUtils {
 
+  val tsdbFormat = new TsdbFormat(metricNames.width, attributeNames.width, attributeValues.width)
+
   def hTablePool: HTablePool = hTablePool_
 
   val tableBytes = tableName.getBytes(Encoding)
@@ -409,21 +408,11 @@ class HBaseStorage(tableName: String,
 
   private def parseTimeValuePoints(results: Array[Result],
                                    timeRange: (Int, Int)): Seq[(PointAttributeIds, List[Point])] = {
-    val baseTimeBuffer = new Array[Byte](TIMESTAMP_BYTES)
-
     val pointsRows = for (result <- results) yield {
-      import scala.collection.JavaConverters.mapAsScalaMapConverter
       val row = result.getRow
-      System.arraycopy(row, metricNames.width, baseTimeBuffer, 0, TIMESTAMP_BYTES)
       val attributes = getAttributesBytes(row)
       val attributeMap = getAttributesMap(attributes.bytes)
-      val baseTime = Bytes.toInt(baseTimeBuffer)
-      val columns = result.getFamilyMap(PointsFamily).asScala.toList
-      val points = columns.map {
-        case (qualifierBytes, valueBytes) =>
-          val (delta, value) = parseValue(qualifierBytes, valueBytes)
-          Point(baseTime + delta, value)
-      }
+      val points = tsdbFormat.parsePoints(result)
       (attributeMap, points): (PointAttributeIds, List[Point])
     }
     val (startTime, endTime) = timeRange
@@ -485,25 +474,17 @@ class HBaseStorage(tableName: String,
 
     val ctx = metrics.writeTime.timerContext()
     metrics.writeProcessingTime.time {
-      val delayedKeyValues = mutable.Buffer[Future[KeyValue]]()
-      val keyValues = mutable.Buffer[KeyValue]()
-
-      // resolve identificators
-      // unresolved will be delayed for furure expansion
-      points.foreach { point =>
-        val m = metricNames.findIdByName(point.getMetric)
-        val a = point.getAttributesList.sortBy(_.getName).map { attr =>
-          (attributeNames.findIdByName(attr.getName),
-            attributeValues.findIdByName(attr.getValue))
-        }
-        if (m.isEmpty || a.exists(a => a._1.isEmpty || a._2.isEmpty))
-          delayedKeyValues += mkKeyValueFuture(point)
-        else
-          keyValues += mkKeyValue(m.get,
-            a.map { t => (t._1.get, t._2.get)},
-            point.getTimestamp,
-            mkQualifiedValue(point))
+      // resolve identifiers
+      // unresolved will be delayed for future expansion
+      val idCache: QualifiedName => Option[BytesKey] = {
+        case QualifiedName(MetricKind, name) => metricNames.findIdByName(name)
+        case QualifiedName(AttrNameKind, name) => attributeNames.findIdByName(name)
+        case QualifiedName(AttrValueKind, name) => attributeValues.findIdByName(name)
       }
+      val (partiallyConvertedPoints, keyValues) = tsdbFormat.convertToKeyValues(points, idCache)
+      val cacheMisses = partiallyConvertedPoints.unresolvedNames
+      metrics.resolvedPointsMeter.mark(keyValues.size)
+      metrics.delayedPointsMeter.mark(partiallyConvertedPoints.points.size)
 
       // write resolved points
       val writeComplete = if (!keyValues.isEmpty) Future[Int] {
@@ -511,31 +492,44 @@ class HBaseStorage(tableName: String,
         keyValues.size
       } else Future.successful[Int](0)
 
-      metrics.resolvedPointsMeter.mark(keyValues.size)
-      metrics.delayedPointsMeter.mark(delayedKeyValues.size)
+      val delayedKeyValuesWriteFuture =
+        if (partiallyConvertedPoints.points.nonEmpty) {
+          val idMapFuture = resolveNames(cacheMisses)
+          idMapFuture.map {
+            idMap =>
+              val keyValues = partiallyConvertedPoints.convert(idMap)
+              writeKv(keyValues)
+              keyValues.size
+          }
+        } else Future.successful[Int](0)
 
-      // if we have some unresolved keyvalues, combine them to composite feature,
-      // in case of no delayed kevalues, simply return write-feature
-      if (delayedKeyValues.size > 0) {
-        val delayedFuture = Future.sequence(delayedKeyValues).map { kvl =>
-          writeKv(kvl)
-          kvl.size
-        }
-        (delayedFuture zip writeComplete).map {
-          case (a, b) =>
-            val time = ctx.stop.nano
-            metrics.writeTimeMeter.mark(time.toMillis)
-            (a + b).toLong
-        }
-      } else {
-        writeComplete.map {
-          a =>
-            val time = ctx.stop.nano
-            metrics.writeTimeMeter.mark(time.toMillis)
-            a.toLong
-        }
+      (delayedKeyValuesWriteFuture zip writeComplete).map {
+        case (a, b) =>
+          val time = ctx.stop.nano
+          metrics.writeTimeMeter.mark(time.toMillis)
+          (a + b).toLong
       }
     }
+  }
+
+  private def resolveNames(names: Set[QualifiedName])(implicit eCtx: ExecutionContext): Future[Map[QualifiedName, BytesKey]] = {
+    val groupedNames = names.groupBy(_.kind)
+    def idsMapFuture(qualifiedNames: Seq[QualifiedName], uniqueId: UniqueId): Future[Map[QualifiedName, BytesKey]] = {
+      val idsFuture = Future.traverse(qualifiedNames.map(_.name)) {
+        name => uniqueId.resolveIdByName(name, create = false)(resolveTimeout)
+      }
+      idsFuture.map {
+        ids => qualifiedNames.zip(ids)(scala.collection.breakOut)
+      }
+    }
+    val metricsMapFuture = idsMapFuture(groupedNames(MetricKind).toSeq, metricNames)
+    val attrNamesMapFuture = idsMapFuture(groupedNames(AttrNameKind).toSeq, attributeNames)
+    val attrValueMapFuture = idsMapFuture(groupedNames(AttrValueKind).toSeq, attributeValues)
+    for {
+      metricsMap <- metricsMapFuture
+      attrNameMap <- attrNamesMapFuture
+      attrValueMap <- attrValueMapFuture
+    } yield metricsMap ++ attrNameMap ++ attrValueMap
   }
 
   private def writeKv(kvList: Seq[KeyValue]) = {
@@ -569,42 +563,6 @@ class HBaseStorage(tableName: String,
     }
   }
 
-  private def mkKeyValue(metric: BytesKey, attrs: Seq[(BytesKey, BytesKey)], timestamp: Long, value: (Array[Byte], Array[Byte])) = {
-    val baseTime: Int = (timestamp - (timestamp % HBaseStorage.MAX_TIMESPAN)).toInt
-    val row = new Array[Byte](metricNames.width + HBaseStorage.TIMESTAMP_BYTES +
-      attrs.length * (attributeNames.width + attributeValues.width))
-    var off = 0
-    off = copyBytes(metric, row, off)
-    off = copyBytes(Bytes.toBytes(baseTime.toInt), row, off)
-    val sortedAttributes = attrs.sortBy(_._1)
-    for (attr <- sortedAttributes) {
-      off = copyBytes(attr._1, row, off)
-      off = copyBytes(attr._2, row, off)
-    }
-
-    val delta = (timestamp - baseTime).toShort
-    trace(s"Made point: ts=$timestamp, basets=$baseTime, delta=$delta")
-    new KeyValue(row, HBaseStorage.PointsFamily, value._1, value._2)
-  }
-
-  /**
-   * Produce tuple with qualifier and value represented as byte arrays
-   * @param point point to pack
-   * @return packed (qualifier, value)
-   */
-  private def mkQualifiedValue(point: Message.Point): (Array[Byte], Array[Byte]) = {
-    val delta: Short = (point.getTimestamp % HBaseStorage.MAX_TIMESPAN).toShort
-    val ndelta = delta << HBaseStorage.FLAG_BITS
-    if (point.hasFloatValue)
-      (Bytes.toBytes(((0xffff & (HBaseStorage.FLAG_FLOAT | 0x3)) | ndelta).toShort),
-        Bytes.toBytes(point.getFloatValue))
-    else if (point.hasIntValue)
-      (Bytes.toBytes((0xffff & ndelta).toShort), Bytes.toBytes(point.getIntValue))
-    else
-      throw new IllegalArgumentException("Neither int nor float values set on point")
-
-  }
-
   private def mkPoint(baseTime: Int, metric: String,
                       qualifier: Short, value: Array[Byte],
                       attrs: Seq[(String, String)]): Message.Point = {
@@ -629,33 +587,6 @@ class HBaseStorage(tableName: String,
         .setValue(attribute._2)
     }
     builder.build
-  }
-
-  /**
-   * Makes Future for KeyValue.
-   * Most time all identifiers are cached, so this future returns 'complete',
-   * but in case of some unresolved identifiers future will be incomplete
-   *
-   * Attributes are written in sorted-by-string-name order.
-   *
-   * @param point point to resolve
-   * @return future
-   */
-  private def mkKeyValueFuture(point: Message.Point)(implicit eCtx: ExecutionContext): Future[KeyValue] = {
-    val metricIdFuture = metricNames.resolveIdByName(point.getMetric, create = true)(resolveTimeout)
-    val attributes = Future.traverse(point.getAttributesList.sortBy(_.getName)) {
-      attribute =>
-        attributeNames.resolveIdByName(attribute.getName, create = true)(resolveTimeout)
-          .zip(attributeValues.resolveIdByName(attribute.getValue, create = true)(resolveTimeout))
-    }
-    metricIdFuture.zip(attributes).map {
-      case tuple =>
-        mkKeyValue(tuple._1, tuple._2, point.getTimestamp, mkQualifiedValue(point))
-    }
-  }
-
-  def pointToKeyValue(point: Message.Point)(implicit eCtx: ExecutionContext): KeyValue = {
-    Await.result(mkKeyValueFuture(point), resolveTimeout)
   }
 
   /**
@@ -712,12 +643,6 @@ class HBaseStorage(tableName: String,
 
   private def delta(qualifier: Short) = {
     ((qualifier & 0xFFFF) >>> HBaseStorage.FLAG_BITS).toShort
-  }
-
-  @inline
-  private def copyBytes(src: Array[Byte], dst: Array[Byte], off: Int): Int = {
-    System.arraycopy(src, 0, dst, off, src.length)
-    off + src.length
   }
 
 }

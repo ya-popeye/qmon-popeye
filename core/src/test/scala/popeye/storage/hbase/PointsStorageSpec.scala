@@ -14,7 +14,6 @@ import scala.util.Random
 import java.nio.CharBuffer
 import popeye.storage.hbase.HBaseStorage.ValueIdFilterCondition._
 import popeye.storage.hbase.HBaseStorage._
-import popeye.storage.hbase.HBaseStorage.Point
 import scala.collection.immutable.SortedMap
 
 /**
