@@ -29,7 +29,7 @@ case "$1" in
           ENV_TYPE=development
       fi
     
-      for APP_NAME in 'qmon-popeye-slicer' 'qmon-popeye-pump' 'qmon-popeye-query' ; do
+      for APP_NAME in 'qmon-popeye' 'qmon-popeye-slicer' 'qmon-popeye-pump' 'qmon-popeye-query' ; do
         QMON_CONF_DIR=/etc/yandex/$APP_NAME/$ENV_TYPE
         if [ ! -d $QMON_CONF_DIR ] ; then
           echo "no configuration for $APP_NAME $ENV_TYPE"
@@ -38,6 +38,19 @@ case "$1" in
         ln -sfn $QMON_CONF_DIR /etc/yandex/$APP_NAME/conf
         chmod -R 655 $QMON_CONF_DIR 
       done
+      myzk=`cat /etc/yandex/qmon-popeye/conf/kafka-zoo`
+      popeyeDir=`ls /usr/share/ | grep -E 'qmon-popeye-(slicer|pump|query)' | head -n 1`
+      if [ -n $popeyeDir ] ; then
+        cat /etc/yandex/qmon-popeye/conf/kafka-topics | while read topic partitions replication
+            do
+                echo 'java -cp "/usr/share/$popeyeDir/lib*" kafka.admin.TopicCommand --zookeeper $myzk --create --partitions $partitions --replication-factor $replication --topic $topic'
+                java -cp "/usr/share/$popeyeDir/lib/*" kafka.admin.TopicCommand --zookeeper $myzk --create --partitions $partitions --replication-factor $replication --topic $topic
+            done
+      else
+        echo "cannot create kafka topics, reason: cannot find popeye libraries at /usr/share/qmon-popeye-(slicer|pump|query)/lib"
+        exit 1
+      fi
+      break
     ;;
 
     abort-upgrade|abort-remove|abort-deconfigure)

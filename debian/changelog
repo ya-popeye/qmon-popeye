@@ -1,3 +1,10 @@
+qmon-popeye (0.8.2) precise; urgency=low
+
+  * performance fixes
+  * yandex environment
+
+ -- Vasily Kolpakov <quasi@yandex-team.ru>  Thu, 10 Apr 2014 18:51:15 +0400
+
 qmon-popeye (0.8.1) precise; urgency=low
 
   * simple http interface for points retrieval
