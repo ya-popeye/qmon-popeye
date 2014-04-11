@@ -747,6 +747,8 @@ class HBaseStorageConfigured(config: HBaseStorageConfig) {
   val hbase = new HBaseConfigured(
     config.config, config.zkQuorum, config.poolSize)
 
+  CreateTsdbTables.createTables(hbase.hbaseConfiguration, config.pointsTableName, config.uidsTableName)
+
   config.actorSystem.registerOnTermination(hbase.close())
 
   val uniqueIdStorage = new UniqueIdStorage(config.uidsTableName, hbase.hTablePool, HBaseStorage.UniqueIdMapping)
