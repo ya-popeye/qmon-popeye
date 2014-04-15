@@ -179,6 +179,7 @@ object PopeyeBuild extends Build {
         "org.apache.hbase" % "hbase-common" % Version.HBase,
         "org.apache.hbase" % "hbase-client" % Version.HBase,
         "org.apache.hbase" % "hbase-server" % Version.HBase,
+        "org.apache.hbase" % "hbase-hadoop-compat" % Version.HBase,
         "org.apache.hadoop" % "hadoop-common" % Version.Hadoop,
         "org.apache.hadoop" % "hadoop-client" % Version.Hadoop,
         "org.apache.kafka" %% "kafka" % Version.Kafka,
