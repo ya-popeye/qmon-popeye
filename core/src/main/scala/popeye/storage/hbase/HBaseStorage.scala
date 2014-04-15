@@ -517,15 +517,15 @@ class HBaseStorage(tableName: String,
     def idsMapFuture(qualifiedNames: Set[QualifiedName], uniqueId: UniqueId): Future[Map[QualifiedName, BytesKey]] = {
       val namesSeq = qualifiedNames.toSeq
       val idsFuture = Future.traverse(namesSeq.map(_.name)) {
-        name => uniqueId.resolveIdByName(name, create = false)(resolveTimeout)
+        name => uniqueId.resolveIdByName(name, create = true)(resolveTimeout)
       }
       idsFuture.map {
         ids => namesSeq.zip(ids)(scala.collection.breakOut)
       }
     }
-    val metricsMapFuture = idsMapFuture(groupedNames(MetricKind), metricNames)
-    val attrNamesMapFuture = idsMapFuture(groupedNames(AttrNameKind), attributeNames)
-    val attrValueMapFuture = idsMapFuture(groupedNames(AttrValueKind), attributeValues)
+    val metricsMapFuture = idsMapFuture(groupedNames.getOrElse(MetricKind, Set()), metricNames)
+    val attrNamesMapFuture = idsMapFuture(groupedNames.getOrElse(AttrNameKind, Set()), attributeNames)
+    val attrValueMapFuture = idsMapFuture(groupedNames.getOrElse(AttrValueKind, Set()), attributeValues)
     for {
       metricsMap <- metricsMapFuture
       attrNameMap <- attrNamesMapFuture
