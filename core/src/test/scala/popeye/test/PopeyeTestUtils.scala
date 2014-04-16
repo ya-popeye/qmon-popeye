@@ -49,14 +49,31 @@ object PopeyeTestUtils {
     val host: String = hosts(rnd.nextInt(hosts.length))
     val timestamp: Long = ts.addAndGet(rnd.nextInt(2000) + 1000l)
     val name: String = names(rnd.nextInt(names.length))
-    Point.newBuilder()
+    createPoint(
+      metric = name,
+      timestamp = timestamp,
+      attributes = Seq("host" -> host),
+      value = Left(rnd.nextLong())
+    )
+  }
+
+  def createPoint(metric: String = "metric",
+                  timestamp: Long = 0,
+                  attributes: Seq[(String, String)] = Seq("host" -> "localhost"),
+                  value: Either[Long, Float] = Left(0)) = {
+    import scala.collection.JavaConverters._
+    val attrs = attributes.map {
+      case (aName, aValue) => Message.Attribute.newBuilder().setName(aName).setValue(aValue).build()
+    }.asJava
+    val builder = Point.newBuilder()
+      .setMetric(metric)
       .setTimestamp(timestamp)
-      .setIntValue(rnd.nextLong())
-      .setMetric(name)
-      .addAttributes(Attribute.newBuilder()
-      .setName("host")
-      .setValue(host)
-    ).build()
+      .addAllAttributes(attrs)
+    value.fold(
+      longVal => builder.setIntValue(longVal),
+      floatVal => builder.setFloatValue(floatVal)
+    )
+    builder.build()
   }
 
   class MockPopeyeConsumer extends PointsSource {

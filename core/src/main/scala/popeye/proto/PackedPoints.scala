@@ -108,8 +108,10 @@ final class PackedPoints(val avgMessageSize: Int = 100,
       point
     }
 
-    override def hasNext: Boolean = index < pointsCount
+    override def hasNext: Boolean = index < pointsCount_
   }
+
+  override def size: Int = pointsCount_
 }
 
 object PackedPoints {

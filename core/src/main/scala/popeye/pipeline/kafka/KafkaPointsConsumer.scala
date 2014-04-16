@@ -15,8 +15,9 @@ import popeye.pipeline.kafka.KafkaPointsConsumerProto._
 import scala.util.Failure
 import scala.Some
 import scala.util.Success
-import scala.annotation.tailrec
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{Future, ExecutionContext}
+import popeye.pipeline.kafka.KafkaPointsConsumer.DropStrategy
+import popeye.proto.Message.Point
 
 class KafkaPointsConsumerConfig(val topic: String, val group: String, config: Config) {
   val tick = new FiniteDuration(config.getMilliseconds("tick"), TimeUnit.MILLISECONDS)
@@ -33,6 +34,9 @@ class KafkaPointsConsumerMetrics(val prefix: String,
 }
 
 object KafkaPointsConsumer {
+
+  type DropStrategy = Seq[Point] => SendAndDrop
+
   def consumerConfig(group: String, kafkaConfig: Config, pc: KafkaPointsConsumerConfig): ConsumerConfig = {
     val consumerProps = ConfigUtil.mergeProperties(kafkaConfig, "consumer.config")
     consumerProps.setProperty("zookeeper.connect", kafkaConfig.getString("zk.quorum"))
@@ -48,6 +52,7 @@ object KafkaPointsConsumer {
             metrics: MetricRegistry,
             sink: PointsSink,
             drop: PointsSink,
+            dropStrategy: DropStrategy,
             executionContext: ExecutionContext): Props = {
     val pc = new KafkaPointsConsumerConfig(topic, group, config.getConfig("consumer").withFallback(config))
     val consumerMetrics = new KafkaPointsConsumerMetrics(s"kafka.$topic.$group", metrics)
@@ -55,7 +60,17 @@ object KafkaPointsConsumer {
     val consumerConnector = Consumer.create(consumerConfig)
     val sourceMetrics = new KafkaPointsSourceImplMetrics(f"${consumerMetrics.prefix}.source", metrics)
     val pointsSource = new KafkaPointsSourceImpl(consumerConnector, pc.topic, sourceMetrics)
-    Props.apply(new KafkaPointsConsumer(pc, consumerMetrics, pointsSource, sink, drop, executionContext))
+    Props.apply(
+      new KafkaPointsConsumer(
+        pc,
+        consumerMetrics,
+        pointsSource,
+        sink,
+        drop,
+        dropStrategy,
+        executionContext
+      )
+    )
   }
 }
 
@@ -69,20 +84,27 @@ object KafkaPointsConsumerProto {
 
   case object Idle extends State
   case object Consuming extends State
-  case object Sending extends State
-  case object Dropping extends State
+  case object Delivering extends State
 
-  case class PointsState(var points: PackedPoints = new PackedPoints(),
-                   var batches: ArrayBuffer[Long] = new ArrayBuffer[Long]()){
-    def hasData = points.pointsCount > 0
+  case class PointsState(pointsToSend: PackedPoints = PackedPoints(),
+                         pointsToDrop: PackedPoints = PackedPoints(),
+                         batches: ArrayBuffer[Long] = new ArrayBuffer[Long]()) {
+    def hasData = pointsCount > 0
+
+    def pointsCount = pointsToSend.size + pointsToDrop.size
   }
+
 }
+
+case class SendAndDrop(pointsToSend: Seq[Point] = Seq(),
+                       pointsToDrop: Seq[Point] = Seq())
 
 class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
                           val metrics: KafkaPointsConsumerMetrics,
                           val pointsConsumer: PointsSource,
                           val sinkPipe: PointsSink,
                           val dropPipe: PointsSink,
+                          dropStrategy: DropStrategy,
                           executionContext: ExecutionContext)
   extends FSM[State, PointsState] {
 
@@ -98,10 +120,11 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
   when(Consuming, stateTimeout = FiniteDuration.apply(0, TimeUnit.MILLISECONDS)) {
     case Event(StateTimeout, p: PointsState) =>
       consumeNext(stateData, config.batchSize)
-      log.debug(s"consume: buffered ${stateData.points.pointsCount} points")
+      log.debug(s"consume: buffered ${stateData.pointsCount} points")
       if (p.hasData) {
         metrics.nonEmptyBatches.mark()
-        goto(Sending)
+        deliverPoints()
+        goto(Delivering)
       }
       else {
         metrics.emptyBatches.mark()
@@ -109,65 +132,61 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
       }
   }
 
-  when(Sending) {
+  when(Delivering) {
     case Event(Ok, p: PointsState) =>
       log.info(s"Committing batches ${p.batches.mkString}")
       pointsConsumer.commitOffsets()
       goto(Consuming) using PointsState()
 
     case Event(Failed, p: PointsState) =>
-      log.info(s"Failed batches ${p.batches.mkString}, sending to dropPipe")
-      goto(Dropping)
-  }
-
-  when(Dropping) {
-    case Event(Ok, _) =>
-      pointsConsumer.commitOffsets()
-      goto(Consuming) using PointsState()
-    case Event(Failed, _) =>
-      log.info("Drop failed: terminating")
+      log.info("Delivery failed: terminating")
       context.stop(self)
       goto(Idle) using PointsState()
   }
 
-  onTransition {
-    case Consuming -> Sending =>
-      log.debug(s"Sending ${stateData.batches.mkString} with ${stateData.points.pointsCount} points")
-      sendPoints(stateData)
-
-    case Sending -> Dropping =>
-      log.debug(s"Droping ${stateData.batches.mkString} with ${stateData.points.pointsCount} points")
-      dropPoints(stateData)
-
-  }
-
-  private def sendPoints(p: PointsState) = {
-    val me = self
-    val myBatches = p.batches
-    sinkPipe.send(myBatches, p.points) onComplete {
+  private def deliverPoints() {
+    val myBatches = stateData.batches
+    val sendFuture = sendPoints(myBatches, stateData.pointsToSend)
+    val dropFuture = dropPoints(myBatches, stateData.pointsToDrop)
+    (sendFuture zip dropFuture) onComplete {
       case Success(x) =>
         log.debug(s"Batches: ${myBatches.mkString(",")} committed")
-        me ! Ok
+        self ! Ok
       case Failure(x: Throwable) =>
-        log.error(x, s"Failed to send batches $myBatches")
-        me ! Failed
+        log.error(x, s"Failed to deliver batches $myBatches")
+        self ! Failed
     }
   }
 
-  private def dropPoints(p: PointsState) = {
-    val me = self
-    val batches = p.batches.mkString(",")
-    dropPipe.send(p.batches, p.points) onComplete {
-      case Success(x) =>
-        log.debug(s"Batches: $batches successfully dropped")
-        me ! Ok
-      case Failure(x: Throwable) =>
-        log.error(s"Batches: $batches failed to safe drop", x)
-        me ! Failed
+  private def sendPoints(batchIds: Seq[Long], points: PackedPoints) = {
+    if (points.nonEmpty) {
+      log.debug(s"Sending ${batchIds.mkString(", ")} with ${stateData.pointsCount} points")
+      val future = sinkPipe.send(batchIds, points)
+      future.recoverWith {
+        case t: Throwable =>
+          log.error(t, s"Failed to send batches $batchIds")
+          dropPipe.send(batchIds, points)
+      }
+    } else {
+      Future.successful(0l)
     }
-
   }
 
+  private def dropPoints(batchIds: Seq[Long], points: PackedPoints) = {
+    if (points.nonEmpty) {
+      log.debug(s"Dropping ${stateData.batches.mkString} with ${stateData.pointsCount} points")
+      val future = dropPipe.send(batchIds, points)
+      future.onComplete {
+        case Success(x) =>
+          log.debug(s"Batches: $batchIds successfully dropped")
+        case Failure(x: Throwable) =>
+          log.error(s"Batches: $batchIds failed to safe drop", x)
+      }
+      future
+    } else {
+      Future.successful(0l)
+    }
+  }
 
   private def consumeNext(p: PointsState, batchSize: Long): Unit = {
     val tctx = metrics.consumeTimer.timerContext()
@@ -179,26 +198,25 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
     }
   }
 
-  @tailrec
   private def consumeInner(p: PointsState, batchSize: Long): Unit = {
-    if (p.points.pointsCount > batchSize)
-      return
-    try {
-      pointsConsumer.consume() match {
-        case Some((batchId, points)) =>
-          log.debug(s"Batch: $batchId queued")
-          p.points.append(points: _*)
-          p.batches += batchId
-
-        case None =>
-          return
+    while(p.pointsCount < batchSize) {
+      try {
+        pointsConsumer.consume() match {
+          case Some((batchId, points)) =>
+            log.debug(s"Batch: $batchId queued")
+            val SendAndDrop(sendPoints, dropPoints) = dropStrategy(points)
+            p.pointsToSend.append(sendPoints: _*)
+            p.pointsToDrop.append(dropPoints: _*)
+            p.batches += batchId
+          case None =>
+            return
+        }
+      } catch {
+        case e: InvalidProtocolBufferException =>
+          log.debug("Can't decode point", e)
+          metrics.decodeFailures.mark()
       }
-    } catch {
-      case e: InvalidProtocolBufferException =>
-        log.debug("Can't decode point", e)
-        metrics.decodeFailures.mark()
     }
-    consumeInner(p, batchSize)
   }
 
   initialize()

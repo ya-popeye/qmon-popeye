@@ -52,6 +52,7 @@ class KafkaPipelineChannel(val config: Config,
         metrics,
         mainSink,
         dropSink,
+        packedPoints => SendAndDrop(pointsToSend = packedPoints),
         executionContext
       ).withDispatcher(config.getString("consumer.dispatcher"))
 
