@@ -606,7 +606,8 @@ class HBaseStorage(tableName: String,
       s"Metric Id is wider then row key ${Bytes.toStringBinary(row)}")
     require(kv.getQualifierLength == Bytes.SIZEOF_SHORT,
       s"Expected qualifier to be with size of Short")
-    val attributesLen = row.length - metricNames.width - HBaseStorage.TIMESTAMP_BYTES
+    val firstAttributeOffset = metricNames.width + HBaseStorage.TIMESTAMP_BYTES
+    val attributesLen = row.length - firstAttributeOffset
     val attributeLen = attributeNames.width + attributeValues.width
     require(attributesLen %
       (attributeNames.width + attributeValues.width) == 0,
@@ -618,16 +619,16 @@ class HBaseStorage(tableName: String,
 
 
     val metricNameFuture = metricNames.resolveNameById(util.Arrays.copyOf(kv.getRow, metricNames.width))(resolveTimeout)
-    var atOffset = metricNames.width + HBaseStorage.TIMESTAMP_BYTES
-    val attributes = Future.traverse((0 until attributesLen / attributeLen)
-      .map { idx =>
-      val atId = util.Arrays.copyOfRange(row, atOffset, atOffset + attributeNames.width)
-      val atVal = util.Arrays.copyOfRange(row,
-        atOffset + attributeNames.width,
-        atOffset + attributeNames.width + attributeValues.width)
-      atOffset += attributeLen * idx
-      (atId, atVal)
-    }) { attribute =>
+    val attrByteIds = (0 until attributesLen / attributeLen).map {
+      idx =>
+        val attributeOffset = firstAttributeOffset + attributeLen * idx
+        val attributeValueOffset = attributeOffset + attributeNames.width
+        val atId = util.Arrays.copyOfRange(row, attributeOffset, attributeValueOffset)
+        val atVal = util.Arrays.copyOfRange(row, attributeValueOffset, attributeValueOffset + attributeValues.width)
+        (atId, atVal)
+    }
+    val attributes = Future.traverse(attrByteIds) {
+      attribute =>
       attributeNames.resolveNameById(attribute._1)(resolveTimeout)
         .zip(attributeValues.resolveNameById(attribute._2)(resolveTimeout))
     }

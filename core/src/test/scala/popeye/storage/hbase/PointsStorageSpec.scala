@@ -27,6 +27,35 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
 
   behavior of "PointsStorage"
 
+  it should "save and load point correctly" in {
+    import scala.collection.JavaConverters._
+    val attrNames: Seq[String] = Seq("host", "anotherHost", "additionalHost")
+    val storageStub = new PointsStorageStub(
+      metricNames = PopeyeTestUtils.names,
+      attributeNames = attrNames,
+      attributeValues = PopeyeTestUtils.hosts
+    )
+    val random = new Random(0)
+    val metric = PopeyeTestUtils.names.head
+    val attributes = attrNames.map {
+      name =>
+        val value = PopeyeTestUtils.hosts(random.nextInt(PopeyeTestUtils.hosts.size))
+        Message.Attribute.newBuilder().setName(name).setValue(value).build
+    }.asJava
+    val point = Message.Point.newBuilder()
+      .setMetric(metric)
+      .setTimestamp(0)
+      .addAllAttributes(attributes)
+      .setIntValue(0)
+      .build()
+    Await.ready(storageStub.storage.writePoints(PackedPoints(Seq(point))), 5 seconds)
+    val points = storageStub.hTable.getScanner(HBaseStorage.PointsFamily).map(_.raw).flatMap {
+      kv =>
+        kv.map(storageStub.storage.keyValueToPoint)
+    }
+    points.head should equal(point)
+  }
+
   it should "produce key values" in {
     implicit val random = new java.util.Random(1234)
 
