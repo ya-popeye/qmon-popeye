@@ -8,6 +8,7 @@ import popeye.javaapi.kafka.hadoop.KafkaInput
 import org.apache.hadoop.mapred.JobConf
 import popeye.hadoop.bulkload.BulkLoadConstants._
 import java.io.File
+import org.apache.hadoop.fs.Path
 
 object Test {
   def main(args: Array[String]) {
@@ -40,6 +41,7 @@ object Test {
     hbaseConfiguration.set("hbase.zookeeper.quorum", "localhost")
     hbaseConfiguration.setInt(HConstants.ZOOKEEPER_CLIENT_PORT, 2182)
     val table: HTable = new HTable(hbaseConfiguration, "popeye:tsdb")
-    BulkloadJobRunner.runJob(job, table)
+    val outputPath: Path = new Path("file:////tmp/hadoop/output")
+    BulkloadJobRunner.runJob(job, table, outputPath)
   }
 }

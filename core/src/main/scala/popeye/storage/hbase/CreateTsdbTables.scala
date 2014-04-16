@@ -2,6 +2,7 @@ package popeye.storage.hbase
 
 import org.apache.hadoop.hbase._
 import org.apache.hadoop.hbase.client.HBaseAdmin
+import org.apache.hadoop.conf.Configuration
 
 object CreateTsdbTables {
 
@@ -23,11 +24,7 @@ object CreateTsdbTables {
 
   def popeyeTableName(name: String) = TableName.valueOf("popeye", name)
 
-  def main(args: Array[String]) {
-    val hbaseConfiguration = HBaseConfiguration.create
-    hbaseConfiguration.set("hbase.zookeeper.quorum", args(0))
-    println(args(0))
-    hbaseConfiguration.setInt(HConstants.ZOOKEEPER_CLIENT_PORT, 2181)
+  def createTables(hbaseConfiguration: Configuration) = {
     val hBaseAdmin = new HBaseAdmin(hbaseConfiguration)
     hBaseAdmin.createNamespace(NamespaceDescriptor.create("popeye").build())
     val splits = (Byte.MinValue to Byte.MaxValue).map(i => Array(i.toByte)).toArray
@@ -36,5 +33,13 @@ object CreateTsdbTables {
     hBaseAdmin.close()
   }
 
+  def main(args: Array[String]) {
+    val zookeeperQuorum: String = args(0)
+    val zookeeperPort: Int = 2181
+    val hbaseConfiguration = HBaseConfiguration.create
+    hbaseConfiguration.set(HConstants.ZOOKEEPER_QUORUM, zookeeperQuorum)
+    hbaseConfiguration.setInt(HConstants.ZOOKEEPER_CLIENT_PORT, zookeeperPort)
+    createTables(hbaseConfiguration)
+  }
 }
 
