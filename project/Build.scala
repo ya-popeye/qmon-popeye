@@ -86,8 +86,10 @@ object HBase {
   val settings = Seq(
     libraryDependencies ++= Seq(
       "org.apache.hadoop" % "hadoop-common" % Version.Hadoop,
+      "org.apache.hbase" % "hbase-common" % Version.HBase,
       "org.apache.hbase" % "hbase-client" % Version.HBase,
-      "org.apache.hbase" % "hbase-common" % Version.HBase
+      "org.apache.hbase" % "hbase-server" % Version.HBase,
+      "org.apache.hbase" % "hbase-hadoop-compat" % Version.HBase
     ).excluding(
       ExclusionRule(name = "commons-daemon"),
       ExclusionRule(name = "commons-cli"),
@@ -95,7 +97,6 @@ object HBase {
       ExclusionRule(name = "jsp-api"),
       ExclusionRule(name = "servlet-api"),
       ExclusionRule(name = "kfs"),
-      ExclusionRule(name = "avro"),
       ExclusionRule(name = "mockito-all"),
       ExclusionRule(organization = "org.jruby"),
       ExclusionRule(organization = "tomcat"),
@@ -122,7 +123,7 @@ object PopeyeBuild extends Build {
     id = "popeye",
     base = file("."),
     settings = defaultSettings
-  ).aggregate(popeyeCore, popeyeBench, popeyeHadoopJob)
+  ).aggregate(popeyeCore, popeyeBench)
 
   lazy val popeyeCore = Project(
     id = "popeye-core",
@@ -131,6 +132,8 @@ object PopeyeBuild extends Build {
     .settings(
     distMainClass := "popeye.Main",
     libraryDependencies ++= Version.slf4jDependencies ++ Seq(
+      "org.apache.hadoop" % "hadoop-common" % Version.Hadoop,
+      "org.apache.hadoop" % "hadoop-client" % Version.Hadoop,
       "com.github.scopt" %% "scopt" % Version.Scopt,
       "com.google.protobuf" % "protobuf-java" % "2.5.0",
       "org.apache.kafka" %% "kafka" % Version.Kafka,
@@ -168,26 +171,5 @@ object PopeyeBuild extends Build {
     ).excluding(Version.commonExclusions :_*)
      .excluding(Version.slf4jExclusions :_*)
   )
-
-  lazy val popeyeHadoopJob = Project(
-    id = "popeye-hadoop-job",
-    base = file("hadoop-job"),
-    settings = defaultSettings ++ QMonDistPlugin.distSettings).dependsOn(popeyeCore)
-    .settings(
-      distMainClass := "popeye.transport.bench.GenerateMain",
-      libraryDependencies ++= Version.slf4jDependencies ++ Seq(
-        "org.apache.hbase" % "hbase-common" % Version.HBase,
-        "org.apache.hbase" % "hbase-client" % Version.HBase,
-        "org.apache.hbase" % "hbase-server" % Version.HBase,
-        "org.apache.hbase" % "hbase-hadoop-compat" % Version.HBase,
-        "org.apache.hadoop" % "hadoop-common" % Version.Hadoop,
-        "org.apache.hadoop" % "hadoop-client" % Version.Hadoop,
-        "org.apache.kafka" %% "kafka" % Version.Kafka,
-        "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
-        "org.mockito" % "mockito-core" % Version.Mockito % "test"
-      ).excluding(Version.commonExclusions: _*)
-        .excluding(Version.slf4jExclusions: _*)
-    )
-
 }
 
