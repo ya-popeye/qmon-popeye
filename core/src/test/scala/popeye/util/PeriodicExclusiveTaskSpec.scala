@@ -49,6 +49,22 @@ class PeriodicExclusiveTaskSpec extends FlatSpec with Matchers with BeforeAndAft
     Await.result(testCompletion.future, 1 second)
   }
 
+  it should "handle long tasks" in {
+    val testCompletion = Promise[Unit]()
+    val runCount = new AtomicInteger(0)
+    val zkClient = newZooClient
+    PeriodicExclusiveTask.run(zkClient, lockPath, actorSystem.scheduler, executionContext, 10 millis) {
+      runCount.getAndIncrement match {
+        case 1 =>
+          Thread.sleep(500)
+          testCompletion.success(())
+        case 2 =>
+          testCompletion.failure(new AssertionError("second task started too early"))
+      }
+    }
+    Await.result(testCompletion.future, 1 second)
+  }
+
   it should "run operations exclusively" in {
     val testCompletion = Promise[Unit]()
     val runCount = new AtomicInteger(0)
