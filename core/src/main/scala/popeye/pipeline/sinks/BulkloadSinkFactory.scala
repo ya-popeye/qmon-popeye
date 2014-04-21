@@ -65,7 +65,6 @@ class BulkloadSinkFactory(kafkaSinkFactory: KafkaSinkFactory,
     kafkaSinkFactory.startSink(sinkName, config)
   }
 
-
   private def hbaseConf(config: Config) = {
     val hbaseConfiguration = HBaseConfiguration.create()
     hbaseConfiguration.set(HConstants.ZOOKEEPER_QUORUM, config.getString("zk.quorum.hosts"))
