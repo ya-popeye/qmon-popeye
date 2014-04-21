@@ -1,34 +1,26 @@
+package popeye.hadoop.bulkload
+
 import akka.actor.ActorSystem
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.{Config, ConfigFactory}
-import java.io.StringReader
+import java.io._
 import java.util.Properties
 import kafka.admin.AdminUtils
-import kafka.api.{PartitionOffsetRequestInfo, OffsetRequest}
-import kafka.common.{ErrorMapping, TopicAndPartition}
-import kafka.consumer.SimpleConsumer
-import kafka.producer.{KeyedMessage, ProducerConfig, Producer}
+import kafka.producer.{ProducerConfig, Producer}
 import kafka.utils.ZKStringSerializer
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.hbase.client.{Scan, Result, ResultScanner, HTable}
-import org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles
 import org.apache.hadoop.hbase.{HConstants, HBaseConfiguration}
-import org.apache.hadoop.mapred.JobConf
-import org.apache.hadoop.mapreduce.Job
 import org.I0Itec.zkclient.ZkClient
-import popeye.hadoop.bulkload.BulkLoadConstants._
-import popeye.hadoop.bulkload.BulkloadJobRunner
-import popeye.javaapi.kafka.hadoop.KafkaInput
 import popeye.pipeline.kafka.{KeySerialiser, KeyPartitioner}
 import popeye.proto.Message.Point
 import popeye.proto.{PackedPoints, Message}
 import popeye.storage.hbase.{HBaseStorageConfigured, HBaseStorageConfig, CreateTsdbTables}
 import scala.collection.JavaConverters._
-import scala.concurrent.{Await, Future}
 import scala.util.Random
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration._
+import kafka.producer.KeyedMessage
 
 object DropIntegrationTest {
 
@@ -62,60 +54,9 @@ object DropIntegrationTest {
     CreateTsdbTables.createTables(hbaseConfiguration)
   }
 
-  def runHadoopJob(hbaseConfiguration: Configuration, brokersListSting: String, kafkaInputs: Seq[KafkaInput], outputPath: Path) = {
-    val conf: JobConf = new JobConf
-    conf.set(KAFKA_INPUTS, KafkaInput.renderInputsString(kafkaInputs))
-    conf.set(KAFKA_BROKERS, brokersListSting)
-    conf.setInt(KAFKA_CONSUMER_TIMEOUT, 5000)
-    conf.setInt(KAFKA_CONSUMER_BUFFER_SIZE, 100000)
-    conf.setInt(KAFKA_CONSUMER_FETCH_SIZE, 2000000)
-    conf.set(KAFKA_CLIENT_ID, "drop")
-
-    val zooQuorum = hbaseConfiguration.get(HConstants.ZOOKEEPER_QUORUM)
-    val zooPort = hbaseConfiguration.getInt(HConstants.ZOOKEEPER_CLIENT_PORT, 2181)
-    conf.set(HBASE_CONF_QUORUM, zooQuorum)
-    conf.setInt(HBASE_CONF_QUORUM_PORT, zooPort)
-    conf.set(UNIQUE_ID_TABLE_NAME, CreateTsdbTables.tsdbUidTable.getTableName.getNameAsString)
-    conf.setInt(UNIQUE_ID_CACHE_SIZE, 100000)
-
-    val hTable = new HTable(hbaseConfiguration, CreateTsdbTables.tsdbTable.getTableName)
-    val job: Job = Job.getInstance(conf)
-
-    BulkloadJobRunner.runJob(job, hTable, outputPath)
-  }
-
   def createKafkaTopic(zkConnect: String, topic: String, partitions: Int) = {
     val zkClient = new ZkClient(zkConnect, 30000, 30000, ZKStringSerializer)
     AdminUtils.createTopic(zkClient, topic, partitions, replicationFactor = 1)
-  }
-
-  def fetchKafkaOffsets(brokers: Seq[(String, Int)], topic: String, partitions: Int): Map[Int, Long] = {
-    def fetchOffsetsFrom(broker: (String, Int)) = {
-      val (host, port) = broker
-      val consumer = new SimpleConsumer(host, port, 1000, 10000, "drop")
-      try {
-        val topicAndPartitions = (0 until partitions).map(i => TopicAndPartition(topic, i))
-        val offsetReqInfo = PartitionOffsetRequestInfo(OffsetRequest.LatestTime, maxNumOffsets = 10)
-        val offsetsRequest = OffsetRequest(requestInfo = topicAndPartitions.map(tap => tap -> offsetReqInfo).toMap)
-        val offsets = consumer.getOffsetsBefore(offsetsRequest)
-        println(offsets.partitionErrorAndOffsets)
-        val partitionAndOffsets =
-          for {
-            (tap, offsetResponse) <- offsets.partitionErrorAndOffsets if offsetResponse.error == ErrorMapping.NoError
-          }
-          yield {
-            (tap.partition, offsetResponse.offsets.head)
-          }
-        partitionAndOffsets.toMap
-      } finally {
-        consumer.close()
-      }
-    }
-    brokers.map(broker => fetchOffsetsFrom(broker)).reduce(_ ++ _)
-  }
-
-  def bulkloadHFiles(hbaseConfiguration: Configuration, hFilesPath: Path, hTable: HTable) = {
-    new LoadIncrementalHFiles(hbaseConfiguration).doBulkLoad(hFilesPath, hTable)
   }
 
   def loadPointsFromHBase(hbaseConfiguration: Configuration, storageConfig: Config) = {
@@ -178,6 +119,7 @@ object DropIntegrationTest {
   }
 
   def createPoints = {
+    val random = new Random(0)
     val tagLists = for {
       host <- 0 to 100
     } yield {
@@ -186,16 +128,29 @@ object DropIntegrationTest {
     for {
       metric <- Seq("foo", "bar", "baz")
       tagList <- tagLists
+      timestamp <- Seq.fill(1000)(random.nextInt(100000)).distinct
     } yield {
       val attributes = tagList.map {
         case (name, value) => Message.Attribute.newBuilder().setName(name).setValue(value).build()
       }
-      Message.Point.newBuilder()
+      val builder = Message.Point.newBuilder()
         .setMetric(metric)
-        .setTimestamp(0)
-        .setIntValue(0)
+        .setTimestamp(timestamp)
         .addAllAttributes(attributes.asJava)
-        .build()
+      val pointValue = randomValue(random)
+      pointValue.fold(
+        longValue => builder.setIntValue(longValue),
+        floatValue => builder.setFloatValue(floatValue)
+      )
+      builder.build()
+    }
+  }
+
+  def randomValue(rnd: Random): Either[Long, Float] = {
+    if (rnd.nextBoolean()) {
+      Left(rnd.nextLong())
+    } else {
+      Right(rnd.nextFloat())
     }
   }
 
@@ -241,16 +196,19 @@ object DropIntegrationTest {
     createKafkaTopic(kafkaZkConnect, topic, partitions)
     Thread.sleep(1000)
     loadPointsToKafka(brokersListSting, topic, points)
-
-    val offsets = fetchKafkaOffsets(brokers, topic, partitions)
-    val kafkaInputs = (0 until partitions).map {
-      partition => KafkaInput(topic, partition, 0, offsets(partition))
-    }
-    println(offsets)
     createTsdbTables(hbaseConfiguration)
-    runHadoopJob(hbaseConfiguration, brokersListSting, kafkaInputs, jobOutputPath)
-    val tsdbTable = new HTable(hbaseConfiguration, CreateTsdbTables.tsdbTable.getTableName)
-    bulkloadHFiles(hbaseConfiguration, jobOutputPath, tsdbTable)
+    BulkloadJobRunner.doBulkload(
+      jobRunnerZkConnect = "localhost:2181",
+      offsetsPath = "/offsets",
+      kafkaZkConnect = "localhost:2181",
+      brokerList = "localhost:9091,localhost:9092",
+      topic,
+      hbaseConfiguration,
+      tableName = CreateTsdbTables.tsdbTable.getTableName.getNameAsString,
+      hadoopConfiguration = new Configuration(),
+      jobOutputPath
+    )
+
     val loadedPoints = loadPointsFromHBase(hbaseConfiguration, storageConfig)
 
     if (arePointsEqual(points, loadedPoints)) {
@@ -260,10 +218,23 @@ object DropIntegrationTest {
       println(loadedPoints.size)
       val hashable = points.map(new HashablePoint(_))
       val loadedHashable = loadedPoints.map(new HashablePoint(_))
+      val out = new PrintStream(new File("DropIntegrationTest.dump"))
       for ((orig, loaded) <- hashable.sortBy(_.toString) zip loadedHashable.sortBy(_.toString)) {
-        println(f"$orig!$loaded")
+        out.println(f"$orig!$loaded")
       }
+      out.close()
     }
 
+    BulkloadJobRunner.doBulkload(
+      jobRunnerZkConnect = "localhost:2181",
+      offsetsPath = "/offsets",
+      kafkaZkConnect = "localhost:2181",
+      brokerList = "localhost:9091,localhost:9092",
+      topic,
+      hbaseConfiguration,
+      tableName = CreateTsdbTables.tsdbTable.getTableName.getNameAsString,
+      hadoopConfiguration = new Configuration(),
+      jobOutputPath
+    )
   }
 }

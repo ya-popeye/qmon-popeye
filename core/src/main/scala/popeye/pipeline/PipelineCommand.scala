@@ -16,6 +16,7 @@ import popeye.monitoring.MonitoringHttpServer
 import java.net.InetSocketAddress
 import scopt.OptionParser
 import popeye.MainConfig
+import popeye.pipeline.sinks.BulkloadSinkFactory
 
 object PipelineCommand {
 
@@ -28,9 +29,11 @@ object PipelineCommand {
                     storagesConfig: Config,
                     metrics: MetricRegistry,
                     idGenerator: IdGenerator): Map[String, PipelineSinkFactory] = {
+    val kafkaSinkFactory = new KafkaSinkFactory(actorSystem, ectx, idGenerator, metrics)
     val sinks = Map(
       "hbase-sink" -> new HBasePipelineSinkFactory(storagesConfig, actorSystem, ectx, metrics),
-      "kafka-sink" -> new KafkaSinkFactory(actorSystem, ectx, idGenerator, metrics),
+      "kafka-sink" -> kafkaSinkFactory,
+      "bulkload-sink" -> new BulkloadSinkFactory(kafkaSinkFactory, actorSystem.scheduler, ectx, storagesConfig),
       "blackhole" -> new BlackHolePipelineSinkFactory(actorSystem, ectx),
       "fail" -> new PipelineSinkFactory {
         def startSink(sinkName: String, config: Config): PointsSink = new PointsSink {
