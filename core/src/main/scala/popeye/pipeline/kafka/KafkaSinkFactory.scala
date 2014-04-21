@@ -2,12 +2,10 @@ package popeye.pipeline.kafka
 
 import popeye.pipeline.{PipelineSinkFactory, PointsSink}
 import com.typesafe.config.Config
-import akka.routing.FromConfig
-import akka.actor.{Props, ActorSystem}
+import akka.actor.ActorSystem
 import popeye.IdGenerator
 import com.codahale.metrics.MetricRegistry
-import popeye.proto.PackedPoints
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.ExecutionContext
 
 class KafkaSinkFactory(actorSystem: ActorSystem,
                        ectx: ExecutionContext,
@@ -18,7 +16,7 @@ class KafkaSinkFactory(actorSystem: ActorSystem,
     val kafkaConfig: Config = config.getConfig("kafka")
     val producerConfig = KafkaPointsProducer.producerConfig(kafkaConfig)
     val kafkaClient = new PopeyeKafkaProducerFactoryImpl(producerConfig)
-    val props = KafkaPointsProducer.props("kafka", kafkaConfig, idGenerator, kafkaClient, metrics)
+    val props = KafkaPointsProducer.props(f"$sinkName.kafka", kafkaConfig, idGenerator, kafkaClient, metrics)
     val producerActor = actorSystem.actorOf(props, f"$sinkName-kafka-producer")
     new KafkaPointsSink(producerActor)(ectx)
   }
