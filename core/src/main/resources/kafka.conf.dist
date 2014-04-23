@@ -41,8 +41,10 @@ popeye.pipeline {
             session.timeout = 5s
             connection.timeout = 5s
           }
-          outputPath = /tmp/hadoop/output
-          hadoop.conf.paths = ["/home/quasi/programming/sandbox/hadoop/hadoop-2.3.0-cdh5.0.0/mapred-site.xml"]
+          output.path = /tmp/hadoop/output
+          jars.path = /popeye/lib
+          hadoop.conf.paths = ["/home/quasi/programming/sandbox/hadoop/hadoop-2.3.0-cdh5.0.0/etc/hadoop/mapred-site.xml",
+                               "/home/quasi/programming/sandbox/hadoop/hadoop-2.3.0-cdh5.0.0/etc/hadoop/core-site.xml"]
         }
         hbase = {
           zk.quorum.hosts = "localhost"

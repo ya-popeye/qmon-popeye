@@ -2,7 +2,7 @@ package popeye.pipeline.sinks
 
 import popeye.pipeline.{PipelineSinkFactory, PointsSink}
 import popeye.pipeline.kafka.KafkaSinkFactory
-import popeye.util.PeriodicExclusiveTask
+import popeye.util.{OffsetRange, KafkaOffsetsTracker, KafkaMetaRequests, PeriodicExclusiveTask}
 import com.typesafe.config.Config
 import akka.actor.Scheduler
 import scala.concurrent.ExecutionContext
@@ -15,6 +15,8 @@ import org.apache.hadoop.hbase.{HBaseConfiguration, HConstants}
 import popeye.hadoop.bulkload.BulkloadJobRunner
 import popeye.Logging
 import scala.collection.JavaConverters._
+import java.io.File
+import popeye.javaapi.kafka.hadoop.KafkaInput
 
 class BulkloadSinkFactory(kafkaSinkFactory: KafkaSinkFactory,
                           scheduler: Scheduler,
@@ -27,42 +29,67 @@ class BulkloadSinkFactory(kafkaSinkFactory: KafkaSinkFactory,
     val zkConnectionTimeout = jobRunnerConfig.getMilliseconds("zk.connection.timeout").toInt
     val lockZkClient = new ZkClient(jobRunnerZkConnect, zkSessionTimeout, zkConnectionTimeout, ZKStringSerializer)
     val lockPath = f"/drop/$sinkName/lock"
-    val lockPollInterval = jobRunnerConfig.getMilliseconds("restart.period").longValue().millis
+    val taskPeriod = jobRunnerConfig.getMilliseconds("restart.period").longValue().millis
 
     val storageConfig = storagesConfig.getConfig(config.getString("storage"))
 
     val kafkaConfig = config.getConfig("kafka")
-    val kafkaZkConnect = kafkaConfig.getString("zk.quorum")
     val topic = kafkaConfig.getString("topic")
 
     val offsetsPath = f"/drop/$sinkName/offsets"
     val hbaseConfiguration = hbaseConf(config.getConfig("hbase"))
-    val outputPath = new Path(jobRunnerConfig.getString("outputPath"))
-    val brokerList = kafkaConfig.getString("broker.list")
-    val tableName = storageConfig.getString("table.points")
+    val outputPath = new Path(jobRunnerConfig.getString("output.path"))
+    val jarsPath = new Path(jobRunnerConfig.getString("jars.path"))
+    val kafkaBrokers = parseBrokerList(kafkaConfig.getString("broker.list"))
+    val pointsTableName = storageConfig.getString("table.points")
+    val uidTableName = storageConfig.getString("table.uids")
 
     val hadoopConfigurationPaths = jobRunnerConfig.getStringList("hadoop.conf.paths").asScala
     val hadoopConfiguration = {
       val conf = new Configuration()
       for (path <- hadoopConfigurationPaths) {
-        conf.addResource(new Path(path))
+        conf.addResource(new File(path).toURI.toURL)
       }
       conf
     }
 
-    PeriodicExclusiveTask.run(lockZkClient, lockPath, scheduler, execContext, lockPollInterval) {
-      BulkloadJobRunner.doBulkload(
-        jobRunnerZkConnect,
-        offsetsPath,
-        kafkaZkConnect,
-        brokerList,
-        topic,
-        hbaseConfiguration,
-        tableName,
-        hadoopConfiguration,
-        outputPath)
+    PeriodicExclusiveTask.run(lockZkClient, lockPath, scheduler, execContext, taskPeriod) {
+      val kafkaMetaRequests = new KafkaMetaRequests(kafkaBrokers, topic)
+      val offsetsTracker = new KafkaOffsetsTracker(kafkaMetaRequests, jobRunnerZkConnect, offsetsPath)
+      val offsetRanges = offsetsTracker.fetchOffsetRanges()
+      val kafkaInputs = offsetRanges.toList.map {
+        case (partitionId, OffsetRange(startOffset, stopOffset)) =>
+          KafkaInput(
+            topic,
+            partitionId,
+            startOffset,
+            stopOffset
+          )
+      }.filterNot(_.isEmpty)
+
+      if (kafkaInputs.nonEmpty) {
+        BulkloadJobRunner.doBulkload(
+          kafkaInputs,
+          kafkaBrokers,
+          topic,
+          hbaseConfiguration,
+          pointsTableName,
+          uidTableName,
+          hadoopConfiguration,
+          outputPath,
+          jarsPath)
+        offsetsTracker.commitOffsets(offsetRanges)
+      }
     }
     kafkaSinkFactory.startSink(sinkName, config)
+  }
+
+  private def parseBrokerList(str: String) = {
+    str.split(",").map {
+      brokerStr =>
+        val tokens = brokerStr.split(":")
+        (tokens(0), tokens(1).toInt)
+    }.toSeq
   }
 
   private def hbaseConf(config: Config) = {

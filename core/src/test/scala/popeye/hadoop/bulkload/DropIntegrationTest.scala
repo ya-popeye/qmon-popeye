@@ -3,13 +3,12 @@ package popeye.hadoop.bulkload
 import akka.actor.ActorSystem
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.{Config, ConfigFactory}
-import java.io._
 import java.util.Properties
 import kafka.admin.AdminUtils
 import kafka.producer.{ProducerConfig, Producer}
 import kafka.utils.ZKStringSerializer
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.fs.Path
+import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.hadoop.hbase.client.{Scan, Result, ResultScanner, HTable}
 import org.apache.hadoop.hbase.{HConstants, HBaseConfiguration}
 import org.I0Itec.zkclient.ZkClient
@@ -21,6 +20,9 @@ import scala.collection.JavaConverters._
 import scala.util.Random
 import scala.concurrent.ExecutionContext.Implicits.global
 import kafka.producer.KeyedMessage
+import java.io.{PrintStream, File, StringReader}
+import popeye.util.{OffsetRange, KafkaOffsetsTracker, KafkaMetaRequests}
+import popeye.javaapi.kafka.hadoop.KafkaInput
 
 object DropIntegrationTest {
 
@@ -172,6 +174,15 @@ object DropIntegrationTest {
       conf
     }
 
+    val hadoopConfiguration = {
+      val conf = new Configuration()
+      for (path <- Seq("/home/quasi/programming/sandbox/hadoop/hadoop-2.3.0-cdh5.0.0/etc/hadoop/mapred-site.xml",
+        "/home/quasi/programming/sandbox/hadoop/hadoop-2.3.0-cdh5.0.0/etc/hadoop/core-site.xml")) {
+        conf.addResource(new File(path).toURI.toURL)
+      }
+      conf
+    }
+
     val storageConfig = ConfigFactory.parseString(
       """
         |zk.quorum = "localhost:2182"
@@ -192,22 +203,40 @@ object DropIntegrationTest {
 
     val partitions = 10
     val kafkaZkConnect = "localhost:2181"
-    val jobOutputPath: Path = new Path("file:////tmp/hadoop/output")
+    val jobOutputPath: Path = FileSystem.get(hadoopConfiguration).makeQualified(new Path("/bulkload/output"))
+    val jarsPath: Path = FileSystem.get(hadoopConfiguration).makeQualified(new Path("/popeye/jars"))
     createKafkaTopic(kafkaZkConnect, topic, partitions)
     Thread.sleep(1000)
     loadPointsToKafka(brokersListSting, topic, points)
     createTsdbTables(hbaseConfiguration)
-    BulkloadJobRunner.doBulkload(
-      jobRunnerZkConnect = "localhost:2181",
-      offsetsPath = "/offsets",
-      kafkaZkConnect = "localhost:2181",
-      brokerList = "localhost:9091,localhost:9092",
-      topic,
-      hbaseConfiguration,
-      tableName = CreateTsdbTables.tsdbTable.getTableName.getNameAsString,
-      hadoopConfiguration = new Configuration(),
-      jobOutputPath
-    )
+    val kafkaBrokers = Seq("localhost" -> 9091, "localhost" -> 9092)
+    val kafkaMetaRequests = new KafkaMetaRequests(kafkaBrokers, topic)
+    val offsetsTracker = new KafkaOffsetsTracker(kafkaMetaRequests, "localhost:2181", "/offsets")
+    val offsetRanges = offsetsTracker.fetchOffsetRanges()
+    val kafkaInputs = offsetRanges.toList.map {
+      case (partitionId, OffsetRange(startOffset, stopOffset)) =>
+        KafkaInput(
+          topic,
+          partitionId,
+          startOffset,
+          stopOffset
+        )
+    }.filterNot(_.isEmpty)
+    if (kafkaInputs.nonEmpty) {
+      BulkloadJobRunner.doBulkload(
+        kafkaInputs,
+        kafkaBrokers,
+        topic,
+        hbaseConfiguration,
+        pointsTableName = CreateTsdbTables.tsdbTable.getTableName.getNameAsString,
+        uIdsTableName = CreateTsdbTables.tsdbUidTable.getTableName.getNameAsString,
+        hadoopConfiguration,
+        jobOutputPath,
+        jarsPath
+      )
+    }
+    offsetsTracker.commitOffsets(offsetRanges)
+    System.exit(0)
 
     val loadedPoints = loadPointsFromHBase(hbaseConfiguration, storageConfig)
 
@@ -225,16 +254,17 @@ object DropIntegrationTest {
       out.close()
     }
 
-    BulkloadJobRunner.doBulkload(
-      jobRunnerZkConnect = "localhost:2181",
-      offsetsPath = "/offsets",
-      kafkaZkConnect = "localhost:2181",
-      brokerList = "localhost:9091,localhost:9092",
-      topic,
-      hbaseConfiguration,
-      tableName = CreateTsdbTables.tsdbTable.getTableName.getNameAsString,
-      hadoopConfiguration = new Configuration(),
-      jobOutputPath
-    )
+    //    BulkloadJobRunner.doBulkload(
+    //      jobRunnerZkConnect = "localhost:2181",
+    //      offsetsPath = "/offsets",
+    //      kafkaZkConnect = "localhost:2181",
+    //      brokerList = "localhost:9091,localhost:9092",
+    //      topic,
+    //      hbaseConfiguration,
+    //      pointsTableName = CreateTsdbTables.tsdbTable.getTableName.getNameAsString,
+    //      uIdsTableName = CreateTsdbTables.tsdbUidTable.getTableName.getNameAsString,
+    //      hadoopConfiguration = new Configuration(),
+    //      jobOutputPath
+    //    )
   }
 }

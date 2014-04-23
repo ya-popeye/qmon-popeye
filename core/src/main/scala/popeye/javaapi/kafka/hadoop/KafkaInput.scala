@@ -4,7 +4,7 @@ import scala.collection.JavaConverters._
 
 object KafkaInput {
   def parseStringAsInputJavaList(inputsString: String): java.util.List[KafkaInput] = {
-    val inputStrings = inputsString.split(";").toSeq
+    val inputStrings = inputsString.split(";").toSeq.filter(_.nonEmpty)
     inputStrings.map(parseStringAsInput).asJava
   }
 
@@ -25,4 +25,8 @@ object KafkaInput {
 
 }
 
-case class KafkaInput(topic: String, partition: Int, startOffset: Long, stopOffset: Long)
+case class KafkaInput(topic: String, partition: Int, startOffset: Long, stopOffset: Long) {
+  require(startOffset <= stopOffset)
+
+  def isEmpty = startOffset == stopOffset
+}

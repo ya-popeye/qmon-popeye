@@ -8,109 +8,57 @@ import org.apache.hadoop.mapreduce.Job
 import org.apache.hadoop.hbase.client.HTable
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat
 import org.apache.hadoop.conf.Configuration
-import popeye.util.KafkaUtils
 import popeye.javaapi.kafka.hadoop.KafkaInput
-import org.I0Itec.zkclient.ZkClient
-import kafka.utils.ZKStringSerializer
 import org.apache.hadoop.mapred.JobConf
 import popeye.hadoop.bulkload.BulkLoadConstants._
-import scala.Some
-import popeye.storage.hbase.CreateTsdbTables
 import popeye.Logging
+import popeye.util.{OffsetRange, KafkaMetaRequests, KafkaOffsetsTracker}
 
 object BulkloadJobRunner extends Logging {
 
-  private val zkTimeout: Int = 5000
-
-  def doBulkload(jobRunnerZkConnect: String,
-                 offsetsPath: String,
-                 kafkaZkConnect: String,
-                 brokerList: String,
+  def doBulkload(kafkaInputs: Seq[KafkaInput],
+                 kafkaBrokers: Seq[(String, Int)],
                  topic: String,
                  hbaseConfiguration: Configuration,
-                 tableName: String,
+                 pointsTableName: String,
+                 uIdsTableName: String,
                  hadoopConfiguration: Configuration,
-                 outputPath: Path) {
-
-    val previousStopOffsets = loadPreviousStopOffsets(jobRunnerZkConnect, offsetsPath)
-    info(f"kafka offsets loaded: $previousStopOffsets, creating kafka inputs for ($kafkaZkConnect, $topic, $previousStopOffsets)")
-    val kafkaInputs = getKafkaInputs(kafkaZkConnect, topic, previousStopOffsets)
-    info(f"kafka inputs created: $kafkaInputs, staring hadoop job")
-    runHadoopJob(hadoopConfiguration, hbaseConfiguration, brokerList, kafkaInputs, outputPath)
+                 outputPath: Path,
+                 jarsPath: Path) {
+    runHadoopJob(
+      hadoopConfiguration,
+      hbaseConfiguration,
+      kafkaBrokers,
+      pointsTableName,
+      uIdsTableName,
+      kafkaInputs,
+      outputPath,
+      jarsPath
+    )
     info("hadoop job finished, bulkload starting")
-    val hTable = new HTable(hbaseConfiguration, tableName)
+    val hTable = new HTable(hbaseConfiguration, pointsTableName)
     try {
       new LoadIncrementalHFiles(hbaseConfiguration).doBulkLoad(outputPath, hTable)
     } finally {
       hTable.close()
     }
     info(f"bulkload finished, saving offsets")
-    val stopOffsets =
-      kafkaInputs.map(input => input.partition -> input.stopOffset)
-        .toMap.withDefault(previousStopOffsets)
-    saveOffsets(jobRunnerZkConnect, offsetsPath, stopOffsets)
-    FileSystem.get(hadoopConfiguration).delete(outputPath, true)
     info(f"offsets saved")
-  }
-
-
-  private def getKafkaInputs(kafkaZkConnect: String, topic: String, previousStopOffsets: Map[Int, Long]) = {
-    val partitionMeta = KafkaUtils.fetchPartitionsMetadata(kafkaZkConnect, topic)
-    val partitionIds = partitionMeta.filter(_.leader.isDefined).map(_.partitionId)
-    val brokers = partitionMeta.map(_.leader).collect {
-      case Some(leader) => (leader.host, leader.port)
-    }
-    val offsets = KafkaUtils.fetchLatestOffsets(brokers, topic, partitionIds)
-    offsets.toList.map {
-      case (partitionId, offset) =>
-        KafkaInput(
-          topic,
-          partitionId,
-          startOffset = previousStopOffsets.getOrElse(partitionId, 0),
-          stopOffset = offset
-        )
-    }
-  }
-
-  private def saveOffsets(rootZkConnect: String, offsetsPath: String, offsets: Map[Int, Long]) = {
-    val zkClient = new ZkClient(rootZkConnect, zkTimeout, zkTimeout, ZKStringSerializer)
-    try {
-      val offsetsString = offsets.toList.map {
-        case (partition, offset) => f"$partition:$offset"
-      }.mkString(",")
-      zkClient.writeData(offsetsPath, offsetsString)
-    } finally {
-      zkClient.close()
-    }
-  }
-
-  private def loadPreviousStopOffsets(rootZkConnect: String, offsetsPath: String): Map[Int, Long] = {
-    val zkClient = new ZkClient(rootZkConnect, zkTimeout, zkTimeout, ZKStringSerializer)
-    try {
-      if (!zkClient.exists(offsetsPath)) {
-        val createParents = true
-        zkClient.createPersistent(offsetsPath, createParents)
-        zkClient.writeData(offsetsPath, "")
-      }
-      val offsetsString: String = zkClient.readData(offsetsPath)
-      offsetsString.split(",").filter(_.nonEmpty).map {
-        partitionAndOffset =>
-          val tokens = partitionAndOffset.split(":")
-          (tokens(0).toInt, tokens(1).toLong)
-      }.toMap
-    } finally {
-      zkClient.close()
-    }
   }
 
   private def runHadoopJob(hadoopConfiguration: Configuration,
                            hbaseConfiguration: Configuration,
-                           brokersListSting: String,
+                           kafkaBrokers: Seq[(String, Int)],
+                           pointsTableName: String,
+                           uidsTableName: String,
                            kafkaInputs: Seq[KafkaInput],
-                           outputPath: Path) = {
+                           outputPath: Path,
+                           jarsPath: Path) = {
+    FileSystem.get(hadoopConfiguration).delete(outputPath, true)
     val conf: JobConf = new JobConf(hadoopConfiguration)
     conf.set(KAFKA_INPUTS, KafkaInput.renderInputsString(kafkaInputs))
-    conf.set(KAFKA_BROKERS, brokersListSting)
+    val brokersListString = kafkaBrokers.map {case (host, port) => f"$host:$port"}.mkString(",")
+    conf.set(KAFKA_BROKERS, brokersListString)
     conf.setInt(KAFKA_CONSUMER_TIMEOUT, 5000)
     conf.setInt(KAFKA_CONSUMER_BUFFER_SIZE, 100000)
     conf.setInt(KAFKA_CONSUMER_FETCH_SIZE, 2000000)
@@ -120,18 +68,26 @@ object BulkloadJobRunner extends Logging {
     val zooPort = hbaseConfiguration.getInt(HConstants.ZOOKEEPER_CLIENT_PORT, 2181)
     conf.set(HBASE_CONF_QUORUM, zooQuorum)
     conf.setInt(HBASE_CONF_QUORUM_PORT, zooPort)
-    conf.set(UNIQUE_ID_TABLE_NAME, CreateTsdbTables.tsdbUidTable.getTableName.getNameAsString)
+    conf.set(UNIQUE_ID_TABLE_NAME, uidsTableName)
     conf.setInt(UNIQUE_ID_CACHE_SIZE, 100000)
 
-    val hTable = new HTable(hbaseConfiguration, CreateTsdbTables.tsdbTable.getTableName)
+    val hTable = new HTable(hbaseConfiguration, pointsTableName)
     val job: Job = Job.getInstance(conf)
 
-    job.setJarByClass(BulkloadJobRunner.getClass)
+    val jars = FileSystem.get(hadoopConfiguration).listStatus(jarsPath)
+
+    for (jar <- jars) {
+      val path = jar.getPath
+      job.addFileToClassPath(path)
+    }
+
     job.setInputFormatClass(classOf[PopeyePointsKafkaTopicInputFormat])
     job.setMapperClass(classOf[PointsToKeyValueMapper])
     job.setMapOutputKeyClass(classOf[ImmutableBytesWritable])
     job.setMapOutputValueClass(classOf[KeyValue])
     HFileOutputFormat2.configureIncrementalLoad(job, hTable)
+    // HFileOutputFormat2.configureIncrementalLoad abuses tmpjars
+    job.getConfiguration.unset("tmpjars")
     FileOutputFormat.setOutputPath(job, outputPath)
 
     job.waitForCompletion(true)
