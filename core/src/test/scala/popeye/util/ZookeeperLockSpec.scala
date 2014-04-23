@@ -11,35 +11,26 @@ import scala.util.Try
 
 class ZookeeperLockSpec extends FlatSpec with Matchers with BeforeAndAfter with TestExecContext {
   var zookeeper: EmbeddedZookeeper = null
-  var zkClients: mutable.ArrayBuffer[ZkClient] = mutable.ArrayBuffer()
   before {
     zookeeper = new EmbeddedZookeeper()
   }
 
   after {
-    zkClients.foreach(_.close())
-    zkClients.clear()
     zookeeper.shutdown()
-  }
-
-  def newZooClient = {
-    val client = zookeeper.client
-    zkClients += client
-    client
   }
 
   behavior of "ZookeeperLock"
 
   it should "create lock path" in {
-    val zkClient = newZooClient
+    val zkClient = zookeeper.newClient
     val lock = ZookeeperLock.acquireLock(zkClient, "/parent/lock")
     zkClient.readData("/parent/lock"): String
   }
 
   it should "be exclusive" in {
-    val zkClient1 = newZooClient
+    val zkClient1 = zookeeper.newClient
     val lock1 = ZookeeperLock.acquireLock(zkClient1, "/lock")
-    val zkClient2 = newZooClient
+    val zkClient2 = zookeeper.newClient
     val lock2 = ZookeeperLock.acquireLock(zkClient2, "/lock")
     val testCompletion = Promise[Unit]()
     val atomicBool = new AtomicBoolean(false)

@@ -13,7 +13,6 @@ import scala.util.Try
 class PeriodicExclusiveTaskSpec extends FlatSpec with Matchers with BeforeAndAfter with TestExecContext {
 
   var zookeeper: EmbeddedZookeeper = null
-  var zkClients: mutable.ArrayBuffer[ZkClient] = mutable.ArrayBuffer()
   var actorSystem: ActorSystem = null
   before {
     zookeeper = new EmbeddedZookeeper()
@@ -21,16 +20,8 @@ class PeriodicExclusiveTaskSpec extends FlatSpec with Matchers with BeforeAndAft
   }
 
   after {
-    zkClients.foreach(_.close())
-    zkClients.clear()
     zookeeper.shutdown()
     actorSystem.shutdown()
-  }
-
-  def newZooClient = {
-    val client = zookeeper.client
-    zkClients += client
-    client
   }
 
   behavior of "PeriodicExclusiveTask"
@@ -40,7 +31,7 @@ class PeriodicExclusiveTaskSpec extends FlatSpec with Matchers with BeforeAndAft
   it should "run task periodically" in {
     val testCompletion = Promise[Unit]()
     val runCount = new AtomicInteger(0)
-    val zkClient = newZooClient
+    val zkClient = zookeeper.newClient
     PeriodicExclusiveTask.run(zkClient, lockPath, actorSystem.scheduler, executionContext, 10 millis) {
       if (runCount.getAndIncrement == 10) {
         testCompletion.success(())
@@ -52,7 +43,7 @@ class PeriodicExclusiveTaskSpec extends FlatSpec with Matchers with BeforeAndAft
   it should "handle long tasks" in {
     val testCompletion = Promise[Unit]()
     val runCount = new AtomicInteger(0)
-    val zkClient = newZooClient
+    val zkClient = zookeeper.newClient
     PeriodicExclusiveTask.run(zkClient, lockPath, actorSystem.scheduler, executionContext, 10 millis) {
       runCount.getAndIncrement match {
         case 1 =>
@@ -68,12 +59,12 @@ class PeriodicExclusiveTaskSpec extends FlatSpec with Matchers with BeforeAndAft
   it should "run operations exclusively" in {
     val testCompletion = Promise[Unit]()
     val runCount = new AtomicInteger(0)
-    PeriodicExclusiveTask.run(newZooClient, lockPath, actorSystem.scheduler, executionContext, 10 millis) {
+    PeriodicExclusiveTask.run(zookeeper.newClient, lockPath, actorSystem.scheduler, executionContext, 10 millis) {
       if (runCount.getAndIncrement == 10) {
         testCompletion.success(())
       }
     }
-    PeriodicExclusiveTask.run(newZooClient, lockPath, actorSystem.scheduler, executionContext, 10 millis) {
+    PeriodicExclusiveTask.run(zookeeper.newClient, lockPath, actorSystem.scheduler, executionContext, 10 millis) {
       testCompletion.failure(new AssertionError("fail"))
     }
     Await.result(testCompletion.future, 1 second)
@@ -82,7 +73,7 @@ class PeriodicExclusiveTaskSpec extends FlatSpec with Matchers with BeforeAndAft
   it should "run operations exclusively in case of a failure" in {
     val testCompletion = Promise[Unit]()
     val firstOperationExecuted = new AtomicBoolean(false)
-    val zkClient: ZkClient = newZooClient
+    val zkClient: ZkClient = zookeeper.newClient
     val runCount = new AtomicInteger(0)
     PeriodicExclusiveTask.run(zkClient, lockPath, actorSystem.scheduler, executionContext, 10 millis) {
       if (firstOperationExecuted.get) {
@@ -93,7 +84,7 @@ class PeriodicExclusiveTaskSpec extends FlatSpec with Matchers with BeforeAndAft
         zkClient.close()
       }
     }
-    PeriodicExclusiveTask.run(newZooClient, lockPath, actorSystem.scheduler, executionContext, 10 millis) {
+    PeriodicExclusiveTask.run(zookeeper.newClient, lockPath, actorSystem.scheduler, executionContext, 10 millis) {
       testCompletion.complete(Try {
         firstOperationExecuted.get() should be(true)
       })

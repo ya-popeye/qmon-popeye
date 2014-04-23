@@ -16,7 +16,7 @@ class EmbeddedZookeeperSpec extends FlatSpec with Matchers with BeforeAndAfter {
   }
 
   it should "perform read write ops" in {
-    val zkClient = zookeeper.client
+    val zkClient = zookeeper.newClient
     zkClient.createEphemeral("/test", "test data")
     val str: String = zkClient.readData("/test")
     str should equal("test data")
