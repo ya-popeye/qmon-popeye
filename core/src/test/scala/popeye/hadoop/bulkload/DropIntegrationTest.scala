@@ -25,6 +25,8 @@ import popeye.util.{OffsetRange, KafkaOffsetsTracker, KafkaMetaRequests}
 import popeye.javaapi.kafka.hadoop.KafkaInput
 
 object DropIntegrationTest {
+  val pointsTableName: String = "popeye:tdsb"
+  val uIdsTableName: String = "popeye:tsdb-uid"
 
   def loadPointsToKafka(brokersListSting: String, topic: String, points: Seq[Point]) = {
     val props = new Properties()
@@ -53,7 +55,7 @@ object DropIntegrationTest {
   }
 
   def createTsdbTables(hbaseConfiguration: Configuration) = {
-    CreateTsdbTables.createTables(hbaseConfiguration)
+    CreateTsdbTables.createTables(hbaseConfiguration, pointsTableName, uIdsTableName)
   }
 
   def createKafkaTopic(zkConnect: String, topic: String, partitions: Int) = {
@@ -69,7 +71,7 @@ object DropIntegrationTest {
       actorSystem,
       new MetricRegistry()
     ))
-    val tsdbTable = new HTable(hbaseConfiguration, CreateTsdbTables.tsdbTable.getTableName)
+    val tsdbTable = new HTable(hbaseConfiguration, pointsTableName)
     //    val tColumn = CreateTsdbTables.tsdbTable.getFamilies.iterator().next()
     val results = asResultIterator(tsdbTable.getScanner(new Scan())).toList
     val points = for {
@@ -225,8 +227,8 @@ object DropIntegrationTest {
         kafkaInputs,
         kafkaBrokers,
         hbaseConfiguration,
-        pointsTableName = CreateTsdbTables.tsdbTable.getTableName.getNameAsString,
-        uIdsTableName = CreateTsdbTables.tsdbUidTable.getTableName.getNameAsString,
+        pointsTableName = pointsTableName,
+        uIdsTableName = uIdsTableName,
         hadoopConfiguration,
         jarsHdfsPath = "/popeye/lib",
         outputHdfsPath = "/bulkload/output"
