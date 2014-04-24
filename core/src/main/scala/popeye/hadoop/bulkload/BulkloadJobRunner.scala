@@ -18,13 +18,16 @@ object BulkloadJobRunner extends Logging {
 
   def doBulkload(kafkaInputs: Seq[KafkaInput],
                  kafkaBrokers: Seq[(String, Int)],
-                 topic: String,
                  hbaseConfiguration: Configuration,
                  pointsTableName: String,
                  uIdsTableName: String,
                  hadoopConfiguration: Configuration,
-                 outputPath: Path,
-                 jarsPath: Path) {
+                 outputHdfsPath: String,
+                 jarsHdfsPath: String) {
+    val hdfs: FileSystem = FileSystem.get(hadoopConfiguration)
+    val outputPath = hdfs.makeQualified(new Path(outputHdfsPath))
+    val jarsPath = hdfs.makeQualified(new Path(jarsHdfsPath))
+
     runHadoopJob(
       hadoopConfiguration,
       hbaseConfiguration,
@@ -54,6 +57,7 @@ object BulkloadJobRunner extends Logging {
                            kafkaInputs: Seq[KafkaInput],
                            outputPath: Path,
                            jarsPath: Path) = {
+    info(f"inputs: $kafkaInputs, points table :$pointsTableName, uid table: $uidsTableName, outPath:$outputPath, brokers:$kafkaBrokers")
     FileSystem.get(hadoopConfiguration).delete(outputPath, true)
     val conf: JobConf = new JobConf(hadoopConfiguration)
     conf.set(KAFKA_INPUTS, KafkaInput.renderInputsString(kafkaInputs))

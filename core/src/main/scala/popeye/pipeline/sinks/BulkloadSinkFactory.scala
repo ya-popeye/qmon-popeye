@@ -38,8 +38,8 @@ class BulkloadSinkFactory(kafkaSinkFactory: KafkaSinkFactory,
 
     val offsetsPath = f"/drop/$sinkName/offsets"
     val hbaseConfiguration = hbaseConf(config.getConfig("hbase"))
-    val outputPath = new Path(jobRunnerConfig.getString("output.path"))
-    val jarsPath = new Path(jobRunnerConfig.getString("jars.path"))
+    val outputPath = jobRunnerConfig.getString("output.hdfs.path")
+    val jarsPath = jobRunnerConfig.getString("jars.hdfs.path")
     val kafkaBrokers = parseBrokerList(kafkaConfig.getString("broker.list"))
     val pointsTableName = storageConfig.getString("table.points")
     val uidTableName = storageConfig.getString("table.uids")
@@ -71,7 +71,6 @@ class BulkloadSinkFactory(kafkaSinkFactory: KafkaSinkFactory,
         BulkloadJobRunner.doBulkload(
           kafkaInputs,
           kafkaBrokers,
-          topic,
           hbaseConfiguration,
           pointsTableName,
           uidTableName,

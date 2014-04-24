@@ -203,8 +203,6 @@ object DropIntegrationTest {
 
     val partitions = 10
     val kafkaZkConnect = "localhost:2181"
-    val jobOutputPath: Path = FileSystem.get(hadoopConfiguration).makeQualified(new Path("/bulkload/output"))
-    val jarsPath: Path = FileSystem.get(hadoopConfiguration).makeQualified(new Path("/popeye/jars"))
     createKafkaTopic(kafkaZkConnect, topic, partitions)
     Thread.sleep(1000)
     loadPointsToKafka(brokersListSting, topic, points)
@@ -226,17 +224,15 @@ object DropIntegrationTest {
       BulkloadJobRunner.doBulkload(
         kafkaInputs,
         kafkaBrokers,
-        topic,
         hbaseConfiguration,
         pointsTableName = CreateTsdbTables.tsdbTable.getTableName.getNameAsString,
         uIdsTableName = CreateTsdbTables.tsdbUidTable.getTableName.getNameAsString,
         hadoopConfiguration,
-        jobOutputPath,
-        jarsPath
+        jarsHdfsPath = "/popeye/lib",
+        outputHdfsPath = "/bulkload/output"
       )
     }
     offsetsTracker.commitOffsets(offsetRanges)
-    System.exit(0)
 
     val loadedPoints = loadPointsFromHBase(hbaseConfiguration, storageConfig)
 
