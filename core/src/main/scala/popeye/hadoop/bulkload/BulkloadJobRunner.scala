@@ -1,7 +1,7 @@
 package popeye.hadoop.bulkload
 
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable
-import org.apache.hadoop.hbase.{HConstants, KeyValue}
+import org.apache.hadoop.hbase.{HBaseConfiguration, HConstants, KeyValue}
 import org.apache.hadoop.hbase.mapreduce.{LoadIncrementalHFiles, HFileOutputFormat2}
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.hadoop.mapreduce.Job
@@ -12,15 +12,24 @@ import popeye.javaapi.kafka.hadoop.KafkaInput
 import org.apache.hadoop.mapred.JobConf
 import popeye.hadoop.bulkload.BulkLoadConstants._
 import popeye.Logging
-import popeye.util.{OffsetRange, KafkaMetaRequests, KafkaOffsetsTracker}
 
 object BulkloadJobRunner extends Logging {
 
+  case class HBaseStorageConfig(hBaseZkHostsString: String,
+                                hBaseZkPort: Int,
+                                pointsTableName: String,
+                                uidTableName: String) {
+    def hBaseConfiguration = {
+      val conf = HBaseConfiguration.create()
+      conf.set(HConstants.ZOOKEEPER_QUORUM, hBaseZkHostsString)
+      conf.setInt(HConstants.ZOOKEEPER_CLIENT_PORT, hBaseZkPort)
+      conf
+    }
+  }
+
   def doBulkload(kafkaInputs: Seq[KafkaInput],
                  kafkaBrokers: Seq[(String, Int)],
-                 hbaseConfiguration: Configuration,
-                 pointsTableName: String,
-                 uIdsTableName: String,
+                 storageConfig: HBaseStorageConfig,
                  hadoopConfiguration: Configuration,
                  outputHdfsPath: String,
                  jarsHdfsPath: String) {
@@ -30,18 +39,17 @@ object BulkloadJobRunner extends Logging {
 
     runHadoopJob(
       hadoopConfiguration,
-      hbaseConfiguration,
-      kafkaBrokers,
-      pointsTableName,
-      uIdsTableName,
-      kafkaInputs,
       outputPath,
-      jarsPath
+      jarsPath,
+      kafkaBrokers,
+      kafkaInputs,
+      storageConfig
     )
     info("hadoop job finished, bulkload starting")
-    val hTable = new HTable(hbaseConfiguration, pointsTableName)
+    val baseConfiguration = storageConfig.hBaseConfiguration
+    val hTable = new HTable(baseConfiguration, storageConfig.pointsTableName)
     try {
-      new LoadIncrementalHFiles(hbaseConfiguration).doBulkLoad(outputPath, hTable)
+      new LoadIncrementalHFiles(baseConfiguration).doBulkLoad(outputPath, hTable)
     } finally {
       hTable.close()
     }
@@ -50,14 +58,12 @@ object BulkloadJobRunner extends Logging {
   }
 
   private def runHadoopJob(hadoopConfiguration: Configuration,
-                           hbaseConfiguration: Configuration,
-                           kafkaBrokers: Seq[(String, Int)],
-                           pointsTableName: String,
-                           uidsTableName: String,
-                           kafkaInputs: Seq[KafkaInput],
                            outputPath: Path,
-                           jarsPath: Path) = {
-    info(f"inputs: $kafkaInputs, points table :$pointsTableName, uid table: $uidsTableName, outPath:$outputPath, brokers:$kafkaBrokers")
+                           jarsPath: Path,
+                           kafkaBrokers: Seq[(String, Int)],
+                           kafkaInputs: Seq[KafkaInput],
+                           storageConfig: HBaseStorageConfig) = {
+    info(f"inputs: $kafkaInputs, hbase config:$storageConfig, outPath:$outputPath, brokers:$kafkaBrokers")
     FileSystem.get(hadoopConfiguration).delete(outputPath, true)
     val conf: JobConf = new JobConf(hadoopConfiguration)
     conf.set(KAFKA_INPUTS, KafkaInput.renderInputsString(kafkaInputs))
@@ -68,14 +74,12 @@ object BulkloadJobRunner extends Logging {
     conf.setInt(KAFKA_CONSUMER_FETCH_SIZE, 2000000)
     conf.set(KAFKA_CLIENT_ID, "drop")
 
-    val zooQuorum = hbaseConfiguration.get(HConstants.ZOOKEEPER_QUORUM)
-    val zooPort = hbaseConfiguration.getInt(HConstants.ZOOKEEPER_CLIENT_PORT, 2181)
-    conf.set(HBASE_CONF_QUORUM, zooQuorum)
-    conf.setInt(HBASE_CONF_QUORUM_PORT, zooPort)
-    conf.set(UNIQUE_ID_TABLE_NAME, uidsTableName)
+    conf.set(HBASE_CONF_QUORUM, storageConfig.hBaseZkHostsString)
+    conf.setInt(HBASE_CONF_QUORUM_PORT, storageConfig.hBaseZkPort)
+    conf.set(UNIQUE_ID_TABLE_NAME, storageConfig.uidTableName)
     conf.setInt(UNIQUE_ID_CACHE_SIZE, 100000)
 
-    val hTable = new HTable(hbaseConfiguration, pointsTableName)
+    val hTable = new HTable(storageConfig.hBaseConfiguration, storageConfig.pointsTableName)
     val job: Job = Job.getInstance(conf)
 
     val jars = FileSystem.get(hadoopConfiguration).listStatus(jarsPath)

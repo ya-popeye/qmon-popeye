@@ -222,13 +222,19 @@ object DropIntegrationTest {
           stopOffset
         )
     }.filterNot(_.isEmpty)
+
+    val hbaseConfig = BulkloadJobRunner.HBaseStorageConfig(
+      hBaseZkHostsString = "localhost",
+      hBaseZkPort = 2182,
+      pointsTableName = pointsTableName,
+      uidTableName = uIdsTableName
+    )
+
     if (kafkaInputs.nonEmpty) {
       BulkloadJobRunner.doBulkload(
         kafkaInputs,
         kafkaBrokers,
-        hbaseConfiguration,
-        pointsTableName = pointsTableName,
-        uIdsTableName = uIdsTableName,
+        hbaseConfig,
         hadoopConfiguration,
         jarsHdfsPath = "/popeye/lib",
         outputHdfsPath = "/bulkload/output"

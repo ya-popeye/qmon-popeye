@@ -3,7 +3,7 @@ package popeye.pipeline
 import akka.actor.ActorSystem
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.Config
-import popeye.pipeline.kafka.{KafkaSinkFactory, KafkaPipelineChannel}
+import popeye.pipeline.kafka.{KafkaSinkStarter, KafkaSinkFactory, KafkaPipelineChannel}
 import popeye.storage.hbase.HBasePipelineSinkFactory
 import scala.concurrent.Future
 import popeye._
@@ -16,7 +16,7 @@ import popeye.monitoring.MonitoringHttpServer
 import java.net.InetSocketAddress
 import scopt.OptionParser
 import popeye.MainConfig
-import popeye.pipeline.sinks.BulkloadSinkFactory
+import popeye.pipeline.sinks.{BulkloadSinkStarter, BulkloadSinkFactory}
 
 object PipelineCommand {
 
@@ -29,11 +29,12 @@ object PipelineCommand {
                     storagesConfig: Config,
                     metrics: MetricRegistry,
                     idGenerator: IdGenerator): Map[String, PipelineSinkFactory] = {
-    val kafkaSinkFactory = new KafkaSinkFactory(actorSystem, ectx, idGenerator, metrics)
+    val kafkaStarter = new KafkaSinkStarter(actorSystem, ectx, idGenerator, metrics)
+    val bulkloadStarter = new BulkloadSinkStarter(kafkaStarter, actorSystem.scheduler, ectx)
     val sinks = Map(
       "hbase-sink" -> new HBasePipelineSinkFactory(storagesConfig, actorSystem, ectx, metrics),
-      "kafka-sink" -> kafkaSinkFactory,
-      "bulkload-sink" -> new BulkloadSinkFactory(kafkaSinkFactory, actorSystem.scheduler, ectx, storagesConfig),
+      "kafka-sink" -> new KafkaSinkFactory(kafkaStarter),
+      "bulkload-sink" -> new BulkloadSinkFactory(bulkloadStarter, storagesConfig),
       "blackhole" -> new BlackHolePipelineSinkFactory(actorSystem, ectx),
       "fail" -> new PipelineSinkFactory {
         def startSink(sinkName: String, config: Config): PointsSink = new PointsSink {

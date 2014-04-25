@@ -26,7 +26,6 @@ class KafkaPointProducerSpec extends AkkaTestKitSpec("tsdb-writer") with Mockito
   val idGenerator = new IdGenerator(1)
   implicit val rnd = new Random(1234)
   implicit val timeout: Timeout = 5 seconds
-  implicit val generator: IdGenerator = new IdGenerator(1)
   implicit val metricRegistry = new MetricRegistry()
   val topic = "test"
   val group = "test"
@@ -48,11 +47,17 @@ class KafkaPointProducerSpec extends AkkaTestKitSpec("tsdb-writer") with Mockito
       .withFallback(ConfigFactory.parseResources("reference.conf"))
       .resolve()
     val producer = mock[PopeyeKafkaProducer]
+    val kafkaProducerConfig =
+      new KafkaPointsProducerConfig(config.withFallback(config.getConfig("common.popeye.pipeline.kafka")))
     val actor: TestActorRef[KafkaPointsProducer] = TestActorRef(
-      KafkaPointsProducer.props("kafka", config.withFallback(config.getConfig("common.popeye.pipeline.kafka")),
-        generator, new PopeyeKafkaProducerFactory {
-        def newProducer(topic: String): PopeyeKafkaProducer = producer
-      }, metricRegistry))
+      KafkaPointsProducer.props(
+        "kafka",
+        kafkaProducerConfig,
+        idGenerator,
+        new PopeyeKafkaProducerFactory {
+          def newProducer(topic: String): PopeyeKafkaProducer = producer
+        },
+        metricRegistry))
     val p = Promise[Long]()
     KafkaPointsProducer.produce(actor, Some(p), PackedPoints(makeBatch()))
     val done = Await.result(p.future, timeout.duration)

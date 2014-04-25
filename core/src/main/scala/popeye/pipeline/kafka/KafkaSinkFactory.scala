@@ -2,22 +2,42 @@ package popeye.pipeline.kafka
 
 import popeye.pipeline.{PipelineSinkFactory, PointsSink}
 import com.typesafe.config.Config
-import akka.actor.ActorSystem
+import akka.actor.{ActorRef, ActorSystem}
 import popeye.IdGenerator
 import com.codahale.metrics.MetricRegistry
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{Promise, Future, ExecutionContext}
+import kafka.producer.ProducerConfig
+import popeye.proto.PackedPoints
+import popeye.pipeline.config.KafkaPointsSinkConfigParser
 
-class KafkaSinkFactory(actorSystem: ActorSystem,
-                       ectx: ExecutionContext,
-                       idGenerator: IdGenerator,
-                       metrics: MetricRegistry)
+case class KafkaPointsSinkConfig(producerConfig: ProducerConfig, pointsProducerConfig: KafkaPointsProducerConfig)
+
+class KafkaSinkFactory(sinkFactory: KafkaSinkStarter)
   extends PipelineSinkFactory {
   def startSink(sinkName: String, config: Config): PointsSink = {
-    val kafkaConfig: Config = config.getConfig("kafka")
-    val producerConfig = KafkaPointsProducer.producerConfig(kafkaConfig)
-    val kafkaClient = new PopeyeKafkaProducerFactoryImpl(producerConfig)
-    val props = KafkaPointsProducer.props(f"$sinkName.kafka", kafkaConfig, idGenerator, kafkaClient, metrics)
-    val producerActor = actorSystem.actorOf(props, f"$sinkName-kafka-producer")
+    val sinkConfig = KafkaPointsSinkConfigParser.parse(config.getConfig("kafka"))
+    sinkFactory.startSink(sinkName, sinkConfig)
+  }
+}
+
+class KafkaSinkStarter(actorSystem: ActorSystem,
+                       ectx: ExecutionContext,
+                       idGenerator: IdGenerator,
+                       metrics: MetricRegistry) {
+  def startSink(name: String,
+                config: KafkaPointsSinkConfig) = {
+    val kafkaClient = new PopeyeKafkaProducerFactoryImpl(config.producerConfig)
+    val props = KafkaPointsProducer.props(f"$name.kafka", config.pointsProducerConfig, idGenerator, kafkaClient, metrics)
+    val producerActor = actorSystem.actorOf(props, f"$name-kafka-producer")
     new KafkaPointsSink(producerActor)(ectx)
+  }
+}
+
+class KafkaPointsSink(producer: ActorRef)(implicit eCtx: ExecutionContext) extends PointsSink {
+  def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] = {
+    val promise = Promise[Long]()
+    KafkaPointsProducer.produce(producer, Some(promise), points)
+    val pointsInPack = points.pointsCount
+    promise.future map {batchId => pointsInPack.toLong}
   }
 }
