@@ -242,6 +242,7 @@ class HBasePointsSink(storage: HBaseStorage)(implicit eCtx: ExecutionContext) ex
 case class HBaseStorageMetrics(name: String, override val metricRegistry: MetricRegistry) extends Instrumented {
   val writeProcessingTime = metrics.timer(s"$name.storage.write.processing.time")
   val writeHBaseTime = metrics.timer(s"$name.storage.write.hbase.time")
+  val writeHBaseTimeMeter = metrics.meter(s"$name.storage.write.hbase.time-meter")
   val writeTime = metrics.timer(s"$name.storage.write.time")
   val writeTimeMeter = metrics.meter(s"$name.storage.write.time-meter")
   val writeHBasePoints = metrics.meter(s"$name.storage.write.points")
@@ -544,24 +545,25 @@ class HBaseStorage(tableName: String,
       val l = puts.map(_.heapSize()).foldLeft(0l)(_ + _)
       debug(s"Writing ${kvList.size} keyvalues (heapsize=$l)")
     }
-    metrics.writeHBaseTime.time {
-      val hTable = hTablePool.getTable(tableName)
-      hTable.setAutoFlush(false, true)
-      hTable.setWriteBufferSize(4*1024*1024)
-      try {
-        hTable.batch(puts)
-        debug(s"Writing ${kvList.size} keyvalues - flushing")
-        hTable.flushCommits()
-        debug(s"Writing ${kvList.size} keyvalues - done")
-        metrics.writeHBasePoints.mark(puts.size())
-      } catch {
-        case e: Exception =>
-          error("Failed to write points", e)
-          throw e
-      } finally {
-        hTable.close()
-      }
+    val timer = metrics.writeHBaseTime.timerContext()
+    val hTable = hTablePool.getTable(tableName)
+    hTable.setAutoFlush(false, true)
+    hTable.setWriteBufferSize(4 * 1024 * 1024)
+    try {
+      hTable.batch(puts)
+      debug(s"Writing ${kvList.size} keyvalues - flushing")
+      hTable.flushCommits()
+      debug(s"Writing ${kvList.size} keyvalues - done")
+      metrics.writeHBasePoints.mark(puts.size())
+    } catch {
+      case e: Exception =>
+        error("Failed to write points", e)
+        throw e
+    } finally {
+      hTable.close()
     }
+    val time = timer.stop()
+    metrics.writeHBaseTimeMeter.mark(time)
   }
 
   private def mkPoint(baseTime: Int, metric: String,
