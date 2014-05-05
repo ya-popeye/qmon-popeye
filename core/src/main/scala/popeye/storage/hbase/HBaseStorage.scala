@@ -240,7 +240,6 @@ class HBasePointsSink(storage: HBaseStorage)(implicit eCtx: ExecutionContext) ex
 
 
 case class HBaseStorageMetrics(name: String, override val metricRegistry: MetricRegistry) extends Instrumented {
-  val writeProcessingTime = metrics.timer(s"$name.storage.write.processing.time")
   val writeHBaseTime = metrics.timer(s"$name.storage.write.hbase.time")
   val writeHBaseTimeMeter = metrics.meter(s"$name.storage.write.hbase.time-meter")
   val writeTime = metrics.timer(s"$name.storage.write.time")
@@ -474,43 +473,52 @@ class HBaseStorage(tableName: String,
   def writePoints(points: PackedPoints)(implicit eCtx: ExecutionContext): Future[Long] = {
 
     val ctx = metrics.writeTime.timerContext()
-    metrics.writeProcessingTime.time {
       // resolve identifiers
       // unresolved will be delayed for future expansion
-      val idCache: QualifiedName => Option[BytesKey] = {
-        case QualifiedName(MetricKind, name) => metricNames.findIdByName(name)
-        case QualifiedName(AttrNameKind, name) => attributeNames.findIdByName(name)
-        case QualifiedName(AttrValueKind, name) => attributeValues.findIdByName(name)
-      }
-      val (partiallyConvertedPoints, keyValues) = tsdbFormat.convertToKeyValues(points, idCache)
-      val cacheMisses = partiallyConvertedPoints.unresolvedNames
-      metrics.resolvedPointsMeter.mark(keyValues.size)
-      metrics.delayedPointsMeter.mark(partiallyConvertedPoints.points.size)
-
-      // write resolved points
-      val writeComplete = if (!keyValues.isEmpty) Future[Int] {
-        writeKv(keyValues)
-        keyValues.size
-      } else Future.successful[Int](0)
-
-      val delayedKeyValuesWriteFuture =
-        if (partiallyConvertedPoints.points.nonEmpty) {
-          val idMapFuture = resolveNames(cacheMisses)
-          idMapFuture.map {
-            idMap =>
-              val keyValues = partiallyConvertedPoints.convert(idMap)
-              writeKv(keyValues)
-              keyValues.size
-          }
+    convertToKeyValues(points).flatMap {
+      case (partiallyConvertedPoints, keyValues) =>
+        // write resolved points
+        val writeComplete = if (!keyValues.isEmpty) Future[Int] {
+          keyValues.size
         } else Future.successful[Int](0)
+        writeKv(keyValues)
 
-      (delayedKeyValuesWriteFuture zip writeComplete).map {
-        case (a, b) =>
-          val time = ctx.stop.nano
-          metrics.writeTimeMeter.mark(time.toMillis)
-          (a + b).toLong
-      }
+        val delayedKeyValuesWriteFuture = writePartiallyConvertedPoints(partiallyConvertedPoints)
+
+        (delayedKeyValuesWriteFuture zip writeComplete).map {
+          case (a, b) =>
+            val time = ctx.stop.nano
+            metrics.writeTimeMeter.mark(time.toMillis)
+            (a + b).toLong
+        }
     }
+  }
+
+  private def writePartiallyConvertedPoints(pPoints: PartiallyConvertedPoints)
+                                           (implicit eCtx: ExecutionContext): Future[Int] = {
+    if (pPoints.points.nonEmpty) {
+      val idMapFuture = resolveNames(pPoints.unresolvedNames)
+      idMapFuture.map {
+        idMap =>
+          val keyValues = pPoints.convert(idMap)
+          writeKv(keyValues)
+          keyValues.size
+      }
+    } else Future.successful[Int](0)
+  }
+
+  private def convertToKeyValues(points: PackedPoints)
+                                (implicit eCtx: ExecutionContext)
+  : Future[(PartiallyConvertedPoints, Seq[KeyValue])] = Future {
+    val idCache: QualifiedName => Option[BytesKey] = {
+      case QualifiedName(MetricKind, name) => metricNames.findIdByName(name)
+      case QualifiedName(AttrNameKind, name) => attributeNames.findIdByName(name)
+      case QualifiedName(AttrValueKind, name) => attributeValues.findIdByName(name)
+    }
+    val result@(partiallyConvertedPoints, keyValues) = tsdbFormat.convertToKeyValues(points, idCache)
+    metrics.resolvedPointsMeter.mark(keyValues.size)
+    metrics.delayedPointsMeter.mark(partiallyConvertedPoints.points.size)
+    result
   }
 
   private def resolveNames(names: Set[QualifiedName])(implicit eCtx: ExecutionContext): Future[Map[QualifiedName, BytesKey]] = {
