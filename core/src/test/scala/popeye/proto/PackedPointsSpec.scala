@@ -55,6 +55,12 @@ class PackedPointsSpec extends FlatSpec with Matchers {
         value = Left(i.toLong)
       )
     )
+    val bytes = toBytes(points)
+    val packedPoints = PackedPoints.fromBytes(bytes)
+    packedPoints.toSeq should equal(points)
+  }
+
+  def toBytes(points: Seq[Message.Point]) = {
     val byteArrayOutStream = new ByteArrayOutputStream()
     val codedStream = CodedOutputStream.newInstance(byteArrayOutStream)
     for (point <- points) {
@@ -63,10 +69,30 @@ class PackedPointsSpec extends FlatSpec with Matchers {
       point.writeTo(codedStream)
     }
     codedStream.flush()
-    val bytes = byteArrayOutStream.toByteArray
-    val packedPoints = PackedPoints.fromBytes(bytes)
-    packedPoints.toSeq should equal(points)
+    byteArrayOutStream.toByteArray
   }
 
   implicit val rnd = new Random(1234)
+
+  ignore should "have good performance" in {
+    val points = (0 to 100000).map(i =>
+      createPoint(
+        metric = f"test_metric$i",
+        timestamp = i,
+        attributes = (0 to 3).map(i => f"name_$i" -> f"value_$i"),
+        value = Left(i.toLong)
+      )
+    )
+    val bytes = toBytes(points)
+    for (_ <- 0 to 10) {
+      val time = runTime {PackedPoints.fromBytes(bytes)}
+      println(time)
+    }
+  }
+
+  def runTime(block: => Unit) = {
+    val startTime = System.currentTimeMillis()
+    block
+    System.currentTimeMillis() - startTime
+  }
 }

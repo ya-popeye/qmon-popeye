@@ -8,9 +8,9 @@ import scala.collection.mutable.ArrayBuffer
 /**
  * @author Andrey Stepachev
  */
-final class PackedPoints(points: ExpandingBuffer) extends scala.collection.Iterable[Point] {
+final class PackedPoints(points: ExpandingBuffer, numberOfPointsInBuffer: Int = 0) extends scala.collection.Iterable[Point] {
   private val pointsCoder = CodedOutputStream.newInstance(points)
-  private var pointsCount_ = 0
+  private var pointsCount_ = numberOfPointsInBuffer
 
   def pointsCount = pointsCount_
 
@@ -125,19 +125,18 @@ object PackedPoints {
 
   def decodePoints(buffer: Array[Byte]): Seq[Point] = {
     val cs = CodedInputStream.newInstance(buffer)
-    val points = decodePoints(cs, buffer.length / expectedMessageSize)
+    val points = decodePoints(cs)
     points
   }
-
 
   def decodeWithBatchId(buffer: Array[Byte]): (Long, Seq[Point]) = {
     val cs = CodedInputStream.newInstance(buffer)
     val batchId = cs.readInt64()
-    val points = decodePoints(cs, buffer.length / expectedMessageSize)
+    val points = decodePoints(cs)
     (batchId, points)
   }
 
-  def decodePoints(cs: CodedInputStream, sizeHint: Int): Seq[Point] = {
+  def decodePoints(cs: CodedInputStream): Seq[Point] = {
     val points = new ArrayBuffer[Point]()
     while (!cs.isAtEnd) {
       val size = cs.readRawVarint32()
@@ -149,8 +148,10 @@ object PackedPoints {
   }
 
   def fromBytes(bytes: Array[Byte]): PackedPoints = {
-    val points = decodePoints(bytes)
-    PackedPoints(points)
+    val pointsCount = decodePoints(bytes).size
+    val buffer = new ExpandingBuffer(bytes.size)
+    buffer.write(bytes)
+    new PackedPoints(buffer, pointsCount)
   }
 
   @inline
