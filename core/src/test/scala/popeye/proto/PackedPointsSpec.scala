@@ -3,6 +3,8 @@ package popeye.proto
 import java.util.Random
 import org.scalatest.{Matchers, FlatSpec}
 import popeye.test.PopeyeTestUtils._
+import com.google.protobuf.CodedOutputStream
+import java.io.ByteArrayOutputStream
 
 /**
  * @author Andrey Stepachev
@@ -33,13 +35,37 @@ class PackedPointsSpec extends FlatSpec with Matchers {
   it should "issue" in {
     val events = mkEvents(117)
     val points = PackedPoints(events)
-    val rpoints = new PackedPoints
+    val rpoints = PackedPoints()
     for (i <- 0 until 117) yield {
       points.consume(1)
     }.foreach(rpoints.append)
     rpoints.zip(events).foreach{pair=>
       pair._1 should be (pair._2)
     }
+  }
+
+  behavior of "PackedPoints.fromBytes"
+
+  it should "create PackedPoints form byte array" in {
+    val points = (0 to 10).map(i =>
+      createPoint(
+        metric = f"test$i",
+        timestamp = i,
+        attributes = Seq(f"a$i" -> f"b$i"),
+        value = Left(i.toLong)
+      )
+    )
+    val byteArrayOutStream = new ByteArrayOutputStream()
+    val codedStream = CodedOutputStream.newInstance(byteArrayOutStream)
+    for (point <- points) {
+      val size = point.getSerializedSize
+      codedStream.writeRawVarint32(size)
+      point.writeTo(codedStream)
+    }
+    codedStream.flush()
+    val bytes = byteArrayOutStream.toByteArray
+    val packedPoints = PackedPoints.fromBytes(bytes)
+    packedPoints.toSeq should equal(points)
   }
 
   implicit val rnd = new Random(1234)

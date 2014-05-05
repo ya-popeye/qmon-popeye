@@ -143,7 +143,7 @@ class TelnetPointsHandler(connection: ActorRef,
       pointId += 1
       val p = Promise[Long]()
       channelWriter.write(Some(p), bufferedPoints)
-      bufferedPoints = new PackedPoints(messagesPerExtent = config.batchSize + 1)
+      bufferedPoints = PackedPoints(sizeHint = config.batchSize + 1)
       pendingCorrelations.add(pointId)
       val timer = context.system.scheduler.scheduleOnce(config.askTimeout.duration, new Runnable {
         def run() {

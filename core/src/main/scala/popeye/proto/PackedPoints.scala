@@ -8,14 +8,9 @@ import scala.collection.mutable.ArrayBuffer
 /**
  * @author Andrey Stepachev
  */
-final class PackedPoints(val avgMessageSize: Int = 100,
-                         val messagesPerExtent: Int = 100,
-                         val initialCapacity: Int = 0) extends scala.collection.Iterable[Point] {
-  private[proto] val points = new ExpandingBuffer(initialMessages * avgMessageSize)
+final class PackedPoints(points: ExpandingBuffer) extends scala.collection.Iterable[Point] {
   private val pointsCoder = CodedOutputStream.newInstance(points)
   private var pointsCount_ = 0
-
-  private def initialMessages = if (initialCapacity > 0) initialCapacity else messagesPerExtent
 
   def pointsCount = pointsCount_
 
@@ -46,7 +41,7 @@ final class PackedPoints(val avgMessageSize: Int = 100,
   }
 
   def consume(amount: Int): PackedPoints = {
-    val p = new PackedPoints()
+    val p = PackedPoints()
     p.consumeFrom(this, amount)
     p
   }
@@ -57,7 +52,7 @@ final class PackedPoints(val avgMessageSize: Int = 100,
   }
 
   override def clone(): PackedPoints = {
-    val copy = new PackedPoints()
+    val copy = PackedPoints()
     copy.pointsCoder.writeRawBytes(copy.buffer)
     copy.pointsCount_ = this.pointsCount_
     copy
@@ -153,19 +148,26 @@ object PackedPoints {
     points
   }
 
+  def fromBytes(bytes: Array[Byte]): PackedPoints = {
+    val points = decodePoints(bytes)
+    PackedPoints(points)
+  }
+
   @inline
   def apply(): PackedPoints = {
-    new PackedPoints
+    PackedPoints(sizeHint = 100)
   }
 
   @inline
-  def apply(messagesPerExtent: Int): PackedPoints = {
-    new PackedPoints(messagesPerExtent = messagesPerExtent)
+  def apply(sizeHint: Int): PackedPoints = {
+    val avgMessageSize = 100
+    val points = new ExpandingBuffer(sizeHint * avgMessageSize)
+    new PackedPoints(points)
   }
 
   @inline
-  def apply(points: Seq[Point]): PackedPoints = {
-    val pack = new PackedPoints(initialCapacity = points.size)
+  def apply(points: Iterable[Point]): PackedPoints = {
+    val pack = PackedPoints(points.size)
     points foreach pack.append
     pack
   }

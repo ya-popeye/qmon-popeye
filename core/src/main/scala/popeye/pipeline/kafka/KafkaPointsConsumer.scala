@@ -221,8 +221,8 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
   }
 
   private def consumeInner(batchSize: Long): PointBatches = {
-    val pointsToSend = new PackedPoints()
-    val pointsToDrop = new PackedPoints()
+    val pointsToSend = PackedPoints()
+    val pointsToDrop = PackedPoints()
     val batches = ArrayBuffer[Long]()
     while(pointsToSend.size + pointsToDrop.size < batchSize) {
       try {
