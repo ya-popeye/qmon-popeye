@@ -9,12 +9,15 @@ import org.scalatest.matchers.ShouldMatchers
 import org.scalatest.mock.MockitoSugar
 import popeye.pipeline.{PointsSource, PointsSink, AtomicList}
 import popeye.test.{PopeyeTestUtils, MockitoStubs}
+import PopeyeTestUtils._
 import popeye.proto.{Message, PackedPoints}
 import popeye.pipeline.test.AkkaTestKitSpec
-import scala.concurrent.{Promise, Await, Future}
+import scala.concurrent.{ExecutionContext, Promise, Await, Future}
 import scala.concurrent.duration._
 import popeye.pipeline.kafka.KafkaPointsConsumer.DropStrategy
 import popeye.proto.Message.Point
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.Executors
 
 
 /**
@@ -35,7 +38,8 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
     val events2 = 2l -> PopeyeTestUtils.mkEvents(3)
     val source = createPointsSource(events1, events2)
     val testСompletion = Promise[Unit]()
-    val listener = new MyListener(Set(2), { me =>
+    val listener = new MyListener(failBatches = Set(2))({
+      me =>
       if (me.sinkedBatches.size == 1 && me.droppedBatches.size == 1) testСompletion.success(())
     })
     val noOpStrategy: Seq[Point] => SendAndDrop = points => SendAndDrop(pointsToSend = points)
@@ -44,12 +48,14 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
     Await.result(testСompletion.future, 5 seconds)
   }
 
-  def mkConfig(): Config = ConfigFactory.parseString(
+  def mkConfig(maxParallelSenders: Int = 1): Config = ConfigFactory.parseString(
     s"""
     | topic = popeye-points
     | group = test
     | batch-size = 2
     | max-lag = 60s
+    | max-parallel-senders = $maxParallelSenders
+    | tick = 1ms
       """.stripMargin)
     .withFallback(ConfigFactory.parseResources("reference.conf").getConfig("common.popeye.pipeline.kafka.consumer"))
     .resolve()
@@ -58,14 +64,14 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
     val metrics = new KafkaPointsConsumerMetrics("test", registry)
     val config = mkConfig()
     val dconf = new KafkaPointsConsumerConfig("test", "test", config)
-    val points = Seq(PopeyeTestUtils.createPoint(metric = "send"), PopeyeTestUtils.createPoint(metric = "drop"))
+    val points = Seq(createPoint(metric = "send"), createPoint(metric = "drop"))
     val events1 = 1l -> points
     val events2 = 2l -> points
     val source = createPointsSource(events1, events2)
     val testСompletion = Promise[Unit]()
-    val listener = new MyListener(failBatches = Set.empty, {
+    val listener = new MyListener(failBatches = Set.empty)({
       me =>
-        if (me.sinkedPoints.size == 2 && me.sinkedPoints.size == 2) {
+        if (me.sinkedPoints.size == 2 && me.droppedPoints.size == 2) {
           val isFail =
             me.sinkedPoints.exists(_.exists(_.getMetric != "send")) ||
               me.droppedPoints.exists(_.exists(_.getMetric != "drop"))
@@ -84,6 +90,32 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
     val actor: TestActorRef[KafkaPointsConsumer] = TestActorRef(
       Props.apply(new KafkaPointsConsumer(dconf, metrics, source, listener.sinkPipe, listener.dropPipe, dropBigBatch, ectx)))
     Await.result(testСompletion.future, 5 seconds)
+  }
+
+  it should "send points in parallel" in {
+    val numberOfBatches: Int = 20
+    val metrics = new KafkaPointsConsumerMetrics("test", registry)
+    val dconf = new KafkaPointsConsumerConfig("test", "test", mkConfig(maxParallelSenders = numberOfBatches))
+    val points = Seq(createPoint(), createPoint())
+    val batches = (1 to numberOfBatches).map(i => i.toLong -> points)
+    val source = createPointsSource(batches: _*)
+    val testСompletion = Promise[Unit]()
+    val batchesCount = new AtomicInteger(0)
+    source.commitOffsets() answers {
+      mock =>
+        if (batchesCount.get == numberOfBatches) {
+          testСompletion.success(())
+        }
+    }
+    val sendAllStrategy: DropStrategy = points => SendAndDrop(pointsToSend = points)
+    val listener = new MyListener(failBatches = Set.empty, parallelism = numberOfBatches)({
+      me =>
+        batchesCount.incrementAndGet()
+        Thread.sleep(200)
+    })
+    val actor: TestActorRef[KafkaPointsConsumer] = TestActorRef(
+      Props.apply(new KafkaPointsConsumer(dconf, metrics, source, listener.sinkPipe, listener.dropPipe, sendAllStrategy, ectx)))
+    Await.result(testСompletion.future, 500 millis)
   }
 
 
@@ -106,12 +138,12 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
   }
 }
 
-class MyListener(val failBatches: Set[Long],
-                 val callback: (MyListener) => Unit) {
+class MyListener(failBatches: Set[Long], parallelism: Int = 1)(callback: (MyListener) => Unit) {
   val sinkedBatches = new AtomicList[Long]
   val droppedBatches = new AtomicList[Long]
   val sinkedPoints = new AtomicList[PackedPoints]
   val droppedPoints = new AtomicList[PackedPoints]
+  implicit val exct = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(parallelism))
 
   def sinkPipe: PointsSink = new PointsSink {
     def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] = {
@@ -123,8 +155,10 @@ class MyListener(val failBatches: Set[Long],
             sinkedBatches.add
           }
           sinkedPoints.add(points)
-          callback.apply(MyListener.this)
-          Future.successful(batchIds.length)
+          Future {
+            callback.apply(MyListener.this)
+            batchIds.length
+          }
       }
     }
   }
@@ -135,8 +169,10 @@ class MyListener(val failBatches: Set[Long],
         droppedBatches.add
       }
       droppedPoints.add(points)
-      callback.apply(MyListener.this)
-      Future.successful(1)
+      Future {
+        callback.apply(MyListener.this)
+        batchIds.length
+      }
     }
   }
 }

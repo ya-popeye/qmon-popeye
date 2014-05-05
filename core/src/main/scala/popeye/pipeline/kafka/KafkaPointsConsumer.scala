@@ -18,10 +18,13 @@ import scala.util.Success
 import scala.concurrent.{Future, ExecutionContext}
 import popeye.pipeline.kafka.KafkaPointsConsumer.DropStrategy
 import popeye.proto.Message.Point
+import scala.collection.immutable.{SortedMap, TreeSet}
+import kafka.common.TopicAndPartition
 
 class KafkaPointsConsumerConfig(val topic: String, val group: String, config: Config) {
   val tick = new FiniteDuration(config.getMilliseconds("tick"), TimeUnit.MILLISECONDS)
   val batchSize = config.getInt("batch-size")
+  val maxParallelSenders = config.getInt("max-parallel-senders")
 }
 
 class KafkaPointsConsumerMetrics(val prefix: String,
@@ -76,19 +79,25 @@ object KafkaPointsConsumer {
 
 object KafkaPointsConsumerProto {
 
-  sealed trait Cmd
-  case object Ok extends Cmd
-  case object Failed extends Cmd
+  case object Ok
+
+  case object Failed
+
+  case object Consume
 
   sealed trait State
 
   case object Idle extends State
-  case object Consuming extends State
-  case object Delivering extends State
 
-  case class PointsState(pointsToSend: PackedPoints = PackedPoints(),
-                         pointsToDrop: PackedPoints = PackedPoints(),
-                         batches: ArrayBuffer[Long] = new ArrayBuffer[Long]()) {
+  case object Working extends State
+
+  case class ConsumerState(startedSenders: Int = 0,
+                           completedDeliveries: Int = 0,
+                           batchIds: ArrayBuffer[Long] = ArrayBuffer())
+
+  case class PointBatches(pointsToSend: PackedPoints,
+                          pointsToDrop: PackedPoints,
+                          batchIds: Seq[Long]) {
     def hasData = pointsCount > 0
 
     def pointsCount = pointsToSend.size + pointsToDrop.size
@@ -106,51 +115,64 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
                           val dropPipe: PointsSink,
                           dropStrategy: DropStrategy,
                           executionContext: ExecutionContext)
-  extends FSM[State, PointsState] {
+  extends FSM[State, ConsumerState] {
 
   implicit val eCtx = executionContext
 
-  startWith(Idle, PointsState())
+  startWith(Idle, ConsumerState())
 
   when(Idle, stateTimeout = config.tick) {
-    case Event(StateTimeout, _) =>
-      goto(Consuming)
+    case Event(StateTimeout, state) =>
+      self ! Consume
+      goto(Working)
   }
 
-  when(Consuming, stateTimeout = FiniteDuration.apply(0, TimeUnit.MILLISECONDS)) {
-    case Event(StateTimeout, p: PointsState) =>
-      consumeNext(stateData, config.batchSize)
-      log.debug(s"consume: buffered ${stateData.pointsCount} points")
-      if (p.hasData) {
+  when(Working) {
+    case Event(Consume, state) =>
+      val points = consumeNext(config.batchSize)
+      log.debug(s"consume: buffered ${points.pointsCount} points")
+      if (points.hasData) {
         metrics.nonEmptyBatches.mark()
-        deliverPoints()
-        goto(Delivering)
-      }
-      else {
+        if (state.startedSenders < config.maxParallelSenders) {
+          self ! Consume
+        }
+        deliverPoints(points)
+        stay() using state.copy(
+          startedSenders = state.startedSenders + 1,
+          batchIds = state.batchIds ++ points.batchIds
+        )
+      } else if (state.completedDeliveries < state.startedSenders) {
+        stay()
+      } else {
         metrics.emptyBatches.mark()
-        goto(Idle) using PointsState()
+        goto(Idle) using ConsumerState()
       }
-  }
 
-  when(Delivering) {
-    case Event(Ok, p: PointsState) =>
-      log.info(s"Committing batches ${p.batches.mkString}")
-      pointsConsumer.commitOffsets()
-      goto(Consuming) using PointsState()
+    case Event(Ok, state) =>
+      self ! Consume
+      // if all senders succeeded then offsets can be safely committed
+      val completedDeliveries = state.completedDeliveries + 1
+      if (completedDeliveries == state.startedSenders) {
+        log.info(s"Committing batches ${state.batchIds}")
+        pointsConsumer.commitOffsets()
+        stay() using ConsumerState()
+      } else {
+        stay() using state.copy(completedDeliveries = completedDeliveries)
+      }
 
-    case Event(Failed, p: PointsState) =>
+    case Event(Failed, _) =>
       log.info("Delivery failed: terminating")
       context.stop(self)
-      goto(Idle) using PointsState()
+      goto(Idle) using ConsumerState()
   }
 
-  private def deliverPoints() {
-    val myBatches = stateData.batches
-    val sendFuture = sendPoints(myBatches, stateData.pointsToSend)
-    val dropFuture = dropPoints(myBatches, stateData.pointsToDrop)
+  private def deliverPoints(points: PointBatches) {
+    val myBatches = points.batchIds
+    val sendFuture = sendPoints(myBatches, points.pointsToSend)
+    val dropFuture = dropPoints(myBatches, points.pointsToDrop)
     (sendFuture zip dropFuture) onComplete {
       case Success(x) =>
-        log.debug(s"Batches: ${myBatches.mkString(",")} committed")
+        log.debug(s"Batches: $myBatches delivered")
         self ! Ok
       case Failure(x: Throwable) =>
         log.error(x, s"Failed to deliver batches $myBatches")
@@ -160,7 +182,7 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
 
   private def sendPoints(batchIds: Seq[Long], points: PackedPoints) = {
     if (points.nonEmpty) {
-      log.debug(s"Sending ${batchIds.mkString(", ")} with ${stateData.pointsCount} points")
+      log.debug(s"Sending ${batchIds.mkString(", ")} with ${points.pointsCount} points")
       val future = sinkPipe.send(batchIds, points)
       future.recoverWith {
         case t: Throwable =>
@@ -174,7 +196,7 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
 
   private def dropPoints(batchIds: Seq[Long], points: PackedPoints) = {
     if (points.nonEmpty) {
-      log.debug(s"Dropping ${stateData.batches.mkString} with ${stateData.pointsCount} points")
+      log.debug(s"Dropping $batchIds with ${points.pointsCount} points")
       val future = dropPipe.send(batchIds, points)
       future.onComplete {
         case Success(x) =>
@@ -188,28 +210,31 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
     }
   }
 
-  private def consumeNext(p: PointsState, batchSize: Long): Unit = {
+  private def consumeNext(batchSize: Long): PointBatches = {
     val tctx = metrics.consumeTimer.timerContext()
     try {
-      consumeInner(p, batchSize)
+      consumeInner(batchSize)
     } finally {
       val time = tctx.stop().nano
       metrics.consumeTimerMeter.mark(time.toMillis)
     }
   }
 
-  private def consumeInner(p: PointsState, batchSize: Long): Unit = {
-    while(p.pointsCount < batchSize) {
+  private def consumeInner(batchSize: Long): PointBatches = {
+    val pointsToSend = new PackedPoints()
+    val pointsToDrop = new PackedPoints()
+    val batches = ArrayBuffer[Long]()
+    while(pointsToSend.size + pointsToDrop.size < batchSize) {
       try {
         pointsConsumer.consume() match {
           case Some((batchId, points)) =>
             log.debug(s"Batch: $batchId queued")
             val SendAndDrop(sendPoints, dropPoints) = dropStrategy(points)
-            p.pointsToSend.append(sendPoints: _*)
-            p.pointsToDrop.append(dropPoints: _*)
-            p.batches += batchId
+            pointsToSend.append(sendPoints: _*)
+            pointsToDrop.append(dropPoints: _*)
+            batches += batchId
           case None =>
-            return
+            return PointBatches(pointsToSend, pointsToDrop, batches.toList)
         }
       } catch {
         case e: InvalidProtocolBufferException =>
@@ -217,6 +242,7 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
           metrics.decodeFailures.mark()
       }
     }
+    PointBatches(pointsToSend, pointsToDrop, batches.toList)
   }
 
   initialize()
