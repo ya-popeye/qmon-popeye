@@ -59,7 +59,7 @@ final class PackedPoints(points: ExpandingBuffer, numberOfPointsInBuffer: Int = 
   }
 
   def consumeFrom(pp: PackedPoints, pointsToConsume: Int) = {
-    require(pp.pointsCount >= pointsToConsume, "Nonempty pack required")
+    require(pp.pointsCount >= pointsToConsume, "not enough points")
     val cs = CodedInputStream.newInstance(pp.buffer, pp.bufferOffset, pp.bufferLength)
     var readSize = 0
     for (message <- 0 until pointsToConsume) {
