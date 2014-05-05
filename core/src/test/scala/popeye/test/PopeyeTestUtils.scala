@@ -76,32 +76,6 @@ object PopeyeTestUtils {
     builder.build()
   }
 
-  class MockPopeyeConsumer extends PointsSource {
-
-    var list = List[Option[(Long, Seq[Point])]]()
-    var isCommit = false
-    var isShutdown = false
-
-    def addMessages(batchId: Long, points: Seq[Point]) = {
-      list = list :+ Some(batchId -> points)
-    }
-
-    def consume(): Option[(Long, Seq[Point])] = {
-      val l = list.head
-      list = list.tail
-      l
-    }
-
-    def commitOffsets() {
-      isCommit = true
-    }
-
-    def shutdown() {
-      isShutdown = true
-    }
-
-  }
-
   class MockAnswer[T](function: Any => T) extends Answer[T] {
     def answer(invocation: InvocationOnMock): T = {
       val args = invocation.getArguments

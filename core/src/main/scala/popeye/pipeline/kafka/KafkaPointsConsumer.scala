@@ -38,7 +38,7 @@ class KafkaPointsConsumerMetrics(val prefix: String,
 
 object KafkaPointsConsumer {
 
-  type DropStrategy = Seq[Point] => SendAndDrop
+  type DropStrategy = PackedPoints => SendAndDrop
 
   def consumerConfig(group: String, kafkaConfig: Config, pc: KafkaPointsConsumerConfig): ConsumerConfig = {
     val consumerProps = ConfigUtil.mergeProperties(kafkaConfig, "consumer.config")
@@ -105,8 +105,8 @@ object KafkaPointsConsumerProto {
 
 }
 
-case class SendAndDrop(pointsToSend: Seq[Point] = Seq(),
-                       pointsToDrop: Seq[Point] = Seq())
+case class SendAndDrop(pointsToSend: PackedPoints = PackedPoints(),
+                       pointsToDrop: PackedPoints = PackedPoints())
 
 class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
                           val metrics: KafkaPointsConsumerMetrics,
@@ -229,9 +229,9 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
         pointsConsumer.consume() match {
           case Some((batchId, points)) =>
             log.debug(s"Batch: $batchId queued")
-            val SendAndDrop(sendPoints, dropPoints) = dropStrategy(points)
-            pointsToSend.append(sendPoints: _*)
-            pointsToDrop.append(dropPoints: _*)
+            val SendAndDrop(send, drop) = dropStrategy(points)
+            pointsToSend.consumeFrom(send, send.pointsCount)
+            pointsToDrop.consumeFrom(drop, drop.pointsCount)
             batches += batchId
           case None =>
             return PointBatches(pointsToSend, pointsToDrop, batches.toList)

@@ -42,7 +42,7 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
       me =>
       if (me.sinkedBatches.size == 1 && me.droppedBatches.size == 1) testСompletion.success(())
     })
-    val noOpStrategy: Seq[Point] => SendAndDrop = points => SendAndDrop(pointsToSend = points)
+    val noOpStrategy: PackedPoints => SendAndDrop = points => SendAndDrop(pointsToSend = points)
     val actor: TestActorRef[KafkaPointsConsumer] = TestActorRef(
       Props.apply(new KafkaPointsConsumer(dconf, metrics, source, listener.sinkPipe, listener.dropPipe, noOpStrategy, ectx)))
     Await.result(testСompletion.future, 5 seconds)
@@ -85,7 +85,7 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
     val dropBigBatch: DropStrategy = {
       points =>
         val (sendPoints, dropPoints) = points.partition(_.getMetric == "send")
-        SendAndDrop(sendPoints, dropPoints)
+        SendAndDrop(PackedPoints(sendPoints), PackedPoints(dropPoints))
     }
     val actor: TestActorRef[KafkaPointsConsumer] = TestActorRef(
       Props.apply(new KafkaPointsConsumer(dconf, metrics, source, listener.sinkPipe, listener.dropPipe, dropBigBatch, ectx)))
@@ -121,15 +121,15 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
 
   def createPointsSource(messageSeqs: (Long, Seq[Message.Point])*) = {
     val source = mock[PointsSource]
-    val firstMessageSeq = messageSeqs.head
+    val (firstBatchId, firstMessageSeq) = messageSeqs.head
     val restSeqs = messageSeqs.tail
     val ongoingStubbing = source.consume() answers {
-      mock => Some(firstMessageSeq)
+      mock => Some(firstBatchId -> PackedPoints.apply(firstMessageSeq))
     }
     restSeqs.foldLeft(ongoingStubbing) {
-      case (stubbing, messageSeq) =>
+      case (stubbing, (batchId, messageSeq)) =>
         stubbing thenAnswers {
-          mock => Some(messageSeq)
+          mock => Some(batchId -> PackedPoints.apply(messageSeq))
         }
     } thenAnswers {
       mock => None

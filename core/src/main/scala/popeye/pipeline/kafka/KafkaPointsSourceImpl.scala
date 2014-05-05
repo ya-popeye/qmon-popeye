@@ -44,11 +44,11 @@ class KafkaPointsSourceImpl(consumerConnector: ConsumerConnector, topic: String,
       false
   }
 
-  def consume(): Option[(Long, Seq[Point])] = {
+  def consume(): Option[(Long, PackedPoints)] = {
     if (hasNext) {
       val msg: MessageAndMetadata[Array[Byte], Array[Byte]] = iterator.next()
       val batchId = deser.fromBytes(msg.key)
-      Some((batchId, PackedPoints.decodePoints(msg.message)))
+      Some((batchId, PackedPoints.fromBytes(msg.message)))
     } else {
       None
     }

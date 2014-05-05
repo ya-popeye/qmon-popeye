@@ -1,13 +1,13 @@
 package popeye.pipeline
 
-import popeye.proto.Message.Point
+import popeye.proto.PackedPoints
 
 /**
  * @author Andrey Stepachev
  */
 trait PointsSource {
 
-  type BatchedMessageSet = (Long, Seq[Point])
+  type BatchedMessageSet = (Long, PackedPoints)
 
   /**
    * Iterate messages in topic stream
