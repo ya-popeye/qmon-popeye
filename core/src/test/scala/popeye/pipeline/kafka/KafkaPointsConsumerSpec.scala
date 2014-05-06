@@ -77,12 +77,12 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
           }
         }
     })
-    val dropBigBatch: DropStrategy = {
+    val dropStrategy: DropStrategy = {
       points =>
         val (sendPoints, dropPoints) = points.partition(_.getMetric == "send")
         SendAndDrop(PackedPoints(sendPoints), PackedPoints(dropPoints))
     }
-    createConsumer(config, source, listener, dropBigBatch)
+    createConsumer(config, source, listener, dropStrategy)
     Await.result(testCompletion.future, 5 seconds)
   }
 
