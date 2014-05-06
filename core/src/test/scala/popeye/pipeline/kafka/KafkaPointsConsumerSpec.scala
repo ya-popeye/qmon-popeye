@@ -31,44 +31,39 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
   implicit val rnd = new Random(1234)
 
   "Dispatcher" should "buffer" in {
-    val metrics = new KafkaPointsConsumerMetrics("test", registry)
     val config = mkConfig()//.withValue("tick", ConfigValueFactory.fromAnyRef(10000))
-    val dconf = new KafkaPointsConsumerConfig("test", "test", config)
     val events1 = 1l -> PopeyeTestUtils.mkEvents(3)
     val events2 = 2l -> PopeyeTestUtils.mkEvents(3)
     val source = createPointsSource(events1, events2)
-    val testСompletion = Promise[Unit]()
+    val testCompletion = Promise[Unit]()
     val listener = new MyListener(failBatches = Set(2))({
       me =>
-      if (me.sinkedBatches.size == 1 && me.droppedBatches.size == 1) testСompletion.success(())
+      if (me.sinkedBatches.size == 1 && me.droppedBatches.size == 1) testCompletion.success(())
     })
     val noOpStrategy: PackedPoints => SendAndDrop = points => SendAndDrop(pointsToSend = points)
-    val actor: TestActorRef[KafkaPointsConsumer] = TestActorRef(
-      Props.apply(new KafkaPointsConsumer(dconf, metrics, source, listener.sinkPipe, listener.dropPipe, noOpStrategy, ectx)))
-    Await.result(testСompletion.future, 5 seconds)
+    createConsumer(config, source, listener, noOpStrategy)
+    Await.result(testCompletion.future, 5 seconds)
   }
 
-  def mkConfig(maxParallelSenders: Int = 1): Config = ConfigFactory.parseString(
+  def mkConfig(maxParallelSenders: Int = 1, tick: Int = 500): Config = ConfigFactory.parseString(
     s"""
     | topic = popeye-points
     | group = test
     | batch-size = 2
     | max-lag = 60s
     | max-parallel-senders = $maxParallelSenders
-    | tick = 1ms
+    | tick = ${tick}ms
       """.stripMargin)
     .withFallback(ConfigFactory.parseResources("reference.conf").getConfig("common.popeye.pipeline.kafka.consumer"))
     .resolve()
 
   it should "use drop strategy" in {
-    val metrics = new KafkaPointsConsumerMetrics("test", registry)
     val config = mkConfig()
-    val dconf = new KafkaPointsConsumerConfig("test", "test", config)
     val points = Seq(createPoint(metric = "send"), createPoint(metric = "drop"))
     val events1 = 1l -> points
     val events2 = 2l -> points
     val source = createPointsSource(events1, events2)
-    val testСompletion = Promise[Unit]()
+    val testCompletion = Promise[Unit]()
     val listener = new MyListener(failBatches = Set.empty)({
       me =>
         if (me.sinkedPoints.size == 2 && me.droppedPoints.size == 2) {
@@ -76,9 +71,9 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
             me.sinkedPoints.exists(_.exists(_.getMetric != "send")) ||
               me.droppedPoints.exists(_.exists(_.getMetric != "drop"))
           if (isFail) {
-            testСompletion.failure(new AssertionError("strategy failed"))
+            testCompletion.failure(new AssertionError("strategy failed"))
           } else {
-            testСompletion.success(())
+            testCompletion.success(())
           }
         }
     })
@@ -87,24 +82,22 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
         val (sendPoints, dropPoints) = points.partition(_.getMetric == "send")
         SendAndDrop(PackedPoints(sendPoints), PackedPoints(dropPoints))
     }
-    val actor: TestActorRef[KafkaPointsConsumer] = TestActorRef(
-      Props.apply(new KafkaPointsConsumer(dconf, metrics, source, listener.sinkPipe, listener.dropPipe, dropBigBatch, ectx)))
-    Await.result(testСompletion.future, 5 seconds)
+    createConsumer(config, source, listener, dropBigBatch)
+    Await.result(testCompletion.future, 5 seconds)
   }
 
   it should "send points in parallel" in {
     val numberOfBatches: Int = 20
-    val metrics = new KafkaPointsConsumerMetrics("test", registry)
-    val dconf = new KafkaPointsConsumerConfig("test", "test", mkConfig(maxParallelSenders = numberOfBatches))
+    val config: Config = mkConfig(maxParallelSenders = numberOfBatches, tick = 1)
     val points = Seq(createPoint(), createPoint())
     val batches = (1 to numberOfBatches).map(i => i.toLong -> points)
     val source = createPointsSource(batches: _*)
-    val testСompletion = Promise[Unit]()
+    val testCompletion = Promise[Unit]()
     val batchesCount = new AtomicInteger(0)
     source.commitOffsets() answers {
       mock =>
         if (batchesCount.get == numberOfBatches) {
-          testСompletion.success(())
+          testCompletion.success(())
         }
     }
     val sendAllStrategy: DropStrategy = points => SendAndDrop(pointsToSend = points)
@@ -113,11 +106,26 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
         batchesCount.incrementAndGet()
         Thread.sleep(200)
     })
-    val actor: TestActorRef[KafkaPointsConsumer] = TestActorRef(
-      Props.apply(new KafkaPointsConsumer(dconf, metrics, source, listener.sinkPipe, listener.dropPipe, sendAllStrategy, ectx)))
-    Await.result(testСompletion.future, 500 millis)
+    createConsumer(config, source, listener, sendAllStrategy)
+    Await.result(testCompletion.future, 500 millis)
   }
 
+  def createConsumer(config: Config,
+                     source: PointsSource,
+                     listener: MyListener,
+                     dropStrategy: DropStrategy) = {
+    val dconf = new KafkaPointsConsumerConfig("test", "test", config)
+    val metrics = new KafkaPointsConsumerMetrics("test", registry)
+    TestActorRef(Props.apply(new KafkaPointsConsumer(
+      dconf,
+      metrics,
+      source,
+      listener.sinkPipe,
+      listener.dropPipe,
+      dropStrategy,
+      ectx
+    )))
+  }
 
   def createPointsSource(messageSeqs: (Long, Seq[Message.Point])*) = {
     val source = mock[PointsSource]
