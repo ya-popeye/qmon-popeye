@@ -110,6 +110,37 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
     Await.result(testCompletion.future, 500 millis)
   }
 
+  it should "commit offsets at least every 'max-parallel-senders' batches" in {
+    val numberOfBatches: Int = 20
+    val maxParallelSenders = 5
+    val config = mkConfig(maxParallelSenders, tick = 1)
+    val points = Seq(createPoint(), createPoint())
+    val batches = (1 to numberOfBatches).map(i => i.toLong -> points)
+    val source = createPointsSource(batches: _*)
+    val testCompletion = Promise[Unit]()
+    val batchesCount = new AtomicInteger(0)
+    val batchesFromLastCommit = new AtomicInteger(0)
+    source.commitOffsets() answers {
+      mock =>
+        if (batchesFromLastCommit.get() > maxParallelSenders) {
+          testCompletion.failure(new AssertionError())
+        }
+        if (batchesCount.get == numberOfBatches) {
+          testCompletion.success(())
+        }
+        batchesFromLastCommit.set(0)
+    }
+    val sendAllStrategy: DropStrategy = points => SendAndDrop(pointsToSend = points)
+    val listener = new MyListener(failBatches = Set.empty, parallelism = 1)({
+      me =>
+        batchesCount.incrementAndGet()
+        batchesFromLastCommit.incrementAndGet()
+        Thread.sleep(10)
+    })
+    createConsumer(config, source, listener, sendAllStrategy)
+    Await.result(testCompletion.future, 500 millis)
+  }
+
   def createConsumer(config: Config,
                      source: PointsSource,
                      listener: MyListener,

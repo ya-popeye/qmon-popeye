@@ -133,7 +133,7 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
       log.debug(s"consume: buffered ${points.pointsCount} points")
       if (points.hasData) {
         metrics.nonEmptyBatches.mark()
-        if (state.startedSenders < config.maxParallelSenders) {
+        if (state.startedSenders + 1 < config.maxParallelSenders) {
           self ! Consume
         }
         deliverPoints(points)
@@ -149,12 +149,12 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
       }
 
     case Event(Ok, state) =>
-      self ! Consume
       // if all senders succeeded then offsets can be safely committed
       val completedDeliveries = state.completedDeliveries + 1
       if (completedDeliveries == state.startedSenders) {
         log.info(s"Committing batches ${state.batchIds}")
         pointsConsumer.commitOffsets()
+        self ! Consume
         stay() using ConsumerState()
       } else {
         stay() using state.copy(completedDeliveries = completedDeliveries)
