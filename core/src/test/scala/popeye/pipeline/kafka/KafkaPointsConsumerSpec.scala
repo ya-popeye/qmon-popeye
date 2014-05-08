@@ -25,7 +25,6 @@ import java.util.concurrent.Executors
  */
 class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") with MockitoSugar with MockitoStubs with ShouldMatchers {
 
-  val registry = new MetricRegistry
   implicit val sch = system.scheduler
   implicit val ectx = system.dispatcher
   implicit val rnd = new Random(1234)
@@ -146,7 +145,7 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
                      listener: MyListener,
                      dropStrategy: DropStrategy) = {
     val dconf = new KafkaPointsConsumerConfig("test", "test", config)
-    val metrics = new KafkaPointsConsumerMetrics("test", registry)
+    val metrics = new KafkaPointsConsumerMetrics("test", new MetricRegistry)
     TestActorRef(Props.apply(new KafkaPointsConsumer(
       dconf,
       metrics,

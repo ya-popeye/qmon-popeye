@@ -50,10 +50,13 @@ class KafkaPipelineChannel(val config: Config,
 
   def startReader(group: String, mainSink: PointsSink, dropSink: PointsSink): Unit = {
     val nWorkers = config.getInt("consumer.workers")
+    val topic = config.getString("topic")
     for (i <- 0 until nWorkers) {
       consumerId += 1
+      val name = s"kafka-consumer-$group-$topic-$consumerId"
       val props = KafkaPointsConsumer.props(
-        config.getString("topic"),
+        name,
+        topic,
         group,
         config,
         metrics,
@@ -63,7 +66,7 @@ class KafkaPipelineChannel(val config: Config,
         executionContext
       ).withDispatcher(config.getString("consumer.dispatcher"))
 
-      actorSystem.actorOf(props, s"kafka-consumer-$group-$consumerId")
+      actorSystem.actorOf(props, name)
     }
   }
 }

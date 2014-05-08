@@ -17,9 +17,7 @@ import scala.Some
 import scala.util.Success
 import scala.concurrent.{Future, ExecutionContext}
 import popeye.pipeline.kafka.KafkaPointsConsumer.DropStrategy
-import popeye.proto.Message.Point
-import scala.collection.immutable.{SortedMap, TreeSet}
-import kafka.common.TopicAndPartition
+import java.util.concurrent.atomic.AtomicInteger
 
 class KafkaPointsConsumerConfig(val topic: String, val group: String, config: Config) {
   val tick = new FiniteDuration(config.getMilliseconds("tick"), TimeUnit.MILLISECONDS)
@@ -34,6 +32,12 @@ class KafkaPointsConsumerMetrics(val prefix: String,
   val consumeTimer = metrics.timer(s"$prefix.consume.time")
   val consumeTimerMeter = metrics.meter(s"$prefix.consume.time-meter")
   val decodeFailures = metrics.meter(s"$prefix.consume.decode-failures")
+
+  def addSenderNumberGauge(numberOfSenders: => Int) = {
+    metrics.gauge(s"$prefix.consume.senders") {
+      numberOfSenders
+    }
+  }
 }
 
 object KafkaPointsConsumer {
@@ -49,7 +53,8 @@ object KafkaPointsConsumer {
     new ConsumerConfig(consumerProps)
   }
 
-  def props(topic: String,
+  def props(name: String,
+            topic: String,
             group: String,
             config: Config,
             metrics: MetricRegistry,
@@ -58,7 +63,7 @@ object KafkaPointsConsumer {
             dropStrategy: DropStrategy,
             executionContext: ExecutionContext): Props = {
     val pc = new KafkaPointsConsumerConfig(topic, group, config.getConfig("consumer").withFallback(config))
-    val consumerMetrics = new KafkaPointsConsumerMetrics(s"kafka.$topic.$group", metrics)
+    val consumerMetrics = new KafkaPointsConsumerMetrics(name, metrics)
     val consumerConfig = KafkaPointsConsumer.consumerConfig(group, config, pc)
     val consumerConnector = Consumer.create(consumerConfig)
     val sourceMetrics = new KafkaPointsSourceImplMetrics(f"${consumerMetrics.prefix}.source", metrics)
@@ -118,6 +123,10 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
   extends FSM[State, ConsumerState] {
 
   implicit val eCtx = executionContext
+  val numberOfSenders = new AtomicInteger(0)
+  metrics.addSenderNumberGauge {
+    numberOfSenders.get
+  }
 
   startWith(Idle, ConsumerState())
 
@@ -137,6 +146,7 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
           self ! Consume
         }
         deliverPoints(points)
+        numberOfSenders.incrementAndGet()
         stay() using state.copy(
           startedSenders = state.startedSenders + 1,
           batchIds = state.batchIds ++ points.batchIds
@@ -149,6 +159,7 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
       }
 
     case Event(Ok, state) =>
+      numberOfSenders.decrementAndGet()
       // if all senders succeeded then offsets can be safely committed
       val completedDeliveries = state.completedDeliveries + 1
       if (completedDeliveries == state.startedSenders) {
