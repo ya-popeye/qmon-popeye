@@ -17,6 +17,9 @@ import java.net.InetSocketAddress
 import scopt.OptionParser
 import popeye.MainConfig
 import popeye.pipeline.sinks.{BulkloadSinkStarter, BulkloadSinkFactory}
+import akka.dispatch.ExecutionContexts
+import java.util.concurrent.Executors
+import com.google.common.util.concurrent.ThreadFactoryBuilder
 
 object PipelineCommand {
 
@@ -30,7 +33,7 @@ object PipelineCommand {
                     metrics: MetricRegistry,
                     idGenerator: IdGenerator): Map[String, PipelineSinkFactory] = {
     val kafkaStarter = new KafkaSinkStarter(actorSystem, ectx, idGenerator, metrics)
-    val bulkloadStarter = new BulkloadSinkStarter(kafkaStarter, actorSystem.scheduler, ectx)
+    val bulkloadStarter = new BulkloadSinkStarter(kafkaStarter, actorSystem.scheduler, ectx, metrics)
     val sinks = Map(
       "hbase-sink" -> new HBasePipelineSinkFactory(storagesConfig, actorSystem, ectx, metrics),
       "kafka-sink" -> new KafkaSinkFactory(kafkaStarter),
@@ -63,7 +66,8 @@ class PipelineCommand extends PopeyeCommand {
   }
 
   def run(actorSystem: ActorSystem, metrics: MetricRegistry, config: Config, mainConfig: MainConfig): Unit = {
-    val ectx = ExecutionContext.global
+    val daemonThreadFatory = new ThreadFactoryBuilder().setDaemon(true).build()
+    val ectx = ExecutionContexts.fromExecutorService(Executors.newCachedThreadPool(daemonThreadFatory))
     val pc = config.getConfig("popeye.pipeline")
     val channelConfig = pc.getConfig("channel")
     val storageConfig = config.getConfig("popeye.storages")
