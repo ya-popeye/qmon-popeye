@@ -12,8 +12,14 @@ import popeye.javaapi.kafka.hadoop.KafkaInput
 import org.apache.hadoop.mapred.JobConf
 import popeye.hadoop.bulkload.BulkLoadConstants._
 import popeye.Logging
+import popeye.hadoop.bulkload.BulkLoadJobRunner.HBaseStorageConfig
+import com.codahale.metrics.MetricRegistry
 
-object BulkloadJobRunner extends Logging {
+class BulkLoadMetrics(prefix: String, metrics: MetricRegistry) {
+  val points = metrics.meter(f"$prefix.points")
+}
+
+object BulkLoadJobRunner {
 
   case class HBaseStorageConfig(hBaseZkHostsString: String,
                                 hBaseZkPort: Int,
@@ -27,24 +33,22 @@ object BulkloadJobRunner extends Logging {
     }
   }
 
-  def doBulkload(kafkaInputs: Seq[KafkaInput],
-                 kafkaBrokers: Seq[(String, Int)],
-                 storageConfig: HBaseStorageConfig,
-                 hadoopConfiguration: Configuration,
-                 outputHdfsPath: String,
-                 jarsHdfsPath: String) {
-    val hdfs: FileSystem = FileSystem.get(hadoopConfiguration)
-    val outputPath = hdfs.makeQualified(new Path(outputHdfsPath))
-    val jarsPath = hdfs.makeQualified(new Path(jarsHdfsPath))
+}
 
-    runHadoopJob(
-      hadoopConfiguration,
-      outputPath,
-      jarsPath,
-      kafkaBrokers,
-      kafkaInputs,
-      storageConfig
-    )
+class BulkLoadJobRunner(kafkaBrokers: Seq[(String, Int)],
+                        storageConfig: HBaseStorageConfig,
+                        hadoopConfiguration: Configuration,
+                        outputHdfsPath: String,
+                        jarsHdfsPath: String,
+                        metrics: BulkLoadMetrics) extends Logging {
+
+  val hdfs: FileSystem = FileSystem.get(hadoopConfiguration)
+  val outputPath = hdfs.makeQualified(new Path(outputHdfsPath))
+  val jarsPath = hdfs.makeQualified(new Path(jarsHdfsPath))
+
+  def doBulkload(kafkaInputs: Seq[KafkaInput]) {
+
+    runHadoopJob(kafkaInputs)
     info("hadoop job finished, bulkload starting")
     val baseConfiguration = storageConfig.hBaseConfiguration
     val hTable = new HTable(baseConfiguration, storageConfig.pointsTableName)
@@ -57,14 +61,9 @@ object BulkloadJobRunner extends Logging {
     info(f"offsets saved")
   }
 
-  private def runHadoopJob(hadoopConfiguration: Configuration,
-                           outputPath: Path,
-                           jarsPath: Path,
-                           kafkaBrokers: Seq[(String, Int)],
-                           kafkaInputs: Seq[KafkaInput],
-                           storageConfig: HBaseStorageConfig) = {
+  private def runHadoopJob(kafkaInputs: Seq[KafkaInput]) = {
     info(f"inputs: $kafkaInputs, hbase config:$storageConfig, outPath:$outputPath, brokers:$kafkaBrokers")
-    FileSystem.get(hadoopConfiguration).delete(outputPath, true)
+    hdfs.delete(outputPath, true)
     val conf: JobConf = new JobConf(hadoopConfiguration)
     conf.set(KAFKA_INPUTS, KafkaInput.renderInputsString(kafkaInputs))
     val brokersListString = kafkaBrokers.map {case (host, port) => f"$host:$port"}.mkString(",")
@@ -99,6 +98,8 @@ object BulkloadJobRunner extends Logging {
     FileOutputFormat.setOutputPath(job, outputPath)
 
     job.waitForCompletion(true)
+    val writtenKeyValues = job.getCounters.findCounter(Counters.MAPPED_KEYVALUES).getValue
+    metrics.points.mark(writtenKeyValues)
   }
 
 }

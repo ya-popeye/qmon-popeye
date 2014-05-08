@@ -10,12 +10,13 @@ import org.I0Itec.zkclient.ZkClient
 import kafka.utils.ZKStringSerializer
 import scala.concurrent.duration._
 import org.apache.hadoop.conf.Configuration
-import popeye.hadoop.bulkload.BulkloadJobRunner
+import popeye.hadoop.bulkload.{BulkLoadMetrics, BulkLoadJobRunner}
 import popeye.Logging
 import scala.collection.JavaConverters._
 import java.io.File
 import popeye.javaapi.kafka.hadoop.KafkaInput
 import popeye.pipeline.config.KafkaPointsSinkConfigParser
+import com.codahale.metrics.MetricRegistry
 
 class BulkloadSinkFactory(sinkFactory: BulkloadSinkStarter,
                           storagesConfig: Config) extends PipelineSinkFactory with Logging {
@@ -23,7 +24,7 @@ class BulkloadSinkFactory(sinkFactory: BulkloadSinkStarter,
     val kafkaConfig = KafkaPointsSinkConfigParser.parse(config.getConfig("kafka"))
 
     val storageConfig = storagesConfig.getConfig(config.getString("storage"))
-    val hBaseConfig = BulkloadJobRunner.HBaseStorageConfig(
+    val hBaseConfig = BulkLoadJobRunner.HBaseStorageConfig(
       hBaseZkHostsString = config.getString("hbase.zk.quorum.hosts"),
       hBaseZkPort = config.getInt("hbase.zk.quorum.port"),
       pointsTableName = storageConfig.getString("table.points"),
@@ -69,12 +70,13 @@ object BulkloadSinkConfig {
 }
 
 case class BulkloadSinkConfig(kafkaSinkConfig: KafkaPointsSinkConfig,
-                              hBaseConfig: BulkloadJobRunner.HBaseStorageConfig,
+                              hBaseConfig: BulkLoadJobRunner.HBaseStorageConfig,
                               jobConfig: BulkloadSinkConfig.JobRunnerConfig)
 
 class BulkloadSinkStarter(kafkaSinkFactory: KafkaSinkStarter,
                           scheduler: Scheduler,
-                          execContext: ExecutionContext) {
+                          execContext: ExecutionContext,
+                          metrics: MetricRegistry) {
   def startSink(name: String, config: BulkloadSinkConfig) = {
 
     val BulkloadSinkConfig(kafkaConfig, hBaseConfig, jobConfig) = config
@@ -88,10 +90,20 @@ class BulkloadSinkStarter(kafkaSinkFactory: KafkaSinkStarter,
     val lockPath = f"/drop/$name/lock"
     val offsetsPath = f"/drop/$name/offsets"
 
+    val brokerListString = kafkaConfig.producerConfig.brokerList
+    val kafkaBrokers = parseBrokerList(brokerListString)
+    val bulkLoadMetrics = new BulkLoadMetrics("bulkload", metrics)
+    val bulkLoadJobRunner = new BulkLoadJobRunner(
+      kafkaBrokers,
+      hBaseConfig,
+      jobConfig.hadoopConfiguration,
+      jobConfig.outputPath,
+      jobConfig.jarsPath,
+      bulkLoadMetrics
+    )
+
     PeriodicExclusiveTask.run(lockZkClient, lockPath, scheduler, execContext, jobConfig.taskPeriod) {
-      val brokerListString = kafkaConfig.producerConfig.brokerList
       val topic = kafkaConfig.pointsProducerConfig.topic
-      val kafkaBrokers = parseBrokerList(brokerListString)
       val kafkaMetaRequests = new KafkaMetaRequests(kafkaBrokers, topic)
       val offsetsTracker = new KafkaOffsetsTracker(kafkaMetaRequests, jobConfig.zkConnect, offsetsPath)
       val offsetRanges = offsetsTracker.fetchOffsetRanges()
@@ -107,13 +119,7 @@ class BulkloadSinkStarter(kafkaSinkFactory: KafkaSinkStarter,
       }.filterNot(_.isEmpty)
 
       if (kafkaInputs.nonEmpty) {
-        BulkloadJobRunner.doBulkload(
-          kafkaInputs,
-          kafkaBrokers,
-          hBaseConfig,
-          jobConfig.hadoopConfiguration,
-          jobConfig.outputPath,
-          jobConfig.jarsPath)
+        bulkLoadJobRunner.doBulkload(kafkaInputs)
         offsetsTracker.commitOffsets(offsetRanges)
       }
     }

@@ -24,7 +24,7 @@ import java.io.{PrintStream, File, StringReader}
 import popeye.util.{OffsetRange, KafkaOffsetsTracker, KafkaMetaRequests}
 import popeye.javaapi.kafka.hadoop.KafkaInput
 
-object DropIntegrationTest {
+object BulkLoadTest {
   val pointsTableName: String = "popeye:tdsb"
   val uIdsTableName: String = "popeye:tsdb-uid"
 
@@ -223,22 +223,24 @@ object DropIntegrationTest {
         )
     }.filterNot(_.isEmpty)
 
-    val hbaseConfig = BulkloadJobRunner.HBaseStorageConfig(
+    val hbaseConfig = BulkLoadJobRunner.HBaseStorageConfig(
       hBaseZkHostsString = "localhost",
       hBaseZkPort = 2182,
       pointsTableName = pointsTableName,
       uidTableName = uIdsTableName
     )
 
+    val bulkLoadJobRunner = new BulkLoadJobRunner(
+      kafkaBrokers,
+      hbaseConfig,
+      hadoopConfiguration,
+      jarsHdfsPath = "/popeye/lib",
+      outputHdfsPath = "/bulkload/output",
+      metrics = new BulkLoadMetrics("bulkload", new MetricRegistry)
+    )
+
     if (kafkaInputs.nonEmpty) {
-      BulkloadJobRunner.doBulkload(
-        kafkaInputs,
-        kafkaBrokers,
-        hbaseConfig,
-        hadoopConfiguration,
-        jarsHdfsPath = "/popeye/lib",
-        outputHdfsPath = "/bulkload/output"
-      )
+      bulkLoadJobRunner.doBulkload(kafkaInputs)
     }
     offsetsTracker.commitOffsets(offsetRanges)
 
@@ -251,24 +253,11 @@ object DropIntegrationTest {
       println(loadedPoints.size)
       val hashable = points.map(new HashablePoint(_))
       val loadedHashable = loadedPoints.map(new HashablePoint(_))
-      val out = new PrintStream(new File("DropIntegrationTest.dump"))
+      val out = new PrintStream(new File("BulkLoadTest.dump"))
       for ((orig, loaded) <- hashable.sortBy(_.toString) zip loadedHashable.sortBy(_.toString)) {
         out.println(f"$orig!$loaded")
       }
       out.close()
     }
-
-    //    BulkloadJobRunner.doBulkload(
-    //      jobRunnerZkConnect = "localhost:2181",
-    //      offsetsPath = "/offsets",
-    //      kafkaZkConnect = "localhost:2181",
-    //      brokerList = "localhost:9091,localhost:9092",
-    //      topic,
-    //      hbaseConfiguration,
-    //      pointsTableName = CreateTsdbTables.tsdbTable.getTableName.getNameAsString,
-    //      uIdsTableName = CreateTsdbTables.tsdbUidTable.getTableName.getNameAsString,
-    //      hadoopConfiguration = new Configuration(),
-    //      jobOutputPath
-    //    )
   }
 }

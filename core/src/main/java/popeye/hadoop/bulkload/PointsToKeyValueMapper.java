@@ -13,6 +13,7 @@ public class PointsToKeyValueMapper extends Mapper<NullWritable, List<KeyValue>,
   @Override
   protected void map(NullWritable key, List<KeyValue> keyValues, Context context) throws IOException, InterruptedException {
     for (KeyValue keyValue : keyValues) {
+      context.getCounter(Counters.MAPPED_KEYVALUES).increment(keyValues.size());
       context.write(new ImmutableBytesWritable((keyValue.getRow())), keyValue);
     }
   }
