@@ -27,6 +27,12 @@ class ZookeeperLockSpec extends FlatSpec with Matchers with BeforeAndAfter with 
     zkClient.readData("/parent/lock"): String
   }
 
+  it should "not fail if lock path exists" in {
+    val zkClient = zookeeper.newClient
+    val lock1 = ZookeeperLock.acquireLock(zkClient, "/parent/lock")
+    val lock2 = ZookeeperLock.acquireLock(zkClient, "/parent/lock")
+  }
+
   it should "be exclusive" in {
     val zkClient1 = zookeeper.newClient
     val lock1 = ZookeeperLock.acquireLock(zkClient1, "/lock")
