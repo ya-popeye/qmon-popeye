@@ -48,17 +48,19 @@ class BulkLoadJobRunner(kafkaBrokers: Seq[(String, Int)],
 
   def doBulkload(kafkaInputs: Seq[KafkaInput]) {
 
-    runHadoopJob(kafkaInputs)
-    info("hadoop job finished, bulkload starting")
-    val baseConfiguration = storageConfig.hBaseConfiguration
-    val hTable = new HTable(baseConfiguration, storageConfig.pointsTableName)
-    try {
-      new LoadIncrementalHFiles(baseConfiguration).doBulkLoad(outputPath, hTable)
-    } finally {
-      hTable.close()
+    val success = runHadoopJob(kafkaInputs)
+    if (success) {
+      info("hadoop job finished, bulkload starting")
+      val baseConfiguration = storageConfig.hBaseConfiguration
+      val hTable = new HTable(baseConfiguration, storageConfig.pointsTableName)
+      try {
+        new LoadIncrementalHFiles(baseConfiguration).doBulkLoad(outputPath, hTable)
+      } finally {
+        hTable.close()
+      }
+      info(f"bulkload finished, saving offsets")
+      info(f"offsets saved")
     }
-    info(f"bulkload finished, saving offsets")
-    info(f"offsets saved")
   }
 
   private def runHadoopJob(kafkaInputs: Seq[KafkaInput]) = {
@@ -97,9 +99,14 @@ class BulkLoadJobRunner(kafkaBrokers: Seq[(String, Int)],
     job.getConfiguration.unset("tmpjars")
     FileOutputFormat.setOutputPath(job, outputPath)
 
-    job.waitForCompletion(true)
-    val writtenKeyValues = job.getCounters.findCounter(Counters.MAPPED_KEYVALUES).getValue
-    metrics.points.mark(writtenKeyValues)
+    val success = job.waitForCompletion(true)
+    if (success) {
+      val writtenKeyValues = job.getCounters.findCounter(Counters.MAPPED_KEYVALUES).getValue
+      metrics.points.mark(writtenKeyValues)
+    } else {
+      warn(f"hadoop job failed, history url: ${job.getHistoryUrl}")
+    }
+    success
   }
 
 }
