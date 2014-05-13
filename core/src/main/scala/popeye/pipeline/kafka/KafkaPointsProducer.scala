@@ -100,7 +100,12 @@ object KafkaPointsProducer {
 }
 
 class KeyPartitioner(props: VerifiableProperties = null) extends Partitioner {
-  def partition(data: Any, numPartitions: Int): Int = (data.asInstanceOf[Long] % numPartitions).toInt
+
+  def partition(data: Any, numPartitions: Int): Int = {
+    import scala.util.hashing.MurmurHash3
+    val hash = MurmurHash3.listHash(List(data.asInstanceOf[Long]), 0)
+    math.abs(hash) % numPartitions
+  }
 }
 
 class KeySerialiser(props: VerifiableProperties = null) extends Encoder[Long] {
