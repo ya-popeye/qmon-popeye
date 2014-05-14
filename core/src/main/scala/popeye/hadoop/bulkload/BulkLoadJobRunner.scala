@@ -58,8 +58,6 @@ class BulkLoadJobRunner(kafkaBrokers: Seq[(String, Int)],
       } finally {
         hTable.close()
       }
-      info(f"bulkload finished, saving offsets")
-      info(f"offsets saved")
     }
   }
 

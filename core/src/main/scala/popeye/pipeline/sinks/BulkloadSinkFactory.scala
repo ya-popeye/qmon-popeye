@@ -76,7 +76,7 @@ case class BulkloadSinkConfig(kafkaSinkConfig: KafkaPointsSinkConfig,
 class BulkloadSinkStarter(kafkaSinkFactory: KafkaSinkStarter,
                           scheduler: Scheduler,
                           execContext: ExecutionContext,
-                          metrics: MetricRegistry) {
+                          metrics: MetricRegistry) extends Logging{
   def startSink(name: String, config: BulkloadSinkConfig) = {
 
     val BulkloadSinkConfig(kafkaConfig, hBaseConfig, jobConfig) = config
@@ -120,7 +120,9 @@ class BulkloadSinkStarter(kafkaSinkFactory: KafkaSinkStarter,
 
       if (kafkaInputs.nonEmpty) {
         bulkLoadJobRunner.doBulkload(kafkaInputs)
+        info(f"bulkload finished, saving offsets")
         offsetsTracker.commitOffsets(offsetRanges)
+        info(f"offsets saved")
       }
     }
     kafkaSinkFactory.startSink(name, kafkaConfig)
