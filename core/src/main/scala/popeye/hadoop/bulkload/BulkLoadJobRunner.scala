@@ -14,6 +14,7 @@ import popeye.hadoop.bulkload.BulkLoadConstants._
 import popeye.Logging
 import popeye.hadoop.bulkload.BulkLoadJobRunner.HBaseStorageConfig
 import com.codahale.metrics.MetricRegistry
+import org.apache.hadoop.fs.permission.{FsAction, FsPermission}
 
 class BulkLoadMetrics(prefix: String, metrics: MetricRegistry) {
   val points = metrics.meter(f"$prefix.points")
@@ -50,6 +51,8 @@ class BulkLoadJobRunner(kafkaBrokers: Seq[(String, Int)],
 
     val success = runHadoopJob(kafkaInputs)
     if (success) {
+      // hbase needs rw access
+      setPermissionsRecursively(outputPath, new FsPermission(FsAction.ALL, FsAction.ALL, FsAction.ALL))
       info("hadoop job finished, bulkload starting")
       val baseConfiguration = storageConfig.hBaseConfiguration
       val hTable = new HTable(baseConfiguration, storageConfig.pointsTableName)
@@ -107,4 +110,12 @@ class BulkLoadJobRunner(kafkaBrokers: Seq[(String, Int)],
     success
   }
 
+  def setPermissionsRecursively(path: Path, permission: FsPermission): Unit = {
+    hdfs.setPermission(path, permission)
+    if (hdfs.isDirectory(path)) {
+      for (subPath <- hdfs.listStatus(path).map(_.getPath)) {
+        setPermissionsRecursively(subPath, permission)
+      }
+    }
+  }
 }
