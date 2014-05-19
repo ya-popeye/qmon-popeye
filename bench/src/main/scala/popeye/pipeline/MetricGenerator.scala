@@ -1,6 +1,15 @@
 package popeye.pipeline
 
+import scala.util.Random
+
 object MetricGenerator {
+  val random = new Random()
+
+  def randomTag = {
+    def rndInt = math.abs(random.nextInt(10000) * 123841892)
+    f"${rndInt}=${rndInt}"
+  }
+
   def pointString(metric: String, timestamp: Int, pointValue: Int, hostId: Int) = {
     StringBuilder.newBuilder
       .append("put").append(' ')
@@ -10,6 +19,9 @@ object MetricGenerator {
       .append("dc=dc_").append(hostId % 10).append(' ')
       .append("cluster=hadoop_").append(hostId % 20).append(' ')
       .append("host=host_").append(hostId)
+      .append(randomTag)
+      .append(randomTag)
+      .append(randomTag)
       .append('\n')
       .toString()
   }
