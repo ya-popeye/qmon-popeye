@@ -32,6 +32,7 @@ class KafkaPointsConsumerMetrics(val prefix: String,
   val consumeTimer = metrics.timer(s"$prefix.consume.time")
   val consumeTimerMeter = metrics.meter(s"$prefix.consume.time-meter")
   val decodeFailures = metrics.meter(s"$prefix.consume.decode-failures")
+  val deliveredPoints = metrics.meter(s"$prefix.consume.points")
 
   def addSenderNumberGauge(numberOfSenders: => Int) = {
     metrics.gauge(s"$prefix.consume.senders") {
@@ -98,7 +99,8 @@ object KafkaPointsConsumerProto {
 
   case class ConsumerState(startedSenders: Int = 0,
                            completedDeliveries: Int = 0,
-                           batchIds: ArrayBuffer[Long] = ArrayBuffer())
+                           batchIds: ArrayBuffer[Long] = ArrayBuffer(),
+                           sentPointsCount: Int = 0)
 
   case class PointBatches(pointsToSend: PackedPoints,
                           pointsToDrop: PackedPoints,
@@ -149,7 +151,8 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
         numberOfSenders.incrementAndGet()
         stay() using state.copy(
           startedSenders = state.startedSenders + 1,
-          batchIds = state.batchIds ++ points.batchIds
+          batchIds = state.batchIds ++ points.batchIds,
+          sentPointsCount = state.sentPointsCount + points.pointsCount
         )
       } else if (state.completedDeliveries < state.startedSenders) {
         stay()
@@ -166,6 +169,7 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
         log.info(s"Committing batches ${state.batchIds}")
         pointsConsumer.commitOffsets()
         self ! Consume
+        metrics.deliveredPoints.mark(state.sentPointsCount)
         stay() using ConsumerState()
       } else {
         stay() using state.copy(completedDeliveries = completedDeliveries)
