@@ -1,9 +1,10 @@
-package popeye.hadoop.bulkload
+package popeye.javaapi.hadoop.bulkload
 
 import popeye.storage.hbase.{UniqueIdStorage, TsdbFormat}
 import org.apache.hadoop.hbase.KeyValue
 import scala.collection.JavaConverters._
 import org.apache.hadoop.hbase.client.HTablePool
+import popeye.hadoop.bulkload.{LightweightUniqueId, KafkaPointsIterator}
 
 object TsdbKeyValueIterator {
   def create(pointsIterator: KafkaPointsIterator, uniqueIdTableName: String, tablePool: HTablePool, maxCacheSize: Int) = {
@@ -13,7 +14,8 @@ object TsdbKeyValueIterator {
   }
 }
 
-class TsdbKeyValueIterator(pointsIterator: KafkaPointsIterator, uniqueId: LightweightUniqueId) {
+class TsdbKeyValueIterator(pointsIterator: KafkaPointsIterator,
+                           uniqueId: LightweightUniqueId) extends java.util.Iterator[java.util.List[KeyValue]] {
 
   val tsdbFormat = new TsdbFormat
 
@@ -27,4 +29,6 @@ class TsdbKeyValueIterator(pointsIterator: KafkaPointsIterator, uniqueId: Lightw
   }
 
   def getProgress = pointsIterator.getProgress
+
+  override def remove(): Unit = ???
 }
