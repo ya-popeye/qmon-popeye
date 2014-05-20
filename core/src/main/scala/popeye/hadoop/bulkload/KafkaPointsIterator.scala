@@ -6,7 +6,9 @@ import kafka.api.{FetchRequestBuilder, FetchResponse}
 import popeye.javaapi.kafka.hadoop.KafkaInput
 import popeye.proto.PackedPoints
 
-class KafkaPointsIterator(kafkaConsumer: SimpleConsumer, kafkaInput: KafkaInput, fetchSize: Int, clientId: String) {
+class KafkaPointsIterator(kafkaConsumer: SimpleConsumer,
+                          kafkaInput: KafkaInput,
+                          fetchSize: Int, clientId: String) extends Iterator[Seq[Message.Point]] {
 
   var currentOffset: Long = kafkaInput.startOffset
 
