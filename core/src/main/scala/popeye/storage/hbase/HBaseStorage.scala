@@ -447,21 +447,6 @@ class HBaseStorage(tableName: String,
     new BytesKey(attributesBuffer)
   }
 
-  private def parseValue(qualifierBytes: Array[Byte], valueBytes: Array[Byte]): (Short, Number) = {
-    val qualifier = Bytes.toShort(qualifierBytes)
-    val deltaShort = delta(qualifier)
-    val floatFlag: Int = HBaseStorage.FLAG_FLOAT | 0x3.toShort
-    val isFloatValue = (qualifier & floatFlag) == floatFlag
-    val isIntValue = (qualifier & 0xf) == 0
-    if (isFloatValue) {
-      (deltaShort, Bytes.toFloat(valueBytes))
-    } else if (isIntValue) {
-      (deltaShort, Bytes.toLong(valueBytes))
-    } else {
-      throw new IllegalArgumentException("Neither int nor float values set on point")
-    }
-  }
-
   def ping(): Unit = {
     Await.result(metricNames.resolveIdByName("_.ping", create = true)(resolveTimeout), resolveTimeout)
   }
