@@ -6,6 +6,9 @@ import scala.collection.JavaConverters._
 import popeye.storage.hbase.HBaseStorage.{QualifiedName, MetricKind, AttrNameKind, AttrValueKind}
 import org.apache.hadoop.hbase.util.Bytes
 import org.apache.hadoop.hbase.client.Result
+import java.util.{TimeZone, Calendar, Date}
+import popeye.storage.hbase.TsdbFormat._
+import popeye.storage.hbase.HBaseStorage.QualifiedName
 
 class TsdbFormatSpec extends FlatSpec with Matchers {
   behavior of "TsdbFormat"
@@ -75,4 +78,26 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     tsdbFormat.parsePoints(new Result(delayedkeyValues.asJava)).head should equal(point)
   }
 
+  behavior of "TsdbFormat.getWeekNumberSinceEpoch"
+
+  it should "get epoch week number" in {
+    getWeekNumberSinceEpoch(0) should equal(0)
+  }
+
+  it should "star new week on sunday" in {
+    val time = getTimeInSeconds(1970, 0, 4) // sunday
+    getWeekNumberSinceEpoch(time) should equal(1)
+  }
+
+  it should "star new week on sunday in 2014" in {
+    val saturday = getTimeInSeconds(2014, 4, 24) // May 24, Sat
+    val sunday = getTimeInSeconds(2014, 4, 25) // May 25, Sun
+    (getWeekNumberSinceEpoch(sunday) - getWeekNumberSinceEpoch(saturday)) should equal(1)
+  }
+
+  def getTimeInSeconds(year: Int, month: Int, day: Int) = {
+    val calendar = Calendar.getInstance(TimeZone.getTimeZone("GMT"))
+    calendar.set(year, month, day)
+    calendar.getTime.getTime / 1000
+  }
 }

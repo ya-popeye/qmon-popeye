@@ -28,6 +28,15 @@ object TsdbFormat {
     buffer.distinct.toList
   }
 
+  val oneDay = 60l * 60l * 24l
+  val oneWeek = oneDay * 7l
+  // 1 January 1970 was a Thursday
+  val startOffset = oneDay * 4l
+
+  def getWeekNumberSinceEpoch(timestampInSeconds: Long) = {
+    (timestampInSeconds + startOffset) / oneWeek
+  }
+
 }
 
 class PartiallyConvertedPoints(val unresolvedNames: Set[QualifiedName],
