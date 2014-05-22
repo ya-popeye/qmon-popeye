@@ -7,17 +7,19 @@ import org.apache.hadoop.hbase.client.HTablePool
 import popeye.hadoop.bulkload.{LightweightUniqueId, KafkaPointsIterator}
 
 object TsdbKeyValueIterator {
-  def create(pointsIterator: KafkaPointsIterator, uniqueIdTableName: String, tablePool: HTablePool, maxCacheSize: Int) = {
+  def create(pointsIterator: KafkaPointsIterator,
+             tsdbFormat: TsdbFormat,
+             uniqueIdTableName: String,
+             tablePool: HTablePool,
+             maxCacheSize: Int) = {
     val idStorage = new UniqueIdStorage(uniqueIdTableName, tablePool)
     val uniqueId = new LightweightUniqueId(idStorage, maxCacheSize)
-    new TsdbKeyValueIterator(pointsIterator, uniqueId)
+    new TsdbKeyValueIterator(pointsIterator, uniqueId, tsdbFormat)
   }
 }
 
 class TsdbKeyValueIterator(pointsIterator: KafkaPointsIterator,
-                           uniqueId: LightweightUniqueId) extends java.util.Iterator[java.util.List[KeyValue]] {
-
-  val tsdbFormat = new TsdbFormat
+                           uniqueId: LightweightUniqueId, tsdbFormat: TsdbFormat) extends java.util.Iterator[java.util.List[KeyValue]] {
 
   def hasNext = pointsIterator.hasNext
 

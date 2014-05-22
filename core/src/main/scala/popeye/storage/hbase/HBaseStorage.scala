@@ -272,13 +272,10 @@ class HBaseStorage(tableName: String,
                    metricNames: UniqueId,
                    attributeNames: UniqueId,
                    attributeValues: UniqueId,
+                   tsdbFormat: TsdbFormat,
                    metrics: HBaseStorageMetrics,
                    resolveTimeout: Duration = 15 seconds,
                    readChunkSize: Int) extends Logging with HBaseUtils {
-
-  val tsdbFormat = new TsdbFormat(new TimeRangeIdMapping {
-    override def getRangeId(timestampInSeconds: Long): BytesKey = new BytesKey(Array[Byte](0, 0))
-  })
 
   def hTablePool: HTablePool = hTablePool_
 
@@ -701,9 +698,19 @@ class HBaseStorageConfigured(config: HBaseStorageConfig) {
       config.resolveTimeout)
     val attrValues = makeUniqueIdCache(config.uidsConfig, HBaseStorage.AttrValueKind, uniqIdResolved, uniqueIdStorage,
       config.resolveTimeout)
+    val tsdbFormat = new TsdbFormat(new TimeRangeIdMapping {
+      override def getRangeId(timestampInSeconds: Long): BytesKey = new BytesKey(Array[Byte](0, 0))
+    })
     new HBaseStorage(
-      config.pointsTableName, hbase.hTablePool, metrics, attrNames, attrValues,
-      new HBaseStorageMetrics(config.storageName, config.metricRegistry), config.resolveTimeout, config.readChunkSize)
+      config.pointsTableName,
+      hbase.hTablePool,
+      metrics,
+      attrNames,
+      attrValues,
+      tsdbFormat,
+      new HBaseStorageMetrics(config.storageName, config.metricRegistry),
+      config.resolveTimeout,
+      config.readChunkSize)
   }
 
   private def makeUniqueIdCache(config: Config, kind: String, resolver: ActorRef,

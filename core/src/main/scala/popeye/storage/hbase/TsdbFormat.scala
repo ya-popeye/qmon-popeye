@@ -1,7 +1,7 @@
 package popeye.storage.hbase
 
 import popeye.proto.Message
-import popeye.storage.hbase.HBaseStorage.{QualifiedName, MetricKind, AttrNameKind, AttrValueKind}
+import popeye.storage.hbase.HBaseStorage.{QualifiedName, MetricKind, AttrNameKind, AttrValueKind, UniqueIdNamespaceWidth}
 import org.apache.hadoop.hbase.KeyValue
 import org.apache.hadoop.hbase.util.Bytes
 import popeye.Logging
@@ -16,27 +16,6 @@ object TsdbFormat {
   val metricWidth: Int = UniqueIdMapping(MetricKind)
   val attributeNameWidth: Int = UniqueIdMapping(AttrNameKind)
   val attributeValueWidth: Int = UniqueIdMapping(AttrValueKind)
-
-  def getAllQualifiedNames(point: Message.Point): List[QualifiedName] = {
-    val buffer = point.getAttributesList.asScala.flatMap {
-      attr => Seq(
-        QualifiedName(AttrNameKind, attr.getName),
-        QualifiedName(AttrValueKind, attr.getValue)
-      )
-    }
-    buffer += QualifiedName(MetricKind, point.getMetric)
-    buffer.distinct.toList
-  }
-
-  val oneDay = 60l * 60l * 24l
-  val oneWeek = oneDay * 7l
-  // 1 January 1970 was a Thursday
-  val startOffset = oneDay * 4l
-
-  def getWeekNumberSinceEpoch(timestampInSeconds: Long) = {
-    (timestampInSeconds + startOffset) / oneWeek
-  }
-
 }
 
 class PartiallyConvertedPoints(val unresolvedNames: Set[QualifiedName],
@@ -49,7 +28,7 @@ class PartiallyConvertedPoints(val unresolvedNames: Set[QualifiedName],
   }
 }
 
-class TsdbFormat extends Logging {
+class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping) extends Logging {
 
   import TsdbFormat._
 
@@ -82,26 +61,55 @@ class TsdbFormat extends Logging {
   }
 
   def convertToKeyValue(point: Message.Point, idMap: Map[QualifiedName, BytesKey]) = {
-    val metricId = idMap(QualifiedName(MetricKind, point.getMetric))
+    val timeRangeId = getRangeId(point)
+    val metricId = idMap(QualifiedName(MetricKind, timeRangeId, point.getMetric))
     val attributesIds = point.getAttributesList.asScala.map {
       attr =>
-        val nameId = idMap(QualifiedName(AttrNameKind, attr.getName))
-        val valueId = idMap(QualifiedName(AttrValueKind, attr.getValue))
+        val nameId = idMap(QualifiedName(AttrNameKind, timeRangeId, attr.getName))
+        val valueId = idMap(QualifiedName(AttrValueKind, timeRangeId, attr.getValue))
         (nameId, valueId)
     }
     val qualifiedValue = mkQualifiedValue(point)
-    mkKeyValue(metricId, attributesIds, point.getTimestamp, qualifiedValue)
+    mkKeyValue(
+      timeRangeId,
+      metricId,
+      attributesIds,
+      point.getTimestamp,
+      qualifiedValue
+    )
   }
 
   def parsePoints(result: Result): List[HBaseStorage.Point] = {
     val row = result.getRow
-    val baseTime = Bytes.toInt(row, metricWidth, HBaseStorage.TIMESTAMP_BYTES)
+    val baseTime = Bytes.toInt(row, UniqueIdNamespaceWidth + metricWidth, HBaseStorage.TIMESTAMP_BYTES)
     val columns = result.getFamilyMap(HBaseStorage.PointsFamily).asScala.toList
     columns.map {
       case (qualifierBytes, valueBytes) =>
         val (delta, value) = parseValue(qualifierBytes, valueBytes)
         HBaseStorage.Point(baseTime + delta, value)
     }
+  }
+
+  def getAllQualifiedNames(point: Message.Point): Seq[QualifiedName] = {
+    val timeRangeId = getRangeId(point)
+    val buffer = point.getAttributesList.asScala.flatMap {
+      attr => Seq(
+        QualifiedName(AttrNameKind, timeRangeId, attr.getName),
+        QualifiedName(AttrValueKind, timeRangeId, attr.getValue)
+      )
+    }
+    buffer += QualifiedName(MetricKind, timeRangeId, point.getMetric)
+    buffer.distinct.toVector
+  }
+
+
+  private def getRangeId(point: Message.Point): BytesKey = {
+    val id = timeRangeIdMapping.getRangeId(point.getTimestamp)
+    require(
+      id.length == UniqueIdNamespaceWidth,
+      f"TsdbFormat depends on namespace width: ${id.length} not equal to ${UniqueIdNamespaceWidth}"
+    )
+    id
   }
 
   private def parseValue(qualifierBytes: Array[Byte], valueBytes: Array[Byte]): (Short, Number) = {
@@ -120,11 +128,19 @@ class TsdbFormat extends Logging {
   }
 
 
-  private def mkKeyValue(metric: BytesKey, attrs: Seq[(BytesKey, BytesKey)], timestamp: Long, value: (Array[Byte], Array[Byte])) = {
+  private def mkKeyValue(timeRangeId: BytesKey,
+                         metric: BytesKey,
+                         attrs: Seq[(BytesKey, BytesKey)],
+                         timestamp: Long,
+                         value: (Array[Byte], Array[Byte])) = {
     val baseTime: Int = (timestamp - (timestamp % HBaseStorage.MAX_TIMESPAN)).toInt
-    val row = new Array[Byte](metricWidth + HBaseStorage.TIMESTAMP_BYTES +
-      attrs.length * (attributeNameWidth + attributeValueWidth))
+    val rowLength = UniqueIdNamespaceWidth +
+      metricWidth +
+      HBaseStorage.TIMESTAMP_BYTES +
+      attrs.length * (attributeNameWidth + attributeValueWidth)
+    val row = new Array[Byte](rowLength)
     var off = 0
+    off = copyBytes(timeRangeId, row, off)
     off = copyBytes(metric, row, off)
     off = copyBytes(Bytes.toBytes(baseTime.toInt), row, off)
     val sortedAttributes = attrs.sortBy(_._1)

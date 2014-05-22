@@ -3,17 +3,13 @@ package popeye.storage.hbase
 import org.scalatest.{Matchers, FlatSpec}
 import popeye.proto.Message
 import scala.collection.JavaConverters._
-import popeye.storage.hbase.HBaseStorage.{QualifiedName, MetricKind, AttrNameKind, AttrValueKind}
+import popeye.storage.hbase.HBaseStorage.{MetricKind, AttrNameKind, AttrValueKind}
 import org.apache.hadoop.hbase.util.Bytes
 import org.apache.hadoop.hbase.client.Result
-import java.util.{TimeZone, Calendar, Date}
-import popeye.storage.hbase.TsdbFormat._
 import popeye.storage.hbase.HBaseStorage.QualifiedName
 
 class TsdbFormatSpec extends FlatSpec with Matchers {
   behavior of "TsdbFormat"
-
-  val tsdbFormat = new TsdbFormat
 
   val samplePoint = {
     val attrNameValues = Seq("name" -> "value", "anotherName" -> "value")
@@ -27,22 +23,28 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       .addAllAttributes(attributes)
       .build()
   }
+
+  val defaultNamespace = new BytesKey(Array[Byte](10, 10))
+
   val sampleIdMap = Map(
-    QualifiedName(MetricKind, samplePoint.getMetric) -> Array(0, 0, 1),
-    QualifiedName(AttrNameKind, "name") -> Array(0, 0, 1),
-    QualifiedName(AttrNameKind, "anotherName") -> Array(0, 0, 2),
-    QualifiedName(AttrValueKind, "value") -> Array(0, 0, 1)
+    qualifiedName(MetricKind, samplePoint.getMetric) -> Array(0, 0, 1),
+    qualifiedName(AttrNameKind, "name") -> Array(0, 0, 1),
+    qualifiedName(AttrNameKind, "anotherName") -> Array(0, 0, 2),
+    qualifiedName(AttrValueKind, "value") -> Array(0, 0, 1)
   ).mapValues(array => new BytesKey(array.map(_.toByte)))
 
+  def qualifiedName(kind: String, name: String) = QualifiedName(kind, defaultNamespace, name)
 
   it should "retrieve qualified names" in {
+    val tsdbFormat = createTsdbFormat()
     val allQualifiedNames = sampleIdMap.keys.toSet
-    val names: List[QualifiedName] = TsdbFormat.getAllQualifiedNames(samplePoint)
+    val names: Seq[QualifiedName] = tsdbFormat.getAllQualifiedNames(samplePoint)
     names.toSet should equal(allQualifiedNames)
     names.distinct should equal(names)
   }
 
-  it should "convert point to KeyValue" in {
+  it should "create KeyValue rows" in {
+    val tsdbFormat = createTsdbFormat()
     val keyValue = tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap)
     val metricId = Array(0, 0, 1).map(_.toByte)
     val timestamp = samplePoint.getTimestamp.toInt
@@ -50,13 +52,20 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val sortedAttributeIds =
       (Array(0, 0, 1) ++ Array(0, 0, 1) ++ // first attr
         Array(0, 0, 2) ++ Array(0, 0, 1)).map(_.toByte) // second attr
-    val row = metricId ++ timestampBytes ++ sortedAttributeIds
+    val row = defaultNamespace.bytes ++ metricId ++ timestampBytes ++ sortedAttributeIds
     keyValue.getRow should equal(row)
+  }
+
+  it should "convert point values" in {
+    val tsdbFormat = createTsdbFormat()
+    val keyValue = tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap)
+    val timestamp = samplePoint.getTimestamp.toInt
     val result = new Result(List(keyValue).asJava)
     tsdbFormat.parsePoints(result).head should equal(HBaseStorage.Point(timestamp, samplePoint.getIntValue))
   }
 
   it should "convert point if all names are in cache" in {
+    val tsdbFormat = createTsdbFormat()
     val (partiallyConvertedPoints, keyValues) = tsdbFormat.convertToKeyValues(Seq(samplePoint), sampleIdMap.get)
     partiallyConvertedPoints.points.isEmpty should be(true)
     keyValues.size should equal(1)
@@ -66,7 +75,8 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
   }
 
   it should "not convert point if not all names are in cache" in {
-    val notInCache = QualifiedName(AttrNameKind, "name")
+    val tsdbFormat = createTsdbFormat()
+    val notInCache = sampleIdMap.keys.head
     val idCache = (name: QualifiedName) => (sampleIdMap - notInCache).get(name)
     val (partiallyConvertedPoints, keyValues) = tsdbFormat.convertToKeyValues(Seq(samplePoint), idCache)
     partiallyConvertedPoints.points.isEmpty should be(false)
@@ -78,26 +88,10 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     tsdbFormat.parsePoints(new Result(delayedkeyValues.asJava)).head should equal(point)
   }
 
-  behavior of "TsdbFormat.getWeekNumberSinceEpoch"
-
-  it should "get epoch week number" in {
-    getWeekNumberSinceEpoch(0) should equal(0)
-  }
-
-  it should "star new week on sunday" in {
-    val time = getTimeInSeconds(1970, 0, 4) // sunday
-    getWeekNumberSinceEpoch(time) should equal(1)
-  }
-
-  it should "star new week on sunday in 2014" in {
-    val saturday = getTimeInSeconds(2014, 4, 24) // May 24, Sat
-    val sunday = getTimeInSeconds(2014, 4, 25) // May 25, Sun
-    (getWeekNumberSinceEpoch(sunday) - getWeekNumberSinceEpoch(saturday)) should equal(1)
-  }
-
-  def getTimeInSeconds(year: Int, month: Int, day: Int) = {
-    val calendar = Calendar.getInstance(TimeZone.getTimeZone("GMT"))
-    calendar.set(year, month, day)
-    calendar.getTime.getTime / 1000
+  def createTsdbFormat(timeRangeIdMapping: Long => Array[Byte] = _ => defaultNamespace): TsdbFormat = {
+    new TsdbFormat(new TimeRangeIdMapping {
+      override def getRangeId(timestampInSeconds: Long): BytesKey =
+        new BytesKey(timeRangeIdMapping(timestampInSeconds))
+    })
   }
 }
