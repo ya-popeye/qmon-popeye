@@ -59,22 +59,24 @@ object HBaseStorage {
     AttrValueKind -> 3.toShort
   )
 
+  final val UniqueIdNamespaceWidth = 2
+
   sealed case class ResolvedName(kind: String, namespace: BytesKey, name: String, id: BytesKey) {
     def this(qname: QualifiedName, id: BytesKey) = this(qname.kind, qname.namespace, qname.name, id)
 
     def this(qid: QualifiedId, name: String) = this(qid.kind, qid.namespace, name, qid.id)
 
-    def toQualifiedName = QualifiedName(kind, name)
+    def toQualifiedName = QualifiedName(kind, namespace, name)
 
-    def toQualifiedId = QualifiedId(kind, id)
+    def toQualifiedId = QualifiedId(kind, namespace, id)
   }
 
   object ResolvedName {
     val defaultNamespace = new BytesKey(Array())
 
-    def apply(qname: QualifiedName, id: BytesKey) = new ResolvedName(qname.kind, defaultNamespace, qname.name, id)
+    def apply(qname: QualifiedName, id: BytesKey) = new ResolvedName(qname.kind, qname.namespace, qname.name, id)
 
-    def apply(qid: QualifiedId, name: String) = new ResolvedName(qid.kind, defaultNamespace, name, qid.id)
+    def apply(qid: QualifiedId, name: String) = new ResolvedName(qid.kind, qid.namespace, name, qid.id)
 
     def apply(kind: String, name: String, id: BytesKey) = new ResolvedName(kind, defaultNamespace, name, id)
   }
@@ -274,7 +276,9 @@ class HBaseStorage(tableName: String,
                    resolveTimeout: Duration = 15 seconds,
                    readChunkSize: Int) extends Logging with HBaseUtils {
 
-  val tsdbFormat = new TsdbFormat()
+  val tsdbFormat = new TsdbFormat(new TimeRangeIdMapping {
+    override def getRangeId(timestampInSeconds: Long): BytesKey = new BytesKey(Array[Byte](0, 0))
+  })
 
   def hTablePool: HTablePool = hTablePool_
 
@@ -685,7 +689,7 @@ class HBaseStorageConfigured(config: HBaseStorageConfig) {
 
   config.actorSystem.registerOnTermination(hbase.close())
 
-  val uniqueIdStorage = new UniqueIdStorage(config.uidsTableName, hbase.hTablePool, HBaseStorage.UniqueIdMapping)
+  val uniqueIdStorage = new UniqueIdStorage(config.uidsTableName, hbase.hTablePool)
 
   val storage = {
     implicit val eCtx = config.eCtx

@@ -6,7 +6,8 @@ import org.apache.hadoop.hbase.client.{HTableInterfaceFactory, HTableInterface, 
 import org.kiji.testing.fakehtable.FakeHTable
 import org.scalatest.{Matchers, FlatSpec}
 import popeye.test.MockitoStubs
-import popeye.storage.hbase.HBaseStorage.{ResolvedName, QualifiedName}
+import popeye.storage.hbase.HBaseStorage._
+import org.scalatest.OptionValues._
 
 /**
  * @author Andrey Stepachev
@@ -25,14 +26,15 @@ class UniqueIdStorageSpec extends FlatSpec with Matchers with MockitoStubs {
     })
   }
 
+  val defaultNamespace = namespaceKey(1)
+
   behavior of "UniqueIdStorage.findByName"
 
   it should "resolve id" in {
     val storage = createStorage(hTablePool)
-    val metric1Name = QualifiedName(HBaseStorage.MetricKind, "metric.1")
+    val metric1Name = QualifiedName(MetricKind, defaultNamespace, "metric.1")
     val metric1 = storage.registerName(metric1Name)
-    val metric2Name = QualifiedName(HBaseStorage.MetricKind, "metric.2")
-
+    val metric2Name = QualifiedName(MetricKind, defaultNamespace, "metric.2")
 
     val r1 = storage.findByName(Seq(
       metric1Name,
@@ -42,6 +44,40 @@ class UniqueIdStorageSpec extends FlatSpec with Matchers with MockitoStubs {
     r1.map(_.toQualifiedName) should (not contain metric2Name)
   }
 
+  it should "register names in namespace" in {
+    val storage = createStorage(hTablePool)
+    val metricName = QualifiedName(MetricKind, namespaceKey(100), "metric")
+    storage.registerName(metricName)
+    val resolvedNames = storage.findByName(Seq(metricName))
+    resolvedNames.size should equal(1)
+    resolvedNames.head.toQualifiedName should equal(metricName)
+  }
+
+  it should "find by name" in {
+    val storage = createStorage(hTablePool)
+    val metricName = QualifiedName(MetricKind, namespaceKey(1), "metric")
+    val resolvedName = storage.registerName(metricName)
+    val resolvedNameOption = storage.findByName(metricName)
+    resolvedNameOption.value should equal(resolvedName)
+  }
+
+  it should "not find name defined in a different namespace" in {
+    val storage = createStorage(hTablePool)
+    val name: String = "metric"
+    val resolvedName = storage.registerName(QualifiedName(MetricKind, namespaceKey(1), name))
+    val resolvedNameOption = storage.findByName(QualifiedName(MetricKind, namespaceKey(0), name))
+    resolvedNameOption should be(None)
+  }
+
+  it should "find by id" in {
+    val storage = createStorage(hTablePool)
+    val metricName = QualifiedName(MetricKind, namespaceKey(1), "metric")
+    val metricId = storage.registerName(metricName).toQualifiedId
+    val resolvedNames = storage.findById(Seq(metricId, metricId.copy(namespace = namespaceKey(0))))
+    resolvedNames.size should equal(1)
+    resolvedNames.head.toQualifiedName should equal(metricName)
+  }
+
   behavior of "UniqueIdStorage.getSuggestions"
 
   it should "find name suggestions" in {
@@ -49,14 +85,13 @@ class UniqueIdStorageSpec extends FlatSpec with Matchers with MockitoStubs {
     import HBaseStorage.MetricKind
     val names = Seq(
       ("aaa", MetricKind),
-      ("aab", MetricKind),
       ("aab", MetricKind)
     )
     for ((name, kind) <- names) {
-      storage.registerName(QualifiedName(kind, name))
+      storage.registerName(QualifiedName(kind, defaultNamespace, name))
     }
-    storage.getSuggestions("aa", MetricKind, 10) should equal(Seq("aaa", "aab"))
-    storage.getSuggestions("aab", MetricKind, 10) should equal(Seq("aab"))
+    storage.getSuggestions(MetricKind, defaultNamespace, "aa", 10) should equal(Seq("aaa", "aab"))
+    storage.getSuggestions(MetricKind, defaultNamespace, "aab", 10) should equal(Seq("aab"))
   }
 
   it should "filter kinds" in {
@@ -68,9 +103,9 @@ class UniqueIdStorageSpec extends FlatSpec with Matchers with MockitoStubs {
       ("aac", AttrNameKind)
     )
     for ((name, kind) <- names) {
-      storage.registerName(QualifiedName(kind, name))
+      storage.registerName(QualifiedName(kind, defaultNamespace, name))
     }
-    storage.getSuggestions("aa", MetricKind, 10) should equal(Seq("aaa", "aab"))
+    storage.getSuggestions(MetricKind, defaultNamespace, "aa", 10) should equal(Seq("aaa", "aab"))
   }
 
   it should "return no more than 'limit' suggestions" in {
@@ -79,14 +114,16 @@ class UniqueIdStorageSpec extends FlatSpec with Matchers with MockitoStubs {
     val names = Seq(
       ("aaa", MetricKind),
       ("aab", MetricKind),
-      ("abb", MetricKind)
+      ("abc", MetricKind)
     )
     for ((name, kind) <- names) {
-      storage.registerName(QualifiedName(kind, name))
+      storage.registerName(QualifiedName(kind, defaultNamespace, name))
     }
-    storage.getSuggestions("a", MetricKind, limit = 2) should equal(Seq("aaa", "aab"))
+    storage.getSuggestions(MetricKind, defaultNamespace, "a", limit = 2) should equal(Seq("aaa", "aab"))
   }
 
-  def createStorage(htp: HTablePool) = new UniqueIdStorage(tableName, htp, HBaseStorage.UniqueIdMapping)
+  def namespaceKey(n: Byte) = new BytesKey(Array[Byte](n))
+
+  def createStorage(htp: HTablePool) = new UniqueIdStorage(tableName, htp, namespaceWidth = 1)
 
 }

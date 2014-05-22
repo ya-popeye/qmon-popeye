@@ -40,7 +40,7 @@ object PointsStorage {
         case AttributeNameType => HBaseStorage.AttrNameKind
         case AttributeValueType => HBaseStorage.AttrValueKind
       }
-      uniqueIdStorage.getSuggestions(namePrefix, kind, MaxNumberOfSuggestions)
+      uniqueIdStorage.getSuggestions(kind, ???, namePrefix, MaxNumberOfSuggestions)
     }
   }
 }
