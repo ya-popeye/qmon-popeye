@@ -59,10 +59,10 @@ object HBaseStorage {
     AttrValueKind -> 3.toShort
   )
 
-  sealed case class ResolvedName(kind: String, name: String, id: BytesKey) {
-    def this(qname: QualifiedName, id: BytesKey) = this(qname.kind, qname.name, id)
+  sealed case class ResolvedName(kind: String, namespace: BytesKey, name: String, id: BytesKey) {
+    def this(qname: QualifiedName, id: BytesKey) = this(qname.kind, qname.namespace, qname.name, id)
 
-    def this(qid: QualifiedId, name: String) = this(qid.kind, name, qid.id)
+    def this(qid: QualifiedId, name: String) = this(qid.kind, qid.namespace, name, qid.id)
 
     def toQualifiedName = QualifiedName(kind, name)
 
@@ -70,14 +70,28 @@ object HBaseStorage {
   }
 
   object ResolvedName {
-    def apply(qname: QualifiedName, id: BytesKey) = new ResolvedName(qname.kind, qname.name, id)
+    val defaultNamespace = new BytesKey(Array())
 
-    def apply(qid: QualifiedId, name: String) = new ResolvedName(qid.kind, name, qid.id)
+    def apply(qname: QualifiedName, id: BytesKey) = new ResolvedName(qname.kind, defaultNamespace, qname.name, id)
+
+    def apply(qid: QualifiedId, name: String) = new ResolvedName(qid.kind, defaultNamespace, name, qid.id)
+
+    def apply(kind: String, name: String, id: BytesKey) = new ResolvedName(kind, defaultNamespace, name, id)
   }
 
-  sealed case class QualifiedName(kind: String, name: String)
+  object QualifiedName {
 
-  sealed case class QualifiedId(kind: String, id: BytesKey)
+    def apply(kind: String, name: String): QualifiedName = QualifiedName(kind, ResolvedName.defaultNamespace, name)
+  }
+
+  sealed case class QualifiedName(kind: String, namespace: BytesKey, name: String)
+
+  object QualifiedId {
+
+    def apply(kind: String, id: BytesKey): QualifiedId = QualifiedId(kind, ResolvedName.defaultNamespace, id)
+  }
+
+  sealed case class QualifiedId(kind: String, namespace: BytesKey, id: BytesKey)
 
 
   type NamedPointsGroup = Map[PointAttributes, Seq[Point]]
@@ -496,9 +510,9 @@ class HBaseStorage(tableName: String,
                                 (implicit eCtx: ExecutionContext)
   : Future[(PartiallyConvertedPoints, Seq[KeyValue])] = Future {
     val idCache: QualifiedName => Option[BytesKey] = {
-      case QualifiedName(MetricKind, name) => metricNames.findIdByName(name)
-      case QualifiedName(AttrNameKind, name) => attributeNames.findIdByName(name)
-      case QualifiedName(AttrValueKind, name) => attributeValues.findIdByName(name)
+      case QualifiedName(MetricKind, _, name) => metricNames.findIdByName(name)
+      case QualifiedName(AttrNameKind, _, name) => attributeNames.findIdByName(name)
+      case QualifiedName(AttrValueKind, _, name) => attributeValues.findIdByName(name)
     }
     val result@(partiallyConvertedPoints, keyValues) = tsdbFormat.convertToKeyValues(points, idCache)
     metrics.resolvedPointsMeter.mark(keyValues.size)
