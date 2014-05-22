@@ -1,0 +1,9 @@
+Source: qmon-popeye-statbox-kafka-config
+Maintainer: Vasily Kolpakov <quasi@yandex-team.ru>
+Build-Depends: debhelper, coreutils
+
+Package: qmon-popeye-statbox-kafka-config
+Architecture: all
+Depends: curl, rsync, monrun, libjson-xs-perl, libwww-perl, lzop, gzip
+Description: qmon-popeye-statbox-kafka-config
+

@@ -1,0 +1,3 @@
+iva	zk01e.stat.yandex.net:2181,zk02e.stat.yandex.net:2181,zk03e.stat.yandex.net:2181/kafka-iva
+fol	zk01g.stat.yandex.net:2181,zk02g.stat.yandex.net:2181,zk03g.stat.yandex.net:2181/kafka-fol
+sas	zk01h.stat.yandex.net:2181,zk02h.stat.yandex.net:2181,zk03h.stat.yandex.net:2181/kafka-sas
