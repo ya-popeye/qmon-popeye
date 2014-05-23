@@ -118,7 +118,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       attributes = SortedMap(
         sampleIdMap(qualifiedName(AttrNameKind, "name")) -> sampleIdMap(qualifiedName(AttrValueKind, "value"))
       ),
-      points = timeAndValues.map {case (time, value) => HBaseStorage.Point(time.toInt, value.fold(i => i, i => i))}
+      points = timeAndValues.map { case (time, value) => HBaseStorage.Point(time.toInt, value) }
     )
     parsedRowResult should equal(expected)
   }

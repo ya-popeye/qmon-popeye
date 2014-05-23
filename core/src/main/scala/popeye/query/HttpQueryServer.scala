@@ -143,7 +143,7 @@ object HttpQueryServer extends HttpServerFactory {
                               downsamplingOption: Option[(Int, Seq[Double] => Double)]): Map[PointAttributes, Seq[(Int, Double)]] = {
     def toGraphPointIterator(points: Seq[Point]) = {
       val graphPoints = points.iterator.map {
-        point => (point.timestamp, point.value.doubleValue())
+        point => (point.timestamp, point.doubleValue)
       }
       downsamplingOption.map {
         case (interval, aggregator) => PointSeriesUtils.downsample(graphPoints, interval, aggregator)

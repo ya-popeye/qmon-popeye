@@ -125,7 +125,25 @@ object HBaseStorage {
     }
   }
 
-  case class Point(timestamp: Int, value: Number)
+  object Point {
+    def apply(timestamp: Int, value: Long): Point = Point(timestamp, Left(value))
+  }
+
+  case class Point(timestamp: Int, value: Either[Long, Float]) {
+    def isFloat = value.isRight
+
+    def getFloatValue = value match { case Right(f) => f }
+
+    def getLongValue = value match { case Left(l) => l }
+
+    def doubleValue = {
+      if (isFloat) {
+        getFloatValue.toDouble
+      } else {
+        getLongValue.toDouble
+      }
+    }
+  }
 
   case class PointsStream(groups: PointsGroups, next: Option[() => Future[PointsStream]]) {
     def toFuturePointsGroups(implicit eCtx: ExecutionContext): Future[PointsGroups] = {

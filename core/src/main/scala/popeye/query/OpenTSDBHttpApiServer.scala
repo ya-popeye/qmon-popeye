@@ -227,7 +227,7 @@ object OpenTSDBHttpApiServer extends HttpServerFactory {
                               rate: Boolean): Map[PointAttributes, Seq[(Int, Double)]] = {
 
     def toGraphPointIterator(points: Seq[Point]) = points.iterator.map {
-      point => (point.timestamp, point.value.doubleValue())
+      point => (point.timestamp, point.doubleValue)
     }
     pointsGroups.groupsMap.mapValues {
       group =>
