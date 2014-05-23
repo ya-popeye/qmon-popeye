@@ -422,13 +422,10 @@ class HBaseStorage(tableName: String,
   }
 
   private def parseTimeValuePoints(results: Array[Result],
-                                   timeRange: (Int, Int)): Seq[(PointAttributeIds, List[Point])] = {
+                                   timeRange: (Int, Int)): Seq[(PointAttributeIds, Seq[Point])] = {
     val pointsRows = for (result <- results) yield {
-      val row = result.getRow
-      val attributes = getAttributesBytes(row)
-      val attributeMap = getAttributesMap(attributes.bytes)
-      val points = tsdbFormat.parsePoints(result)
-      (attributeMap, points): (PointAttributeIds, List[Point])
+      val parsedResult = tsdbFormat.parseRowResult(result)
+      (parsedResult.attributes, parsedResult.points): (PointAttributeIds, Seq[Point])
     }
     val (startTime, endTime) = timeRange
     if (pointsRows.nonEmpty) {
