@@ -7,6 +7,8 @@ import popeye.storage.hbase.HBaseStorage.{MetricKind, AttrNameKind, AttrValueKin
 import org.apache.hadoop.hbase.util.Bytes
 import org.apache.hadoop.hbase.client.Result
 import popeye.storage.hbase.HBaseStorage.QualifiedName
+import popeye.test.PopeyeTestUtils._
+import scala.collection.immutable.SortedMap
 
 class TsdbFormatSpec extends FlatSpec with Matchers {
   behavior of "TsdbFormat"
@@ -27,10 +29,10 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
   val defaultNamespace = new BytesKey(Array[Byte](10, 10))
 
   val sampleIdMap = Map(
-    qualifiedName(MetricKind, samplePoint.getMetric) -> Array(0, 0, 1),
-    qualifiedName(AttrNameKind, "name") -> Array(0, 0, 1),
-    qualifiedName(AttrNameKind, "anotherName") -> Array(0, 0, 2),
-    qualifiedName(AttrValueKind, "value") -> Array(0, 0, 1)
+    qualifiedName(MetricKind, "test") -> Array(0, 0, 1),
+    qualifiedName(AttrNameKind, "name") -> Array(0, 0, 2),
+    qualifiedName(AttrNameKind, "anotherName") -> Array(0, 0, 3),
+    qualifiedName(AttrValueKind, "value") -> Array(0, 0, 4)
   ).mapValues(array => new BytesKey(array.map(_.toByte)))
 
   def qualifiedName(kind: String, name: String) = QualifiedName(kind, defaultNamespace, name)
@@ -50,8 +52,8 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val timestamp = samplePoint.getTimestamp.toInt
     val timestampBytes = Bytes.toBytes(timestamp - timestamp % HBaseStorage.MAX_TIMESPAN)
     val sortedAttributeIds =
-      (Array(0, 0, 1) ++ Array(0, 0, 1) ++ // first attr
-        Array(0, 0, 2) ++ Array(0, 0, 1)).map(_.toByte) // second attr
+      (Array(0, 0, 2) ++ Array(0, 0, 4) ++ // first attr
+        Array(0, 0, 3) ++ Array(0, 0, 4)).map(_.toByte) // second attr
     val row = defaultNamespace.bytes ++ metricId ++ timestampBytes ++ sortedAttributeIds
     keyValue.getRow should equal(row)
   }
@@ -86,6 +88,39 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     delayedkeyValues.head should equal(tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap))
     val point = HBaseStorage.Point(samplePoint.getTimestamp.toInt, samplePoint.getIntValue)
     tsdbFormat.parsePoints(new Result(delayedkeyValues.asJava)).head should equal(point)
+  }
+
+  it should "parse row result" in {
+    val tsdbFormat = createTsdbFormat()
+    val timeAndValues: Seq[(Long, Either[Long, Float])] = Seq(
+      (100, Left(1l)),
+      (200, Right(1.0f)),
+      (300, Left(2l))
+    )
+    val points = timeAndValues.map {
+      case (time, value) =>
+        createPoint(
+          metric = "test",
+          timestamp = time,
+          attributes = Seq("name" -> "value"),
+          value = value
+        )
+    }
+    val keyValues = points.map {
+      point => tsdbFormat.convertToKeyValue(point, sampleIdMap)
+    }
+    require(keyValues.map(_.getRow.toBuffer).distinct.size == 1)
+    val parsedRowResult = tsdbFormat.parseRowResult(new Result(keyValues.asJava))
+
+    val expected = ParsedRowResult(
+      namespace = defaultNamespace,
+      metricId = sampleIdMap(qualifiedName(MetricKind, "test")),
+      attributes = SortedMap(
+        sampleIdMap(qualifiedName(AttrNameKind, "name")) -> sampleIdMap(qualifiedName(AttrValueKind, "value"))
+      ),
+      points = timeAndValues.map {case (time, value) => HBaseStorage.Point(time.toInt, value.fold(i => i, i => i))}
+    )
+    parsedRowResult should equal(expected)
   }
 
   def createTsdbFormat(timeRangeIdMapping: Long => Array[Byte] = _ => defaultNamespace): TsdbFormat = {

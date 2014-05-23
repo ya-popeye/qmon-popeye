@@ -8,6 +8,8 @@ import popeye.Logging
 import scala.collection.JavaConverters._
 import org.apache.hadoop.hbase.client.Result
 import scala.collection.mutable
+import java.util.Arrays.copyOfRange
+import scala.collection.immutable.SortedMap
 
 object TsdbFormat {
 
@@ -17,6 +19,12 @@ object TsdbFormat {
   val attributeNameWidth: Int = UniqueIdMapping(AttrNameKind)
   val attributeValueWidth: Int = UniqueIdMapping(AttrValueKind)
 }
+
+
+case class ParsedRowResult(namespace: BytesKey,
+                           metricId: BytesKey,
+                           attributes: HBaseStorage.PointAttributeIds,
+                           points: Seq[HBaseStorage.Point])
 
 class PartiallyConvertedPoints(val unresolvedNames: Set[QualifiedName],
                                val points: Seq[Message.Point],
@@ -77,6 +85,45 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping) extends Logging {
       point.getTimestamp,
       qualifiedValue
     )
+  }
+
+  def parseRowResult(result: Result): ParsedRowResult = {
+    val row = result.getRow
+    val namespace = new BytesKey(copyOfRange(row, 0, UniqueIdNamespaceWidth))
+    val metricId = new BytesKey(copyOfRange(row, UniqueIdNamespaceWidth, UniqueIdNamespaceWidth + metricWidth))
+    val baseTime = Bytes.toInt(row, UniqueIdNamespaceWidth + metricWidth, HBaseStorage.TIMESTAMP_BYTES)
+    val attributesOffset = UniqueIdNamespaceWidth + metricWidth + HBaseStorage.TIMESTAMP_BYTES
+    val attributesBytes = copyOfRange(row, attributesOffset, row.length)
+    val columns = result.getFamilyMap(HBaseStorage.PointsFamily).asScala.toList
+    val points = columns.map {
+      case (qualifierBytes, valueBytes) =>
+        val (delta, value) = parseValue(qualifierBytes, valueBytes)
+        HBaseStorage.Point(baseTime + delta, value)
+    }
+    ParsedRowResult(
+      namespace,
+      metricId,
+      createAttributesMap(attributesBytes),
+      points
+    )
+  }
+
+  private def createAttributesMap(attributes: Array[Byte]): HBaseStorage.PointAttributeIds = {
+    val attributeWidth = attributeNameWidth + attributeValueWidth
+    require(attributes.length % attributeWidth == 0, "bad attributes length")
+    val numberOfAttributes = attributes.length / attributeWidth
+    val attrNamesIndexes = (0 until numberOfAttributes).map(i => i * attributeWidth)
+    val attributePairs =
+      for (attrNameIndex <- attrNamesIndexes)
+      yield {
+        val attrValueIndex = attrNameIndex + attributeNameWidth
+        val nameArray = new Array[Byte](attributeNameWidth)
+        val valueArray = new Array[Byte](attributeValueWidth)
+        System.arraycopy(attributes, attrNameIndex, nameArray, 0, attributeNameWidth)
+        System.arraycopy(attributes, attrValueIndex, valueArray, 0, attributeValueWidth)
+        (new BytesKey(nameArray), new BytesKey(valueArray))
+      }
+    SortedMap[BytesKey, BytesKey](attributePairs: _*)
   }
 
   def parsePoints(result: Result): List[HBaseStorage.Point] = {
