@@ -9,6 +9,7 @@ import org.apache.hadoop.hbase.client.Result
 import popeye.storage.hbase.HBaseStorage.QualifiedName
 import popeye.test.PopeyeTestUtils._
 import scala.collection.immutable.SortedMap
+import org.apache.hadoop.hbase.KeyValue
 
 class TsdbFormatSpec extends FlatSpec with Matchers {
   behavior of "TsdbFormat"
@@ -121,6 +122,16 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       points = timeAndValues.map { case (time, value) => HBaseStorage.Point(time.toInt, value) }
     )
     parsedRowResult should equal(expected)
+  }
+
+  it should "throw meaningful exception if row size is illegal" in {
+    val tsdbFormat = createTsdbFormat()
+    val row = Array[Byte](0)
+    val keyValue = new KeyValue(row, HBaseStorage.PointsFamily, Array[Byte](0, 0, 0), Array[Byte](0, 0, 0))
+    val ex = intercept[IllegalArgumentException] {
+      tsdbFormat.parseRowResult(new Result(Seq(keyValue).asJava))
+    }
+    ex.getMessage should (include("row") and include("size"))
   }
 
   def createTsdbFormat(timeRangeIdMapping: Long => Array[Byte] = _ => defaultNamespace): TsdbFormat = {

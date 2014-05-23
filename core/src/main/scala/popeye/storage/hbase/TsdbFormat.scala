@@ -18,6 +18,7 @@ object TsdbFormat {
   val metricWidth: Int = UniqueIdMapping(MetricKind)
   val attributeNameWidth: Int = UniqueIdMapping(AttrNameKind)
   val attributeValueWidth: Int = UniqueIdMapping(AttrValueKind)
+  val attributesOffset = UniqueIdNamespaceWidth + metricWidth + HBaseStorage.TIMESTAMP_BYTES
 }
 
 
@@ -89,10 +90,15 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping) extends Logging {
 
   def parseRowResult(result: Result): ParsedRowResult = {
     val row = result.getRow
+    val attributesLength = row.length - attributesOffset
+    val attrSize = attributeNameWidth + attributeValueWidth
+    require(
+      attributesLength >= 0 && attributesLength % attrSize == 0,
+      f"illegal row length: ${ row.length }, attributes length: $attributesLength, attr size: ${ attrSize }"
+    )
     val namespace = new BytesKey(copyOfRange(row, 0, UniqueIdNamespaceWidth))
     val metricId = new BytesKey(copyOfRange(row, UniqueIdNamespaceWidth, UniqueIdNamespaceWidth + metricWidth))
     val baseTime = Bytes.toInt(row, UniqueIdNamespaceWidth + metricWidth, HBaseStorage.TIMESTAMP_BYTES)
-    val attributesOffset = UniqueIdNamespaceWidth + metricWidth + HBaseStorage.TIMESTAMP_BYTES
     val attributesBytes = copyOfRange(row, attributesOffset, row.length)
     val columns = result.getFamilyMap(HBaseStorage.PointsFamily).asScala.toList
     val points = columns.map {
