@@ -160,6 +160,10 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping) extends Logging {
   }
 
   private def parseValue(qualifierBytes: Array[Byte], valueBytes: Array[Byte]): (Short, Either[Long, Float]) = {
+    require(
+      qualifierBytes.length == Bytes.SIZEOF_SHORT,
+      s"Expected qualifier length was ${ Bytes.SIZEOF_SHORT }, got ${ qualifierBytes.length }"
+    )
     val qualifier = Bytes.toShort(qualifierBytes)
     val deltaShort = ((qualifier & 0xFFFF) >>> HBaseStorage.FLAG_BITS).toShort
     val floatFlag: Int = HBaseStorage.FLAG_FLOAT | 0x3.toShort

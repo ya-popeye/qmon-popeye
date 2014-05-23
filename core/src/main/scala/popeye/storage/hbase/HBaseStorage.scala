@@ -421,24 +421,6 @@ class HBaseStorage(tableName: String,
     getChunkedResults(tableName, readChunkSize, scan)
   }
 
-  def getAttributesMap(attributes: Array[Byte]): PointAttributeIds = {
-    val attributeWidth = attributeNames.width + attributeValues.width
-    require(attributes.length % attributeWidth == 0, "bad attributes length")
-    val numberOfAttributes = attributes.length / attributeWidth
-    val attrNamesIndexes = (0 until numberOfAttributes).map(i => i * attributeWidth)
-    val attributePairs =
-      for (attrNameIndex <- attrNamesIndexes)
-      yield {
-        val attrValueIndex = attrNameIndex + attributeNames.width
-        val nameArray = new Array[Byte](attributeNames.width)
-        val valueArray = new Array[Byte](attributeValues.width)
-        System.arraycopy(attributes, attrNameIndex, nameArray, 0, attributeNames.width)
-        System.arraycopy(attributes, attrValueIndex, valueArray, 0, attributeValues.width)
-        (new BytesKey(nameArray), new BytesKey(valueArray))
-      }
-    SortedMap[BytesKey, BytesKey]() ++ attributePairs
-  }
-
   private def parseTimeValuePoints(results: Array[Result],
                                    timeRange: (Int, Int)): Seq[(PointAttributeIds, Seq[Point])] = {
     val pointsRows = for (result <- results) yield {
@@ -589,32 +571,6 @@ class HBaseStorage(tableName: String,
     metrics.writeHBaseTimeMeter.mark(time)
   }
 
-  private def mkPoint(baseTime: Int, metric: String,
-                      qualifier: Short, value: Array[Byte],
-                      attrs: Seq[(String, String)]): Message.Point = {
-    val builder = Message.Point.newBuilder()
-      .setMetric(metric)
-    if ((qualifier & HBaseStorage.FLAG_FLOAT) == 0) {
-      // int
-      builder.setIntValue(Bytes.toLong(value))
-    } else {
-      // float
-      builder.setFloatValue(Bytes.toFloat(value))
-    }
-
-    val deltaTs = delta(qualifier)
-    builder.setTimestamp(baseTime + deltaTs)
-
-    trace(s"Got point: ts=${builder.getTimestamp}, qualifier=$qualifier basets=$baseTime, delta=$deltaTs")
-
-    attrs.foreach { attribute =>
-      builder.addAttributesBuilder()
-        .setName(attribute._1)
-        .setValue(attribute._2)
-    }
-    builder.build
-  }
-
   /**
    * Makes Future for Message.Point from KeyValue.
    * Most time all identifiers are cached, so this future returns 'complete',
@@ -624,52 +580,37 @@ class HBaseStorage(tableName: String,
    * @return future
    */
   private def mkPointFuture(kv: KeyValue)(implicit eCtx: ExecutionContext): Future[Message.Point] = {
-    val row = kv.getRow
-    val kvValue = kv.getValue
-    val kvQualifier = kv.getQualifier
-    require(kv.getRowLength >= metricNames.width,
-      s"Metric Id is wider then row key ${Bytes.toStringBinary(row)}")
-    require(kv.getQualifierLength == Bytes.SIZEOF_SHORT,
-      s"Expected qualifier to be with size of Short")
-    val firstAttributeOffset = metricNames.width + HBaseStorage.TIMESTAMP_BYTES
-    val attributesLen = row.length - firstAttributeOffset
-    val attributeLen = attributeNames.width + attributeValues.width
-    require(attributesLen %
-      (attributeNames.width + attributeValues.width) == 0,
-      s"Row key should have room for" +
-        s" metric name (${metricNames.width} bytes) +" +
-        s" timestamp (${HBaseStorage.TIMESTAMP_BYTES}} bytes)}" +
-        s" qualifier (N x $attributeLen bytes)}" +
-        s" but got row ${Bytes.toStringBinary(row)}")
-
-
-    val metricNameFuture = metricNames.resolveNameById(util.Arrays.copyOf(kv.getRow, metricNames.width))(resolveTimeout)
-    val attrByteIds = (0 until attributesLen / attributeLen).map {
-      idx =>
-        val attributeOffset = firstAttributeOffset + attributeLen * idx
-        val attributeValueOffset = attributeOffset + attributeNames.width
-        val atId = util.Arrays.copyOfRange(row, attributeOffset, attributeValueOffset)
-        val atVal = util.Arrays.copyOfRange(row, attributeValueOffset, attributeValueOffset + attributeValues.width)
-        (atId, atVal)
-    }
+    import scala.collection.JavaConverters._
+    val parsedResult = tsdbFormat.parseRowResult(new Result(Seq(kv).asJava))
+    val attrByteIds = parsedResult.attributes.toSeq
+    val metricNameFuture = metricNames.resolveNameById(parsedResult.metricId)(resolveTimeout)
     val attributes = Future.traverse(attrByteIds) {
-      attribute =>
-      attributeNames.resolveNameById(attribute._1)(resolveTimeout)
-        .zip(attributeValues.resolveNameById(attribute._2)(resolveTimeout))
+      case (nameId, valueId) =>
+        attributeNames.resolveNameById(nameId)(resolveTimeout)
+          .zip(attributeValues.resolveNameById(valueId)(resolveTimeout))
     }
+    val valuePoint = parsedResult.points.head
     metricNameFuture.zip(attributes).map {
-      case tuple =>
-        val baseTs = Bytes.toInt(row, metricNames.width, HBaseStorage.TIMESTAMP_BYTES)
-        mkPoint(baseTs, tuple._1, Bytes.toShort(kvQualifier), kvValue, tuple._2)
+      case (metricName, attrs) =>
+        val builder = Message.Point.newBuilder()
+        builder.setTimestamp(valuePoint.timestamp)
+        builder.setMetric(metricName)
+        if (valuePoint.isFloat) {
+          builder.setFloatValue(valuePoint.getFloatValue)
+        } else {
+          builder.setIntValue(valuePoint.getLongValue)
+        }
+        for ((name, value) <- attrs) {
+          builder.addAttributesBuilder()
+            .setName(name)
+            .setValue(value)
+        }
+        builder.build()
     }
   }
 
   def keyValueToPoint(kv: KeyValue)(implicit eCtx: ExecutionContext): Message.Point = {
     Await.result(mkPointFuture(kv), resolveTimeout)
-  }
-
-  private def delta(qualifier: Short) = {
-    ((qualifier & 0xFFFF) >>> HBaseStorage.FLAG_BITS).toShort
   }
 
 }
