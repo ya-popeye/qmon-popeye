@@ -80,8 +80,8 @@ object HBase {
 
   import Util._
 
-  val Hadoop = "2.2.0-cdh5.0.0-beta-2"
-  val HBase = "0.96.1.1-cdh5.0.0-beta-2"
+  val Hadoop = "2.3.0-cdh5.0.1"
+  val HBase = "0.96.1.1-cdh5.0.1"
 
   val settings = Seq(
     resolvers ++= Seq(
