@@ -1,7 +1,7 @@
 import sbt._
 import sbt.ExclusionRule
 import sbt.Keys._
-import QMonDistPlugin._
+import com.twitter.sbt._
 import net.virtualvoid.sbt.graph.{Plugin => Dep}
 import scala._
 
@@ -18,7 +18,7 @@ object Compiler {
   val defaultSettings = Seq(
     scalacOptions in Compile ++= Seq("-target:jvm-1.6", "-deprecation", "-unchecked", "-feature",
       "-language:postfixOps", "-language:implicitConversions"),
-    javacOptions in Compile ++= Seq("-source", "1.6", "-target", "1.6"),
+    javacOptions in Compile ++= Seq("-source", "1.7", "-target", "1.7"),
     resolvers ++= Seq(
       "spray repo" at "http://repo.spray.io",
       Resolver.url("octo47 repo", url("http://octo47.github.com/repo/"))({
@@ -85,7 +85,7 @@ object HBase {
 
   val settings = Seq(
     resolvers ++= Seq(
-      "cdh5.0.0-beta-2" at "https://repository.cloudera.com/artifactory/cloudera-repos"
+      "cdh" at "https://repository.cloudera.com/artifactory/cloudera-repos"
     ),
     libraryDependencies ++= Seq(
       "org.apache.hadoop" % "hadoop-common" % Hadoop,
@@ -111,15 +111,56 @@ object HBase {
   )
 }
 
+object Publish {
+
+  val buildSettings = Seq(
+    BuildProperties.newSettings,
+    PublishSourcesAndJavadocs.newSettings,
+    PackageDist.newSettings
+  ).foldLeft(Seq[Setting[_]]()) { (s, a)  => s ++ a}
+
+  val releaseSettings = Seq(
+    Defaults.defaultSettings,
+    DefaultRepos.newSettings,
+    ArtifactoryPublisher.newSettings,
+    GitProject.gitSettings,
+    VersionManagement.newSettings,
+    ReleaseManagement.newSettings
+  ).foldLeft(Seq[Setting[_]]()) { (s, a)  => s ++ a} ++ Seq(
+    exportJars := true
+  )
+
+  val settings = Seq(
+    credentials += Credentials(Path.userHome / ".ivy2" / "credentials.txt"),
+    publishTo := Some("yandex_common_releases"
+      at "http://maven.yandex.net/nexus/content/repositories/yandex_common_releases/")
+  ) ++ releaseSettings
+}
+
 object PopeyeBuild extends Build {
 
   import Util._
+
+  val releaseSettings = Seq(
+    Defaults.defaultSettings,
+    DefaultRepos.newSettings,
+    ArtifactoryPublisher.newSettings,
+    GitProject.gitSettings,
+    BuildProperties.newSettings,
+    PublishSourcesAndJavadocs.newSettings,
+    PackageDist.newSettings,
+    VersionManagement.newSettings,
+    ReleaseManagement.newSettings
+  ).foldLeft(Seq[Setting[_]]()) { (s, a)  => s ++ a} ++ Seq(
+    exportJars := true
+  )
 
   lazy val defaultSettings =
     Defaults.defaultSettings ++
       Compiler.defaultSettings ++
       Tests.defaultSettings ++
-      Dep.graphSettings
+      Dep.graphSettings ++
+      Publish.settings
 
   lazy val popeye = Project(
     id = "popeye",
@@ -130,9 +171,8 @@ object PopeyeBuild extends Build {
   lazy val popeyeCore = Project(
     id = "popeye-core",
     base = file("core"),
-    settings = defaultSettings ++ QMonDistPlugin.distSettings ++ HBase.settings)
+    settings = defaultSettings ++ HBase.settings ++ Publish.buildSettings)
     .settings(
-    distMainClass := "popeye.Main",
     libraryDependencies ++= Version.slf4jDependencies ++ Seq(
       "com.github.scopt" %% "scopt" % Version.Scopt,
       "com.google.protobuf" % "protobuf-java" % "2.5.0",
@@ -152,14 +192,13 @@ object PopeyeBuild extends Build {
       "org.apache.avro" % "avro" % Version.Avro % "test"
     ).excluding(Version.slf4jExclusions :_*)
      .excluding(Version.commonExclusions :_*)
-  )
+    )
 
   lazy val popeyeBench = Project(
     id = "popeye-bench",
     base = file("bench"),
-    settings = defaultSettings ++ QMonDistPlugin.distSettings).dependsOn(popeyeCore)
+    settings = defaultSettings ++ Publish.buildSettings).dependsOn(popeyeCore)
     .settings(
-    distMainClass := "popeye.transport.bench.GenerateMain",
     libraryDependencies ++= Version.slf4jDependencies ++ Seq(
       "nl.grons" %% "metrics-scala" % Version.Metrics,
       "com.typesafe.akka" %% "akka-actor" % Version.Akka,
