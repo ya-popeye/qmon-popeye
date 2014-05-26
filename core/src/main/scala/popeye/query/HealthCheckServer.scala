@@ -176,8 +176,8 @@ object HealthCheckTool {
 
   private def createNameValueConditions(fixedAttrs: Seq[(String, String)], countAttrName: String) = {
     import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition._
-    val fixedAttrsConditions = fixedAttrs.map {case (name, value) => (name, Single(value))}
-    ((countAttrName, All) +: fixedAttrsConditions).toMap
+    val fixedAttrsConditions = fixedAttrs.map {case (name, value) => (name, SingleValueName(value))}
+    ((countAttrName, AllValueNames) +: fixedAttrsConditions).toMap
   }
 
 }

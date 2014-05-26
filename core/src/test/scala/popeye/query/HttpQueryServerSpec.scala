@@ -42,9 +42,9 @@ class HttpQueryServerSpec extends AkkaTestKitSpec("http-query") with MockitoSuga
     response.entity.asString should equal("")
     import ValueNameFilterCondition._
     val attrs = Map(
-      "single" -> Single("foo"),
-      "multiple" -> Multiple(Seq("foo", "bar")),
-      "all" -> All
+      "single" -> SingleValueName("foo"),
+      "multiple" -> MultipleValueNames(Seq("foo", "bar")),
+      "all" -> AllValueNames
     )
     verify(storage).getPoints("metricId", (0, 1), attrs)
   }

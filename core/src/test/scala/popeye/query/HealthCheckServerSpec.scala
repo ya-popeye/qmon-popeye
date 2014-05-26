@@ -53,7 +53,7 @@ class HealthCheckServerSpec extends AkkaTestKitSpec("http-query") with MockitoSu
     val metricName = "test"
     val fixedAttrs = Seq("name" -> "value")
     val countAttr = "host"
-    val valueFilters = Map("name" -> Single("value"), countAttr -> All)
+    val valueFilters = Map("name" -> SingleValueName("value"), countAttr -> AllValueNames)
     val storage = mock[PointsStorage]
     val firstStream = pointsStream(countAttr, numberOfDistinctTagValuesInFirstTimeInterval, 3)
     stub(storage.getPoints(metricName, (70, 80), valueFilters)).toReturn(Future.successful(firstStream))

@@ -126,7 +126,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
     }
     writePoints(storageStub, points)
     import HBaseStorage.ValueNameFilterCondition._
-    val future = storageStub.storage.getPoints("my.metric1", (1200, 4801), Map("host" -> Single("localhost")))
+    val future = storageStub.storage.getPoints("my.metric1", (1200, 4801), Map("host" -> SingleValueName("localhost")))
     val groupsMap = toGroupsMap(future)
     val group = groupsMap(SortedMap())
     group.size should equal(1)
@@ -152,7 +152,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
 
     writePoints(storageStub, Seq(point))
     import HBaseStorage.ValueNameFilterCondition._
-    val future = storageStub.storage.getPoints("metric", (0, 1), Map("a" -> Single("foo"), "b" -> Single("foo")))
+    val future = storageStub.storage.getPoints("metric", (0, 1), Map("a" -> SingleValueName("foo"), "b" -> SingleValueName("foo")))
     val groupsMap = toGroupsMap(future)
     val group = groupsMap(SortedMap())
     group.size should equal(1)
@@ -188,7 +188,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
     )
     writePoints(storageStub, Seq(fooPoint, barPoint, junkPoint))
     import HBaseStorage.ValueNameFilterCondition._
-    val future = storageStub.storage.getPoints("metric", (0, 1), Map("type" -> Multiple(Seq("foo", "bar"))))
+    val future = storageStub.storage.getPoints("metric", (0, 1), Map("type" -> MultipleValueNames(Seq("foo", "bar"))))
     val groupsMap = toGroupsMap(future)
     groupsMap.size should equal(2)
     val fooGroup = groupsMap(SortedMap("type" -> "foo"))
@@ -225,7 +225,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
     )
     writePoints(storageStub, Seq(fooPoint, barPoint, junkPoint))
     import HBaseStorage.ValueNameFilterCondition._
-    val future = storageStub.storage.getPoints("metric", (0, 1), Map("type" -> All, "attr" -> Single("foo")))
+    val future = storageStub.storage.getPoints("metric", (0, 1), Map("type" -> AllValueNames, "attr" -> SingleValueName("foo")))
     val groupsMap = toGroupsMap(future)
     groupsMap.size should equal(2)
     val fooGroup = groupsMap(SortedMap("type" -> "foo"))

@@ -14,6 +14,7 @@ import popeye.javaapi.hadoop.bulkload.TsdbKeyValueIterator;
 import popeye.javaapi.kafka.hadoop.KafkaInput;
 import popeye.kafka.KafkaSimpleConsumerFactory;
 import popeye.storage.hbase.BytesKey;
+import popeye.storage.hbase.FixedTimeRangeID;
 import popeye.storage.hbase.TimeRangeIdMapping;
 import popeye.storage.hbase.TsdbFormat;
 
@@ -49,13 +50,7 @@ public class PopeyePointsKafkaTopicRecordReader extends RecordReader<NullWritabl
     hbaseConf.set(HConstants.ZOOKEEPER_QUORUM, hbaseQuorum);
     hbaseConf.setInt(HConstants.ZOOKEEPER_CLIENT_PORT, hbaseQuorumPort);
     hTablePool = new HTablePool(hbaseConf, 1);
-    TimeRangeIdMapping timeRangeIdMapping = new TimeRangeIdMapping() {
-
-      @Override
-      public BytesKey getRangeId(long timestampInSeconds) {
-        return new BytesKey(new byte[]{0, 0});
-      }
-    };
+    TimeRangeIdMapping timeRangeIdMapping = new FixedTimeRangeID(new BytesKey(new byte[]{0, 0}));
     TsdbFormat tsdbFormat = new TsdbFormat(timeRangeIdMapping);
     keyValueIterator = TsdbKeyValueIterator.create(
       pointsIterator,

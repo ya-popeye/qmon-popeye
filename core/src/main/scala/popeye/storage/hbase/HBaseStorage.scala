@@ -156,17 +156,17 @@ object HBaseStorage {
 
   object ValueIdFilterCondition {
 
-    case class Single(id: BytesKey) extends ValueIdFilterCondition {
+    case class SingleValueId(id: BytesKey) extends ValueIdFilterCondition {
       def isGroupByAttribute: Boolean = false
     }
 
-    case class Multiple(ids: Seq[BytesKey]) extends ValueIdFilterCondition {
+    case class MultipleValueIds(ids: Seq[BytesKey]) extends ValueIdFilterCondition {
       require(ids.size > 1, "must be more than one value id")
 
       def isGroupByAttribute: Boolean = true
     }
 
-    case object All extends ValueIdFilterCondition {
+    case object AllValueIds extends ValueIdFilterCondition {
       def isGroupByAttribute: Boolean = true
     }
 
@@ -178,17 +178,17 @@ object HBaseStorage {
 
   object ValueNameFilterCondition {
 
-    case class Single(name: String) extends ValueNameFilterCondition {
+    case class SingleValueName(name: String) extends ValueNameFilterCondition {
       def isGroupByAttribute: Boolean = false
     }
 
-    case class Multiple(names: Seq[String]) extends ValueNameFilterCondition {
+    case class MultipleValueNames(names: Seq[String]) extends ValueNameFilterCondition {
       require(names.size > 1, "must be more than one value name")
 
       def isGroupByAttribute: Boolean = true
     }
 
-    case object All extends ValueNameFilterCondition {
+    case object AllValueNames extends ValueNameFilterCondition {
       def isGroupByAttribute: Boolean = true
     }
   }
@@ -313,22 +313,22 @@ class HBaseStorage(tableName: String,
                             (implicit eCtx: ExecutionContext): Future[ValueIdFilterCondition] = {
     import ValueNameFilterCondition._
     nameCondition match {
-      case Single(valueName) =>
+      case SingleValueName(valueName) =>
         attributeValues.resolveIdByName(valueName, create = false)(resolveTimeout)
-          .map(ValueIdFilterCondition.Single)
-      case Multiple(valueNames) =>
+          .map(ValueIdFilterCondition.SingleValueId)
+      case MultipleValueNames(valueNames) =>
         val valueIdFutures = valueNames.map {
           valueName => attributeValues.resolveIdByName(valueName, create = false)(resolveTimeout)
         }
-        Future.sequence(valueIdFutures).map(ids => ValueIdFilterCondition.Multiple(ids))
-      case All => Future.successful(ValueIdFilterCondition.All)
+        Future.sequence(valueIdFutures).map(ids => ValueIdFilterCondition.MultipleValueIds(ids))
+      case AllValueNames => Future.successful(ValueIdFilterCondition.AllValueIds)
     }
   }
 
   def createChunkedResults(metricId: Array[Byte],
                            timeRange: (Int, Int),
                            attributes: Map[BytesKey, ValueIdFilterCondition]) = {
-    val scan = tsdbFormat.getScans(metricId, timeRange, attributes).head
+    val scan = ??? //tsdbFormat.getScans(metricId, timeRange, attributes).head
     getChunkedResults(tableName, readChunkSize, scan)
   }
 
@@ -558,9 +558,7 @@ class HBaseStorageConfigured(config: HBaseStorageConfig) {
       config.resolveTimeout)
     val attrValues = makeUniqueIdCache(config.uidsConfig, HBaseStorage.AttrValueKind, uniqIdResolved, uniqueIdStorage,
       config.resolveTimeout)
-    val tsdbFormat = new TsdbFormat(new TimeRangeIdMapping {
-      override def getRangeId(timestampInSeconds: Long): BytesKey = new BytesKey(Array[Byte](0, 0))
-    })
+    val tsdbFormat = new TsdbFormat(new FixedTimeRangeID(new BytesKey(Array[Byte](0, 0))))
     new HBaseStorage(
       config.pointsTableName,
       hbase.hTablePool,

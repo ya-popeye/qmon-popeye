@@ -9,10 +9,15 @@ import org.apache.hadoop.hbase.client.Result
 import popeye.test.PopeyeTestUtils._
 import scala.collection.immutable.SortedMap
 import org.apache.hadoop.hbase.KeyValue
-import popeye.storage.hbase.HBaseStorage.ValueIdFilterCondition.{All, Multiple, Single}
+import popeye.storage.hbase.HBaseStorage.ValueIdFilterCondition._
+import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition._
 import java.nio.CharBuffer
 import java.util.regex.Pattern
 import scala.util.Random
+import popeye.storage.hbase.HBaseStorage.ValueIdFilterCondition.SingleValueId
+import popeye.storage.hbase.HBaseStorage.ValueIdFilterCondition.MultipleValueIds
+import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.MultipleValueNames
+import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.SingleValueName
 
 class TsdbFormatSpec extends FlatSpec with Matchers {
   behavior of "TsdbFormat"
@@ -32,12 +37,16 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
 
   val defaultNamespace = new BytesKey(Array[Byte](10, 10))
 
-  val sampleIdMap = Map(
-    qualifiedName(MetricKind, "test") -> bytesKey(0, 0, 1),
-    qualifiedName(AttrNameKind, "name") -> bytesKey(0, 0, 2),
-    qualifiedName(AttrNameKind, "anotherName") -> bytesKey(0, 0, 3),
-    qualifiedName(AttrValueKind, "value") -> bytesKey(0, 0, 4)
+  val sampleNamesToIdMapping = Seq(
+    (MetricKind, "test") -> bytesKey(0, 0, 1),
+    (AttrNameKind, "name") -> bytesKey(0, 0, 2),
+    (AttrNameKind, "anotherName") -> bytesKey(0, 0, 3),
+    (AttrValueKind, "value") -> bytesKey(0, 0, 4)
   )
+
+  val sampleIdMap = sampleNamesToIdMapping.map {
+    case ((kind, name), id) => qualifiedName(kind, name) -> id
+  }.toMap
 
   def qualifiedName(kind: String, name: String) = QualifiedName(kind, defaultNamespace, name)
 
@@ -137,36 +146,91 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     ex.getMessage should (include("row") and include("size"))
   }
 
-  def createTsdbFormat(timeRangeIdMapping: Long => Array[Byte] = _ => defaultNamespace): TsdbFormat = {
+  def createTsdbFormat(timeRangeIdMapping: Int => Seq[Int] = _ => defaultNamespace.bytes.map(_.toInt)): TsdbFormat = {
     new TsdbFormat(new TimeRangeIdMapping {
-      override def getRangeId(timestampInSeconds: Long): BytesKey =
-        new BytesKey(timeRangeIdMapping(timestampInSeconds))
+      override def getRangeId(timestampInSeconds: Int): BytesKey =
+        new BytesKey(timeRangeIdMapping(timestampInSeconds).map(_.toByte).toArray)
     })
+  }
+
+  behavior of "TsdbFormat.getScanNames"
+
+  it should "get qualified names" in {
+    val tsdbFormat = createTsdbFormat(time => Seq(0, time / 3600))
+    val attrs = Map(
+      "single" -> SingleValueName("name"),
+      "mult" -> MultipleValueNames(Seq("mult1", "mult2")),
+      "all" -> AllValueNames
+    )
+    val names = tsdbFormat.getScanNames("test", (0, 4000), attrs)
+
+    val expected = Seq(
+      (MetricKind, "test"),
+      (AttrNameKind, "single"),
+      (AttrNameKind, "mult"),
+      (AttrNameKind, "all"),
+      (AttrValueKind, "name"),
+      (AttrValueKind, "mult1"),
+      (AttrValueKind, "mult2")
+    ).flatMap {
+      case (kind, name) => Seq(
+        QualifiedName(kind, bytesKey(0, 0), name),
+        QualifiedName(kind, bytesKey(0, 1), name)
+      )
+    }.toSet
+    names should equal(expected)
+  }
+
+  it should "choose namespace by base time" in {
+    val tsdbFormat = createTsdbFormat {
+      timestamp =>
+        timestamp should equal(3600)
+        Seq(0, 1)
+    }
+    tsdbFormat.getScanNames("", (4000, 4001), Map())
   }
 
   behavior of "TsdbFormat.getScans"
 
-  it should "create single-namespace scan" in {
+  it should "create single scan" in {
     val tsdbFormat = createTsdbFormat()
-    val metricId = bytesKey(0, 0, 1)
-    val scans = tsdbFormat.getScans(
-      metricId = metricId,
-      timeRange = (0, 1),
-      attributePredicates = Map()
-    )
+    val scans = tsdbFormat.getScans("test", (0, 1), Map(), sampleIdMap)
     scans.size should equal(1)
-    val scan = scans.head
-    val prefix = defaultNamespace.bytes ++ metricId.bytes
-    val expectedStartRow = prefix ++ Array[Byte](0, 0, 0, 0)
-    val expectedStopRow = prefix ++ Array[Byte](0, 0, 0, 1)
-    scan.getStartRow should equal(expectedStartRow)
-    scan.getStopRow should equal(expectedStopRow)
+    val scan = scans(0)
+    scan.getStartRow should equal(defaultNamespace.bytes ++ Array[Byte](0, 0, 1, /**/ 0, 0, 0, 0))
+    scan.getStopRow should equal(defaultNamespace.bytes ++ Array[Byte](0, 0, 1, /**/ 0, 0, 0, 1))
+  }
+
+  it should "create 2 scans" in {
+    val tsdbFormat = createTsdbFormat(time => Seq(0, time / 3600))
+    val idMap = sampleNamesToIdMapping.flatMap {
+      case ((kind, name), id) => Seq(
+        QualifiedName(kind, bytesKey(0, 0), name) -> id,
+        QualifiedName(kind, bytesKey(0, 1), name) -> id
+      )
+    }.toMap
+    val scans = tsdbFormat.getScans("test", (0, 4000), Map(), idMap)
+    scans.size should equal(2)
+    scans(0).getStartRow.slice(0, UniqueIdNamespaceWidth) should equal(Array[Byte](0, 0))
+    scans(1).getStartRow.slice(0, UniqueIdNamespaceWidth) should equal(Array[Byte](0, 1))
+  }
+
+  it should "not create scan if not enough ids resolved" in {
+    val tsdbFormat = createTsdbFormat(time => Seq(0, time / 3600))
+    val idMap = sampleNamesToIdMapping.flatMap {
+      case ((kind, name), id) => Seq(
+        QualifiedName(kind, bytesKey(0, 0), name) -> id
+      )
+    }.toMap
+    val scans = tsdbFormat.getScans("test", (0, 4000), Map(), idMap)
+    scans.size should equal(1)
+    scans(0).getStartRow.slice(0, UniqueIdNamespaceWidth) should equal(Array[Byte](0, 0))
   }
 
   behavior of "TsdbFormat.createRowRegexp"
 
   it should "handle a simple case" in {
-    val attributes = Map(bytesKey(0, 0, 1) -> Single(bytesKey(0, 0, 1)))
+    val attributes = Map(bytesKey(0, 0, 1) -> SingleValueId(bytesKey(0, 0, 1)))
     val regexp = TsdbFormat.createRowRegexp(offset = 7, attrNameLength = 3, attrValueLength = 3, attributes)
     val pattern = Pattern.compile(regexp)
 
@@ -178,7 +242,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
   }
 
   it should "check attribute name length" in {
-    val attributes = Map(bytesKey(0) -> Single(bytesKey(0)))
+    val attributes = Map(bytesKey(0) -> SingleValueId(bytesKey(0)))
     val exception = intercept[IllegalArgumentException] {
       TsdbFormat.createRowRegexp(offset = 7, attrNameLength = 3, attrValueLength = 1, attributes)
     }
@@ -186,7 +250,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
   }
 
   it should "check attribute value length" in {
-    val attributes = Map(bytesKey(0) -> Single(bytesKey(0)))
+    val attributes = Map(bytesKey(0) -> SingleValueId(bytesKey(0)))
     val exception = intercept[IllegalArgumentException] {
       TsdbFormat.createRowRegexp(offset = 7, attrNameLength = 1, attrValueLength = 3, attributes)
     }
@@ -199,7 +263,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
         offset = 7,
         attrNameLength = 0,
         attrValueLength = 1,
-        attributes = Map(bytesKey(0) -> Single(bytesKey(0)))
+        attributes = Map(bytesKey(0) -> SingleValueId(bytesKey(0)))
       )
     }.getMessage should (include("0") and include("name"))
     intercept[IllegalArgumentException] {
@@ -207,7 +271,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
         offset = 7,
         attrNameLength = 1,
         attrValueLength = 0,
-        attributes = Map(bytesKey(0) -> Single(bytesKey(0)))
+        attributes = Map(bytesKey(0) -> SingleValueId(bytesKey(0)))
       )
     }.getMessage should (include("0") and include("value"))
   }
@@ -223,7 +287,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val badStringBytes = stringToBytes("aaa\\Ebbb")
     val attrName = badStringBytes
     val attrValue = badStringBytes
-    val rowRegexp = TsdbFormat.createRowRegexp(offset = 0, attrName.length, attrValue.length, Map(attrName -> Single(attrValue)))
+    val rowRegexp = TsdbFormat.createRowRegexp(offset = 0, attrName.length, attrValue.length, Map(attrName -> SingleValueId(attrValue)))
     val rowString = createRowString(attrs = List((attrName, attrValue)))
     rowString should fullyMatch regex rowRegexp
   }
@@ -231,7 +295,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
   it should "escape regex escaping sequences symbols (non-trivial case)" in {
     val attrName = stringToBytes("aaa\\")
     val attrValue = stringToBytes("Eaaa")
-    val regexp = TsdbFormat.createRowRegexp(offset = 0, attrName.length, attrValue.length, Map(attrName -> Single(attrValue)))
+    val regexp = TsdbFormat.createRowRegexp(offset = 0, attrName.length, attrValue.length, Map(attrName -> SingleValueId(attrValue)))
     val rowString = createRowString(attrs = List((attrName, attrValue)))
     rowString should fullyMatch regex regexp
   }
@@ -239,7 +303,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
   it should "handle newline characters" in {
     val attrName = stringToBytes("attrName")
     val attrValue = stringToBytes("attrValue")
-    val rowRegexp = TsdbFormat.createRowRegexp(offset = 1, attrName.length, attrValue.length, Map(attrName -> Single(attrValue)))
+    val rowRegexp = TsdbFormat.createRowRegexp(offset = 1, attrName.length, attrValue.length, Map(attrName -> SingleValueId(attrValue)))
     val row = createRow(prefix = stringToBytes("\n"), List((attrName, attrValue)))
     val rowString = bytesToString(row)
     rowString should fullyMatch regex rowRegexp
@@ -252,7 +316,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       offset = 0,
       attrName.length,
       attrValueLength = 1,
-      Map((attrName, Multiple(attrValues)))
+      Map((attrName, MultipleValueIds(attrValues)))
     )
 
     createRowString(attrs = List((attrName, bytesKey(1)))) should fullyMatch regex rowRegexp
@@ -266,7 +330,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       offset = 0,
       attrName.length,
       attrValueLength = 1,
-      Map(attrName -> All)
+      Map(attrName -> AllValueIds)
     )
 
     createRowString(attrs = List((attrName, bytesKey(1)))) should fullyMatch regex rowRegexp
@@ -281,7 +345,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       val attrNameLength = random.nextInt(5) + 1
       val attrValueLength = random.nextInt(5) + 1
       val searchAttrs = randomAttributes(attrNameLength, attrValueLength)
-      val attrsForRegexp = searchAttrs.map { case (n, v) => (n, Single(v)) }.toMap
+      val attrsForRegexp = searchAttrs.map { case (n, v) => (n, SingleValueId(v)) }.toMap
       val searchAttrNamesSet = searchAttrs.map { case (name, _) => name.bytes.toList }.toSet
       val rowRegexp = TsdbFormat.createRowRegexp(offset, attrNameLength, attrValueLength, attrsForRegexp)
       def createJunkAttrs() = randomAttributes(attrNameLength, attrValueLength).filter {

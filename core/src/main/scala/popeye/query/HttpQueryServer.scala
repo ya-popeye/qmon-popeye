@@ -93,11 +93,11 @@ class HttpQueryServer(storage: PointsStorage, executionContext: ExecutionContext
           val Array(name, valuesString) = attrPair.split("->")
           val valueFilterCondition =
             if (valuesString == "*") {
-              All
+              AllValueNames
             } else if (valuesString.contains(" ")) {
-              Multiple(valuesString.split(" "))
+              MultipleValueNames(valuesString.split(" "))
             } else {
-              Single(valuesString)
+              SingleValueName(valuesString)
             }
           (name, valueFilterCondition)
       }

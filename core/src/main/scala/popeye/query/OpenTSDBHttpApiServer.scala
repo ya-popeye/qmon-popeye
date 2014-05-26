@@ -22,8 +22,8 @@ import popeye.storage.hbase.HBaseStorage.Point
 import scala.Some
 import spray.http.HttpResponse
 import popeye.storage.hbase.HBaseStorage.PointsGroups
-import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.Single
-import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.Multiple
+import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.SingleValueName
+import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.MultipleValueNames
 import spray.http.HttpRequest
 import java.util.TimeZone
 
@@ -214,11 +214,11 @@ object OpenTSDBHttpApiServer extends HttpServerFactory {
 
   private def parseValueFilterCondition(valueString: String) = {
     if (valueString == "*") {
-      All
+      AllValueNames
     } else if (valueString.contains("|")) {
-      Multiple(valueString.split("\\|").toList)
+      MultipleValueNames(valueString.split("\\|").toList)
     } else {
-      Single(valueString)
+      SingleValueName(valueString)
     }
   }
 

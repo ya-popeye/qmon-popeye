@@ -15,7 +15,7 @@ import akka.actor.Props
 import spray.http.{HttpResponse, Uri, HttpRequest}
 import spray.http.HttpMethods._
 import popeye.query.OpenTSDBHttpApiServer.TimeSeriesQuery
-import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.Single
+import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.SingleValueName
 import scala.concurrent.duration._
 import akka.pattern.ask
 import akka.util.Timeout
@@ -52,7 +52,7 @@ class OpenTSDBHttpApiServerSpec extends AkkaTestKitSpec("http-query") with Mocki
 
   it should "parse tags" in {
     val query: Either[String, TimeSeriesQuery] = parseTimeSeriesQuery("avg:metric{single=foo,multiple=foo|bar,all=*}")
-    val attrs = Map("single" -> Single("foo"), "multiple" -> Multiple(Seq("foo", "bar")), "all" -> All)
+    val attrs = Map("single" -> SingleValueName("foo"), "multiple" -> MultipleValueNames(Seq("foo", "bar")), "all" -> AllValueNames)
     query.right.value should equal(TimeSeriesQuery("avg", isRate = false, "metric", attrs))
   }
 
@@ -101,9 +101,9 @@ class OpenTSDBHttpApiServerSpec extends AkkaTestKitSpec("http-query") with Mocki
 
     import ValueNameFilterCondition._
     val attrs = Map(
-      "single" -> Single("foo"),
-      "multiple" -> Multiple(Seq("foo", "bar")),
-      "all" -> All
+      "single" -> SingleValueName("foo"),
+      "multiple" -> MultipleValueNames(Seq("foo", "bar")),
+      "all" -> AllValueNames
     )
     verify(storage).getPoints("metric", (0, 1), attrs)
 

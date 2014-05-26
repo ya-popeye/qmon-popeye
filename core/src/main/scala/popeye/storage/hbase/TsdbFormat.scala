@@ -10,10 +10,11 @@ import org.apache.hadoop.hbase.client.{Scan, Result}
 import scala.collection.mutable
 import java.util.Arrays.copyOfRange
 import scala.collection.immutable.SortedMap
-import scala.Some
 import java.nio.ByteBuffer
 import java.nio.charset.Charset
 import org.apache.hadoop.hbase.filter.{CompareFilter, RowFilter, RegexStringComparator}
+import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.{AllValueNames, MultipleValueNames, SingleValueName}
+import popeye.storage.hbase.HBaseStorage.ValueIdFilterCondition.{SingleValueId, MultipleValueIds, AllValueIds}
 
 object TsdbFormat {
 
@@ -70,10 +71,10 @@ object TsdbFormat {
     def checkAttrValueLength(value: Array[Byte]) = require(value.length == attrValueLength,
       f"invalid attribute value length: expected $attrValueLength, actual ${ value.length }")
     valueCondition match {
-      case Single(attrValue) =>
+      case SingleValueId(attrValue) =>
         checkAttrValueLength(attrValue)
         escapeRegexp(decodeBytes(attrNameId) + decodeBytes(attrValue))
-      case Multiple(attrValues) =>
+      case MultipleValueIds(attrValues) =>
         val nameRegex = escapeRegexp(decodeBytes(attrNameId))
         val attrsRegexps = attrValues.map {
           value =>
@@ -81,7 +82,7 @@ object TsdbFormat {
             escapeRegexp(decodeBytes(value))
         }
         nameRegex + attrsRegexps.mkString("(?:", "|", ")")
-      case All =>
+      case AllValueIds =>
         val nameRegex = escapeRegexp(decodeBytes(attrNameId))
         nameRegex + f".{$attrValueLength}"
     }
@@ -93,6 +94,8 @@ object TsdbFormat {
     val byteBuffer = ByteBuffer.wrap(bytes)
     ROW_REGEX_FILTER_ENCODING.decode(byteBuffer).toString
   }
+
+
 }
 
 
@@ -114,6 +117,8 @@ class PartiallyConvertedPoints(val unresolvedNames: Set[QualifiedName],
 class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping) extends Logging {
 
   import TsdbFormat._
+
+  private case class TimeRangeAndNamespace(start: Int, stop: Int, namespace: BytesKey)
 
   def convertToKeyValues(points: Iterable[Message.Point],
                          idCache: QualifiedName => Option[BytesKey]
@@ -229,29 +234,120 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping) extends Logging {
     buffer.distinct.toVector
   }
 
-  def getScans(metricId: BytesKey,
+  def getScanNames(metric: String,
+                   timeRange: (Int, Int),
+                   attributes: Map[String, ValueNameFilterCondition]): Set[QualifiedName] = {
+    val (startTime, stopTime) = timeRange
+    val namespaces = getTimeRanges(startTime, stopTime).map(_.namespace)
+    namespaces.flatMap {
+      namespace =>
+        val metricName = QualifiedName(MetricKind, namespace, metric)
+        val attrNames = attributes.keys.map(name => QualifiedName(AttrNameKind, namespace, name)).toSeq
+        val attrValues = attributes.values.collect {
+          case SingleValueName(name) => Seq(name)
+          case MultipleValueNames(names) => names
+        }.flatten.map(name => QualifiedName(AttrValueKind, namespace, name)).toSeq
+        (attrValues ++ attrNames) :+ metricName
+    }.toSet
+  }
+
+  private def getRowFilerOption(attributePredicates: Map[BytesKey, ValueIdFilterCondition]): Option[RowFilter] = {
+    if (attributePredicates.nonEmpty) {
+      val rowRegex = createRowRegexp(attributesOffset, attributeNameWidth, attributeValueWidth, attributePredicates)
+      val comparator = new RegexStringComparator(rowRegex)
+      comparator.setCharset(ROW_REGEX_FILTER_ENCODING)
+      Some(new RowFilter(CompareFilter.CompareOp.EQUAL, comparator))
+    } else {
+      None
+    }
+  }
+
+  def getScans(metric: String,
                timeRange: (Int, Int),
-               attributePredicates: Map[BytesKey, ValueIdFilterCondition]): Seq[Scan] = {
+               attributes: Map[String, ValueNameFilterCondition],
+               idMap: Map[QualifiedName, BytesKey]): Seq[Scan] = {
+    val (startTime, stopTime) = timeRange
+    val ranges = getTimeRanges(startTime, stopTime)
+    ranges.map {
+      range =>
+       val namespace = range.namespace
+        for {
+         metricId <- idMap.get(QualifiedName(MetricKind, namespace, metric))
+         attrIdFilters <- covertAttrNamesToIds(namespace, attributes, idMap)
+       } yield {
+         getScan(namespace, metricId, (range.start, range.stop), attrIdFilters)
+       }
+    }.collect{case Some(scan) => scan}
+  }
+
+  private def covertAttrNamesToIds(namespace: BytesKey,
+                                   attributes: Map[String, ValueNameFilterCondition],
+                                   idMap: Map[QualifiedName, BytesKey]
+                                    ): Option[Map[BytesKey, ValueIdFilterCondition]] = {
+    val attrIdFilters = attributes.toSeq.map {
+      case (attrName, valueFilter) =>
+        val valueIdFilter = convertAttrValuesToIds(namespace, valueFilter, idMap).getOrElse(return None)
+        val nameId = idMap.get(QualifiedName(AttrNameKind, namespace, attrName)).getOrElse(return None)
+        (nameId, valueIdFilter)
+    }.toMap
+    Some(attrIdFilters)
+  }
+
+  private def convertAttrValuesToIds(namespace: BytesKey,
+                                     value: ValueNameFilterCondition,
+                                     idMap: Map[QualifiedName, BytesKey]): Option[ValueIdFilterCondition] = {
+    value match {
+      case SingleValueName(name) =>
+        idMap.get(QualifiedName(AttrValueKind, namespace, name)).map {
+          id => SingleValueId(id)
+        }
+      case MultipleValueNames(names) =>
+        val idOptions = names.map(name => idMap.get(QualifiedName(AttrValueKind, namespace, name)))
+        val ids = idOptions.collect { case Some(id) => id }
+        if (ids.nonEmpty) {
+          Some(MultipleValueIds(ids))
+        } else {
+          None
+        }
+      case AllValueNames => Some(AllValueIds)
+    }
+  }
+
+  private def getScan(namespace: BytesKey,
+                      metricId: BytesKey,
+                      timeRange: (Int, Int),
+                      attributePredicates: Map[BytesKey, ValueIdFilterCondition]) = {
     val (startTime, endTime) = timeRange
     val baseStartTime = startTime - (startTime % MAX_TIMESPAN)
-    val rowPrefix = timeRangeIdMapping.getRangeId(startTime).bytes ++ metricId.bytes
+    val rowPrefix = namespace.bytes ++ metricId.bytes
     val startRow = rowPrefix ++ Bytes.toBytes(baseStartTime)
     val stopRow = rowPrefix ++ Bytes.toBytes(endTime)
     val scan = new Scan()
     scan.setStartRow(startRow)
     scan.setStopRow(stopRow)
     scan.addFamily(PointsFamily)
-    if (attributePredicates.nonEmpty) {
-      val rowRegex = createRowRegexp(attributesOffset, attributeNameWidth, attributeValueWidth, attributePredicates)
-      val comparator = new RegexStringComparator(rowRegex)
-      comparator.setCharset(ROW_REGEX_FILTER_ENCODING)
-      scan.setFilter(new RowFilter(CompareFilter.CompareOp.EQUAL, comparator))
+    getRowFilerOption(attributePredicates).foreach {
+      filter => scan.setFilter(filter)
     }
-    Seq(scan)
+    scan
+  }
+
+  private def getTimeRanges(startTime: Int, stopTime: Int) = {
+    val baseStartTime = startTime - (startTime % MAX_TIMESPAN)
+    val baseTimes = (baseStartTime until stopTime).by(MAX_TIMESPAN)
+    val startTimes = startTime +: baseTimes.tail
+    val stopTimes = baseTimes.tail :+ stopTime
+    val timeRangeIds = baseTimes.map(timeRangeIdMapping.getRangeId)
+    (startTimes, stopTimes, timeRangeIds).zipped.groupBy(_._3).toSeq.map {
+      case (id, tuples) =>
+        val start = tuples.head._1
+        val stop = tuples.last._2
+        TimeRangeAndNamespace(start, stop, id)
+    }.sortBy(_.start)
   }
 
   private def getRangeId(point: Message.Point): BytesKey = {
-    val id = timeRangeIdMapping.getRangeId(point.getTimestamp)
+    val id = timeRangeIdMapping.getRangeId(point.getTimestamp.toInt)
     require(
       id.length == UniqueIdNamespaceWidth,
       f"TsdbFormat depends on namespace width: ${id.length} not equal to ${UniqueIdNamespaceWidth}"
