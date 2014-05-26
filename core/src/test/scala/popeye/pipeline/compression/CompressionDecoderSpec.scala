@@ -2,8 +2,8 @@ package popeye.pipeline.compression
 
 import CompressionDecoder.{Codec, Deflate, Snappy}
 import akka.util.ByteString
-import com.google.common.io.{Files, ByteStreams}
-import java.io.{FileInputStream, File, ByteArrayOutputStream}
+import com.google.common.io.{Resources, Files, ByteStreams}
+import java.io.ByteArrayOutputStream
 import java.util
 import java.util.Random
 import org.scalatest.FlatSpec
@@ -127,15 +127,13 @@ class CompressionDecoderSpec extends FlatSpec {
 
 
   def loadFile(name: String, codec: Codec): (ByteString, ByteString) = {
-    val file = new File(this.getClass.getResource(name).toURI)
+    val fileUrl = Resources.getResource(this.getClass, name)
+    val file = Resources.newInputStreamSupplier(fileUrl);
 
     val decoded = ByteString.fromArray(
       ByteStreams.toByteArray(
-        codec.makeInputStream(new FileInputStream(file))))
-
-    val builder = ByteString.newBuilder
-    Files.copy(file, builder.asOutputStream)
-    val fileContent = builder.result()
+        codec.makeInputStream(file.getInput)))
+    val fileContent = ByteString.apply(Resources.toByteArray(fileUrl))
     (fileContent, decoded)
   }
 
