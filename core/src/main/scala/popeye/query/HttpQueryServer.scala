@@ -129,7 +129,6 @@ object HttpQueryServer extends HttpServerFactory {
       backlog = config.getInt("http.backlog"),
       options = Nil,
       settings = None)
-    handler
   }
 
   private def aggregationsToString(aggregationsMap: Map[PointAttributes, Seq[(Int, Double)]]): String =
