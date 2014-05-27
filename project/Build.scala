@@ -48,7 +48,6 @@ object Tests {
 
 object FindBugs {
   val settings = findbugsSettings ++ Seq(
-    test <<= (test in Test) dependsOn findbugs,
     findbugsReportType := ReportType.Xml,
     findbugsIncludeFilters := Some(
       <FindBugsFilter>
