@@ -140,8 +140,14 @@ object Publish {
 
   lazy val settings = Seq(
 //    credentials += Credentials(Path.userHome / ".ivy2" / "credentials.txt"),
-    publishTo := Some("yandex_common_releases"
-      at "http://maven.yandex.net/nexus/content/repositories/yandex_common_releases/")
+    publishTo <<= version { v=>
+      if (v.endsWith("SNAPSHOT"))
+        Some("yandex_common_snapshots"
+          at "http://maven.yandex.net/nexus/content/repositories/yandex_common_snapshots/")
+      else
+        Some("yandex_common_releases"
+          at "http://maven.yandex.net/nexus/content/repositories/yandex_common_releases/")
+    }
   )
 }
 
