@@ -113,9 +113,9 @@ object HBase {
       "cdh" at "https://repository.cloudera.com/artifactory/cloudera-repos"
     ),
     libraryDependencies ++= Seq(
-      "org.apache.hadoop" % "hadoop-common" % Hadoop % Provided,
-      "org.apache.hbase" % "hbase-client" % HBase % Provided,
-      "org.apache.hbase" % "hbase-common" % HBase % Provided
+      "org.apache.hadoop" % "hadoop-common" % Hadoop,
+      "org.apache.hbase" % "hbase-client" % HBase,
+      "org.apache.hbase" % "hbase-common" % HBase
     ).excluding(
       ExclusionRule(name = "commons-daemon"),
       ExclusionRule(name = "commons-cli"),

@@ -15,5 +15,5 @@ $home/debian/make-app.sh query
 (cd $home && rm -f $home/debian/changelog && \
 /usr/bin/dch --create \
    --package qmon-popeye \
-   --newversion 0.9.0.1 --distribution $(lsb_release -sc) "Autopackage"
+   --newversion $version --distribution $(lsb_release -sc) "Autopackage"
 )

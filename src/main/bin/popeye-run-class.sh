@@ -5,15 +5,8 @@ JAVA_OPTS="$QMON_OPTS -Xms1024M -Xmx4096M -Xss1M -XX:MaxPermSize=256M -XX:+UsePa
 clz=$1
 shift
 
-hbase_cmd=$(which hbase)
-hadoop_cmd=$(which hadoop)
-if [ -x $hbase_cmd ]; then
-   HADOOP_CLASSPATH=$($hbase_cmd classpath)
-elif [ -x $hadoop_cmd]; then
-   HADOOP_CLASSPATH=$($hadoop_cmd classpath)
-fi
 /usr/bin/env java $JAVA_OPTS \
-  -cp "$DIST_HOME/config:@DIST_CLASSPATH@:$HADOOP_CLASSPATH" \
+  -cp "$DIST_HOME/config:@DIST_CLASSPATH@" \
   -Dqmon.logdir=${QMON_LOGDIR:-$DIST_HOME/logs} \
   -Dqmon.home="$DIST_HOME" \
   $clz "$@"
