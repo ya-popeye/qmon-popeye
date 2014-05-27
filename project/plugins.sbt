@@ -8,3 +8,4 @@ addSbtPlugin("com.typesafe.sbt" % "sbt-scalariform" % "1.0.0")
 
 addSbtPlugin("com.twitter" %% "sbt-package-dist" % "1.1.1")
 
+addSbtPlugin("de.johoop" % "findbugs4sbt" % "1.1.9")

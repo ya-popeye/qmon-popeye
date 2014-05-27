@@ -3,6 +3,9 @@ import sbt.ExclusionRule
 import sbt.Keys._
 import com.twitter.sbt._
 import net.virtualvoid.sbt.graph.{Plugin => Dep}
+import de.johoop.findbugs4sbt.FindBugs._
+import de.johoop.findbugs4sbt.ReportType
+import de.johoop.findbugs4sbt.Effort
 import scala._
 import scala.Some
 
@@ -40,6 +43,28 @@ object Tests {
 
   val defaultSettings = Seq(
     parallelExecution in Test := false
+  )
+}
+
+object FindBugs {
+  val settings = findbugsSettings ++ Seq(
+    test <<= (test in Test) dependsOn findbugs,
+    findbugsReportType := ReportType.Xml,
+    findbugsIncludeFilters := Some(
+      <FindBugsFilter>
+        <Match>
+          <Package name="~popeye.*"/>
+        </Match>
+      </FindBugsFilter>
+    ),
+    findbugsExcludeFilters := Some(
+      <FindBugsFilter>
+        <Match>
+          <Package name="~.*"/>
+        </Match>
+      </FindBugsFilter>
+    ),
+    findbugsEffort := Effort.Low
   )
 }
 
@@ -158,7 +183,7 @@ object PopeyeBuild extends Build {
   lazy val popeyeCore = Project(
     id = "popeye-core",
     base = file("core"),
-    settings = defaultSettings ++ HBase.settings)
+    settings = defaultSettings ++ FindBugs.settings ++ HBase.settings)
     .settings(
     libraryDependencies ++= Version.slf4jDependencies ++ Seq(
       "com.github.scopt" %% "scopt" % Version.Scopt,
