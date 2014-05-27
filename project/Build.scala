@@ -1,9 +1,13 @@
 import sbt._
 import sbt.ExclusionRule
+import sbt.ExclusionRule
+import sbt.ExclusionRule
 import sbt.Keys._
 import com.twitter.sbt._
 import net.virtualvoid.sbt.graph.{Plugin => Dep}
 import scala._
+import scala.Some
+import scala.Some
 
 object Util {
   implicit def dependencyFilterer(deps: Seq[ModuleID]) = new Object {
@@ -117,7 +121,13 @@ object Publish {
     BuildProperties.newSettings,
     PublishSourcesAndJavadocs.newSettings,
     PackageDist.newSettings
-  ).foldLeft(Seq[Setting[_]]()) { (s, a)  => s ++ a}
+  ).foldLeft(Seq[Setting[_]]()) { (s, a)  => s ++ a} ++
+  Seq(
+    PackageDist.packageDistDir <<= (baseDirectory, PackageDist.packageDistName) {
+      (b, n) => b / "target" / "dist" / n },
+    PackageDist.packageDistScriptsPath <<= baseDirectory { b => Some(b / "src/main/bin") },
+    PackageDist.packageDistConfigPath <<= baseDirectory { b => Some(b / "src/main/resources") }
+  )
 
   val releaseSettings = Seq(
     Defaults.defaultSettings,
