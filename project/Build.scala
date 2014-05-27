@@ -139,7 +139,7 @@ object HBase {
 object Publish {
 
   lazy val settings = Seq(
-    credentials += Credentials(Path.userHome / ".ivy2" / "credentials.txt"),
+//    credentials += Credentials(Path.userHome / ".ivy2" / "credentials.txt"),
     publishTo := Some("yandex_common_releases"
       at "http://maven.yandex.net/nexus/content/repositories/yandex_common_releases/")
   )
