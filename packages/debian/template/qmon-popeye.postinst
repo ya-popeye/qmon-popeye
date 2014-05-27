@@ -20,10 +20,10 @@ set -e
 
 case "$1" in
     configure)
-        if ! getent passwd qmon-popeye-pump >/dev/null; then
-            adduser --quiet --system --home /usr/share/qmon-popeye-pump --shell /usr/sbin/nologin qmon-popeye-pump
+        if ! getent passwd qmon-popeye-@APP_NAME@ >/dev/null; then
+            adduser --quiet --system --home /usr/share/qmon-popeye-@APP_NAME@ --shell /usr/sbin/nologin qmon-popeye-@APP_NAME@
         fi
-        chown -R qmon-popeye-pump /var/log/qmon-popeye-pump
+        chown -R qmon-popeye-@APP_NAME@ /var/log/qmon-popeye-@APP_NAME@
     ;;
 
     abort-upgrade|abort-remove|abort-deconfigure)

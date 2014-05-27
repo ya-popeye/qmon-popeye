@@ -1,0 +1,12 @@
+description "QMon Popeye @APP_NAME@ Service"
+setuid qmon-popeye-@APP_NAME@
+limit nofile 150000 150000
+console log
+env QMON_CONF=/etc/qmon-popeye-@APP_NAME@/conf
+env QMON_LOGDIR=/var/log/qmon-popeye-@APP_NAME@
+pre-start script
+  if [ ! -f $QMON_CONF/@APP_NAME@.conf ] ; then
+    stop ; exit 0
+  fi
+end script
+exec /usr/share/qmon-popeye-@APP_NAME@/bin/popeye-pipeline -c $QMON_CONF/@APP_NAME@.conf

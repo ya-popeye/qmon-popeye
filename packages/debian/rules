@@ -1,19 +1,45 @@
-#! /usr/bin/make -f
+#!/usr/bin/make -f
+# debian/rules that uses debhelper.
 
-export DH_OPTIONS
+# Uncomment this to turn on verbose mode.
+export DH_VERBOSE=1
 
-sbt=./scripts/sbt
-sbt_options=-sbt-dir debian/.sbt/sbtboot -sbt-boot debian/.sbt/boot -ivy debian/.sbt/ivy
+APP_GROUP="ru.yandex.qmon.popeye"
+APP_NAME="popeye_2.10"
+APP_VERSION="0.9.0.1"
 
-%:
-	dh $@
+.PHONY: binary build clean
 
-override_dh_auto_install:
-	@set -e;\
-		${sbt} ${sbt_options} update compile dist
-	dh_auto_install
+install:
+	dh_testdir
+	dh_install --list-missing -X.svn -X.git
+	dh_installlogrotate
+	dh_installdocs
+	dh_installchangelogs
+	dh_installinit --no-start --no-restart-on-upgrade
+	dh_compress
+	dh_fixperms
+	dh_makeshlibs
+	dh_installdeb
+	dh_shlibdeps
+	dh_gencontrol
+	dh_md5sums
+	dh_builddeb
 
-override_dh_auto_clean:
-	dh_auto_clean
-	rm -rf project/.sbtboot pro ject/.boot
-	${sbt} ${sbt_options} clean clean-files
+
+binary: install
+
+
+build:
+	dh_testdir
+	wget -O 'qmon-popeye.zip' "http://maven.yandex.net/nexus/service/local/artifact/maven/redirect?r=yandex_common&g=${APP_GROUP}&a=${APP_NAME}&v=${APP_VERSION}&p=zip"
+	unzip qmon-popeye.zip
+	chmod +x popeye-*/bin/*
+	./make-app.sh slicer
+	./make-app.sh pump
+	./make-app.sh query
+
+clean:
+	dh_testdir
+	rm -rf popeye-*
+	dh_clean
