@@ -35,9 +35,9 @@ build:
 	wget -O 'qmon-popeye.zip' "http://maven.yandex.net/nexus/service/local/artifact/maven/redirect?r=yandex_common&g=${APP_GROUP}&a=${APP_NAME}&v=${APP_VERSION}&p=zip"
 	unzip qmon-popeye.zip
 	chmod +x popeye-*/bin/*
-	./make-app.sh slicer
-	./make-app.sh pump
-	./make-app.sh query
+	./debian/make-app.sh slicer
+	./debian/make-app.sh pump
+	./debian/make-app.sh query
 
 clean:
 	dh_testdir

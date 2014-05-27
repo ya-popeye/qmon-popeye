@@ -1,4 +1,4 @@
 popeye-*/bin/* usr/share/qmon-popeye-@APP_NAME@/bin
-popeye-*/lib/* usr/share/qmon-popeye-@APP_NAME@/lib
+popeye-*/libs/* usr/share/qmon-popeye-@APP_NAME@/lib
 popeye-*/config/* etc/qmon-popeye-@APP_NAME@/conf.dist
 
