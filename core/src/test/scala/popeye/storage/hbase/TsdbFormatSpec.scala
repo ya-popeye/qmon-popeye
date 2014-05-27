@@ -128,7 +128,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val expected = ParsedRowResult(
       namespace = defaultNamespace,
       metricId = sampleIdMap(qualifiedName(MetricKind, "test")),
-      attributes = SortedMap(
+      attributeIds = SortedMap(
         sampleIdMap(qualifiedName(AttrNameKind, "name")) -> sampleIdMap(qualifiedName(AttrValueKind, "value"))
       ),
       points = timeAndValues.map { case (time, value) => HBaseStorage.Point(time.toInt, value) }

@@ -6,6 +6,7 @@ import popeye.Logging
 import popeye.storage.hbase.UniqueIdProtocol._
 import popeye.pipeline.test.AkkaTestKitSpec
 import scala.concurrent.Await
+import scala.concurrent.Future
 import scala.concurrent.duration._
 import popeye.storage.hbase.UniqueIdProtocol.FindName
 import popeye.storage.hbase.UniqueIdProtocol.Race
@@ -22,9 +23,10 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
   implicit val executionContext = system.dispatcher
 
   val metric = "test.metric.1"
-  val qname = QualifiedName(HBaseStorage.MetricKind, metric)
+  val defaultNamespace: BytesKey = new BytesKey(Array[Byte](0, 0))
+  val qname = QualifiedName(HBaseStorage.MetricKind, defaultNamespace, metric)
   val metricId = id("\01\02\03")
-  val qId = QualifiedId(HBaseStorage.MetricKind, metricId)
+  val qId = QualifiedId(HBaseStorage.MetricKind, defaultNamespace, metricId)
   implicit val timeout: FiniteDuration = 500 seconds
 
   behavior of "id->name"
@@ -130,9 +132,22 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
     new BytesKey(hex.getBytes)
   }
 
-  def mkUniq(): (TestProbe, UniqueId) = {
+  def mkUniq(): (TestProbe, ScopedUniqueId) = {
     val resolverProbe = TestProbe()
     val uniq = new UniqueIdImpl(3, HBaseStorage.MetricKind, resolverProbe.ref, 1, 10, 1 seconds)
-    (resolverProbe, uniq)
+    (resolverProbe, new ScopedUniqueId(uniq, defaultNamespace))
   }
+
+  class ScopedUniqueId(uniqueId: UniqueId, namespace: BytesKey) {
+    def findIdByName(name: String): Option[BytesKey] = uniqueId.findIdByName(namespace, name)
+
+    def findNameById(id: BytesKey): Option[String] = uniqueId.findNameById(namespace, id)
+
+    def resolveIdByName(name: String, create: Boolean, retries: Int = 3)(implicit timeout: Duration): Future[BytesKey] =
+      uniqueId.resolveIdByName(namespace, name, create, retries)
+
+    def resolveNameById(id: BytesKey)(implicit timeout: Duration): Future[String] =
+      uniqueId.resolveNameById(namespace, id)
+  }
+
 }

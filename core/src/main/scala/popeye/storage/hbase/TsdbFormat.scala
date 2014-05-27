@@ -94,15 +94,24 @@ object TsdbFormat {
     val byteBuffer = ByteBuffer.wrap(bytes)
     ROW_REGEX_FILTER_ENCODING.decode(byteBuffer).toString
   }
-
-
 }
 
 
 case class ParsedRowResult(namespace: BytesKey,
                            metricId: BytesKey,
-                           attributes: HBaseStorage.PointAttributeIds,
-                           points: Seq[HBaseStorage.Point])
+                           attributeIds: SortedMap[BytesKey, BytesKey],
+                           points: Seq[HBaseStorage.Point]) {
+  def getMetricName(idMap: Map[QualifiedId, String]) = idMap(QualifiedId(MetricKind, namespace, metricId))
+
+  def getAttributes(idMap: Map[QualifiedId, String]) = {
+    attributeIds.map {
+      case (nameId, valueId) =>
+        val name = idMap(QualifiedId(AttrNameKind, namespace, nameId))
+        val value = idMap(QualifiedId(AttrValueKind, namespace, valueId))
+        (name, value)
+    }
+  }
+}
 
 class PartiallyConvertedPoints(val unresolvedNames: Set[QualifiedName],
                                val points: Seq[Message.Point],
@@ -167,6 +176,16 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping) extends Logging {
     )
   }
 
+  def getRowResultsIds(rowResults: Seq[ParsedRowResult]): Set[QualifiedId] = {
+    rowResults.flatMap {
+      case ParsedRowResult(namespace, metric, attributes, _) =>
+        val metricId = QualifiedId(MetricKind, namespace, metric)
+        val attrNameIds = attributes.keys.map(id => QualifiedId(AttrNameKind, namespace, id)).toSeq
+        val attrValueIds = attributes.values.map(id => QualifiedId(AttrValueKind, namespace, id)).toSeq
+        (attrValueIds ++ attrNameIds) :+ metricId
+    }.toSet
+  }
+
   def parseRowResult(result: Result): ParsedRowResult = {
     val row = result.getRow
     val attributesLength = row.length - attributesOffset
@@ -193,7 +212,7 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping) extends Logging {
     )
   }
 
-  private def createAttributesMap(attributes: Array[Byte]): HBaseStorage.PointAttributeIds = {
+  private def createAttributesMap(attributes: Array[Byte]): SortedMap[BytesKey, BytesKey] = {
     val attributeWidth = attributeNameWidth + attributeValueWidth
     require(attributes.length % attributeWidth == 0, "bad attributes length")
     val numberOfAttributes = attributes.length / attributeWidth

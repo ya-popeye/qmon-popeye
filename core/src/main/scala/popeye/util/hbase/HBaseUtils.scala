@@ -24,8 +24,10 @@ private[popeye] trait HBaseUtils extends Logging {
     }
   }
 
-  def getChunkedResults(tableName: String, readChunkSize: Int, scan: Scan) =
-    new ChunkedResults(tableName, readChunkSize, scan, this)
+  def getChunkedResults(tableName: String, readChunkSize: Int, scans: Seq[Scan]) = {
+    require(scans.nonEmpty, "scans sequence is empty")
+    new ChunkedResults(tableName, readChunkSize, scans.head, scans.tail, this)
+  }
 
 }
 
@@ -48,6 +50,7 @@ object HBaseUtils {
   class ChunkedResults(tableName: String,
                        readChunkSize: Int,
                        scan: Scan,
+                       nextScans: Seq[Scan],
                        utils: HBaseUtils,
                        skipFirstRow: Boolean = false) {
     def getRows(): (Array[Result], Option[ChunkedResults]) = utils.withHTable(tableName) {
@@ -63,7 +66,20 @@ object HBaseUtils {
           finally {scanner.close()}
         val nextQuery =
           if (results.length < readChunkSize) {
-            None
+            if (nextScans.nonEmpty) {
+              val nextResults =
+                new ChunkedResults(
+                  tableName,
+                  readChunkSize,
+                  nextScans.head,
+                  nextScans.tail,
+                  utils,
+                  skipFirstRow = false
+                )
+              Some(nextResults)
+            } else {
+              None
+            }
           } else {
             val lastRow = results.last.getRow
             val nextScan = new Scan(scan)
@@ -73,6 +89,7 @@ object HBaseUtils {
                 tableName,
                 readChunkSize,
                 nextScan,
+                nextScans,
                 utils,
                 skipFirstRow = true
               )

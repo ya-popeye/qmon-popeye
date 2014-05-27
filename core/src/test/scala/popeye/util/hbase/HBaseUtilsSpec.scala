@@ -25,10 +25,17 @@ class HBaseUtilsSpec extends FlatSpec with Matchers {
     }
     table.flushCommits()
     table.close()
-    val startRow = Array[Byte](1)
-    val stopRow = Array[Byte](11)
-    val scan = new Scan(startRow, stopRow)
-    val chunkedResults = utils.getChunkedResults("table", 3, scan)
+    val firstScan = {
+      val startRow = Array[Byte](1)
+      val stopRow = Array[Byte](5)
+      new Scan(startRow, stopRow)
+    }
+    val secondScan = {
+      val startRow = Array[Byte](5)
+      val stopRow = Array[Byte](11)
+      new Scan(startRow, stopRow)
+    }
+    val chunkedResults = utils.getChunkedResults("table", 3, Seq(firstScan, secondScan))
     val flattenChunks = toSingleResult(chunkedResults)
     def getRowIndex(result: Result) = result.getRow()(0)
     flattenChunks.map(getRowIndex).toList should equal((1 to 10).map(_.toByte).toList)

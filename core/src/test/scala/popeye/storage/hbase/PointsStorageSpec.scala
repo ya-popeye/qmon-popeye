@@ -236,7 +236,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
     barGroup(SortedMap("type" -> "bar", "attr" -> "foo")) should (contain(Point(0, 2)) and (not contain Point(0, 3)))
   }
 
-  def toGroupsMap(future: Future[PointsStream]): Map[PointAttributes, NamedPointsGroup] = {
+  def toGroupsMap(future: Future[PointsStream]): Map[PointAttributes, PointsGroup] = {
     Await.result(future.flatMap(_.toFuturePointsGroups), 5 seconds).groupsMap
   }
 

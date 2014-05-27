@@ -20,7 +20,8 @@ class UniqueIdActorSpec extends AkkaTestKitSpec("uniqueid") with MockitoStubs {
   it should "create new unique id" in {
     val storage = mock[UniqueIdStorageTrait]
     val actor = TestActorRef(Props.apply(new UniqueIdActor(storage)))
-    val qName = QualifiedName("kind", "name")
+    val namespace = new BytesKey(Array[Byte](0, 0))
+    val qName = QualifiedName("kind", namespace, "name")
     val id: BytesKey = new BytesKey(Array[Byte](0))
     stub(storage.findByName(Seq(qName))).toReturn(Seq())
     stub(storage.registerName(qName)).toReturn(ResolvedName(qName, id))

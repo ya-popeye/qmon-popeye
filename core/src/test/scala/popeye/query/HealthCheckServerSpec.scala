@@ -82,7 +82,7 @@ class HealthCheckServerSpec extends AkkaTestKitSpec("http-query") with MockitoSu
 
   def createPointsGroup(groupKeyAttributes: Seq[Seq[(String, String)]]) = {
     val groupsKeys = groupKeyAttributes.map(attrs => SortedMap(attrs: _*))
-    val emptyGroup: HBaseStorage.NamedPointsGroup = Map.empty
+    val emptyGroup: HBaseStorage.PointsGroup = Map.empty
     PointsGroups(groupsKeys.map(key => (key, emptyGroup)).toMap)
   }
 
