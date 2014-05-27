@@ -53,7 +53,12 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
       kv =>
         kv.map(storageStub.storage.keyValueToPoint)
     }
-    points.head should equal(point)
+    points.size should equal(1)
+    val loadedPoint = points.head
+    loadedPoint.getMetric should equal(point.getMetric)
+    loadedPoint.getAttributesList.asScala.toSet should equal(point.getAttributesList.asScala.toSet)
+    loadedPoint.hasFloatValue should equal(point.hasFloatValue)
+    loadedPoint.getIntValue should equal(point.getIntValue)
   }
 
   it should "produce key values" in {

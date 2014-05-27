@@ -30,7 +30,7 @@ class PointsStorageStub(metricNames: Seq[String] = Seq(),
   val metrics = setup(uniqActor, HBaseStorage.MetricKind, metricNames)
   val attrNames = setup(uniqActor, HBaseStorage.AttrNameKind, attributeNames)
   val attrValues = setup(uniqActor, HBaseStorage.AttrValueKind, attributeValues)
-  private val namespace: BytesKey = new BytesKey(Array[Byte](0, 0))
+  private lazy val namespace: BytesKey = new BytesKey(Array[Byte](0, 0))
   val tsdbFormat = new TsdbFormat(new FixedTimeRangeID(namespace))
   val storage = new HBaseStorage(
     tableName,
