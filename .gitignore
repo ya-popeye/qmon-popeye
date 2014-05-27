@@ -24,5 +24,4 @@ debian/qmon-popeye-slicer/
 debian/qmon-popeye-query/
 debian/*.debhelper
 
-core/dist
-bench/dist
+bin/dist

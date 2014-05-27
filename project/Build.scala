@@ -1,12 +1,9 @@
 import sbt._
 import sbt.ExclusionRule
-import sbt.ExclusionRule
-import sbt.ExclusionRule
 import sbt.Keys._
 import com.twitter.sbt._
 import net.virtualvoid.sbt.graph.{Plugin => Dep}
 import scala._
-import scala.Some
 import scala.Some
 
 object Util {
@@ -92,9 +89,9 @@ object HBase {
       "cdh" at "https://repository.cloudera.com/artifactory/cloudera-repos"
     ),
     libraryDependencies ++= Seq(
-      "org.apache.hadoop" % "hadoop-common" % Hadoop,
-      "org.apache.hbase" % "hbase-client" % HBase,
-      "org.apache.hbase" % "hbase-common" % HBase
+      "org.apache.hadoop" % "hadoop-common" % Hadoop % Provided,
+      "org.apache.hbase" % "hbase-client" % HBase % Provided,
+      "org.apache.hbase" % "hbase-common" % HBase % Provided
     ).excluding(
       ExclusionRule(name = "commons-daemon"),
       ExclusionRule(name = "commons-cli"),
@@ -117,71 +114,48 @@ object HBase {
 
 object Publish {
 
-  val buildSettings = Seq(
-    BuildProperties.newSettings,
-    PublishSourcesAndJavadocs.newSettings,
-    PackageDist.newSettings
-  ).foldLeft(Seq[Setting[_]]()) { (s, a)  => s ++ a} ++
-  Seq(
-    PackageDist.packageDistDir <<= (baseDirectory, PackageDist.packageDistName) {
-      (b, n) => b / "target" / "dist" / n },
-    PackageDist.packageDistScriptsPath <<= baseDirectory { b => Some(b / "src/main/bin") },
-    PackageDist.packageDistConfigPath <<= baseDirectory { b => Some(b / "src/main/resources") }
-  )
-
-  val releaseSettings = Seq(
-    Defaults.defaultSettings,
-    DefaultRepos.newSettings,
-    ArtifactoryPublisher.newSettings,
-    GitProject.gitSettings,
-    VersionManagement.newSettings,
-    ReleaseManagement.newSettings
-  ).foldLeft(Seq[Setting[_]]()) { (s, a)  => s ++ a} ++ Seq(
-    exportJars := true
-  )
-
-  val settings = Seq(
+  lazy val settings = Seq(
     credentials += Credentials(Path.userHome / ".ivy2" / "credentials.txt"),
     publishTo := Some("yandex_common_releases"
       at "http://maven.yandex.net/nexus/content/repositories/yandex_common_releases/")
-  ) ++ releaseSettings
+  )
 }
 
 object PopeyeBuild extends Build {
 
   import Util._
+  import PackageDist._
 
-  val releaseSettings = Seq(
+  lazy val releaseSettings = Seq(
     Defaults.defaultSettings,
     DefaultRepos.newSettings,
     ArtifactoryPublisher.newSettings,
     GitProject.gitSettings,
-    BuildProperties.newSettings,
-    PublishSourcesAndJavadocs.newSettings,
-    PackageDist.newSettings,
     VersionManagement.newSettings,
     ReleaseManagement.newSettings
   ).foldLeft(Seq[Setting[_]]()) { (s, a)  => s ++ a} ++ Seq(
-    exportJars := true
+    exportJars := false
   )
+
+  lazy val distSettings = Seq(
+    BuildProperties.newSettings,
+    PublishSourcesAndJavadocs.newSettings,
+    PackageDist.newSettings
+  ).foldLeft(Seq[Setting[_]]()) { (s, a) => s ++ a}
 
   lazy val defaultSettings =
     Defaults.defaultSettings ++
       Compiler.defaultSettings ++
       Tests.defaultSettings ++
       Dep.graphSettings ++
-      Publish.settings
-
-  lazy val popeye = Project(
-    id = "popeye",
-    base = file("."),
-    settings = defaultSettings
-  ).aggregate(popeyeCore, popeyeBench)
+      Publish.settings ++
+      PopeyeBuild.releaseSettings ++
+      Seq(exportJars := true)
 
   lazy val popeyeCore = Project(
     id = "popeye-core",
     base = file("core"),
-    settings = defaultSettings ++ HBase.settings ++ Publish.buildSettings)
+    settings = defaultSettings ++ HBase.settings)
     .settings(
     libraryDependencies ++= Version.slf4jDependencies ++ Seq(
       "com.github.scopt" %% "scopt" % Version.Scopt,
@@ -207,7 +181,7 @@ object PopeyeBuild extends Build {
   lazy val popeyeBench = Project(
     id = "popeye-bench",
     base = file("bench"),
-    settings = defaultSettings ++ Publish.buildSettings).dependsOn(popeyeCore)
+    settings = defaultSettings).dependsOn(popeyeCore)
     .settings(
     libraryDependencies ++= Version.slf4jDependencies ++ Seq(
       "nl.grons" %% "metrics-scala" % Version.Metrics,
@@ -220,6 +194,26 @@ object PopeyeBuild extends Build {
     ).excluding(Version.commonExclusions :_*)
      .excluding(Version.slf4jExclusions :_*)
   )
+
+  lazy val popeye = Project(
+    id = "popeye",
+    base = file("."),
+    settings = defaultSettings ++ distSettings ++ Seq(
+      packageDistScriptsOutputPath <<= packageDistDir { b => Some(b / "bin")},
+      packageDistScriptsPath <<= baseDirectory { b => Some(b / "src/main/bin")},
+      packageDistConfigPath <<= baseDirectory { b => Some(b / "src/main/etc")},
+
+      // make sbt-package-dist happy
+      packageDistCopyJars <<= packageDistDir map { pd =>
+        val file = pd / ".build"
+        IO.touch(file, setModified = true)
+        Set[File](file)
+      },
+      cleanFiles <+= baseDirectory { b => b / "dist"}
+    ))
+    .aggregate(popeyeCore, popeyeBench)
+    .dependsOn(popeyeCore, popeyeBench)
+
 
 }
 

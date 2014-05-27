@@ -5,4 +5,4 @@ JAVA_OPTS="$QMON_OPTS -Xms1024M -Xmx4096M -Xss1M -XX:MaxPermSize=256M -XX:+UsePa
 clz=$1
 shift
 
-/usr/bin/env java $JAVA_OPTS -cp "@DIST_CLASSPATH@" -Dqmon.logdir=${QMON_LOGDIR:-$DIST_HOME/logs} -Dqmon.home="$DIST_HOME" $clz "$@"
+/usr/bin/env java $JAVA_OPTS -cp "$DIST_HOME/config:@DIST_CLASSPATH@" -Dqmon.logdir=${QMON_LOGDIR:-$DIST_HOME/logs} -Dqmon.home="$DIST_HOME" $clz "$@"
