@@ -126,6 +126,9 @@ object PopeyeBuild extends Build {
   import Util._
   import PackageDist._
 
+  val zipArtifact =
+    SettingKey[Artifact]("package-dist-zip-artifact", "Artifact definition for built dist");
+
   lazy val releaseSettings = Seq(
     Defaults.defaultSettings,
     DefaultRepos.newSettings,
@@ -209,8 +212,9 @@ object PopeyeBuild extends Build {
         IO.touch(file, setModified = true)
         Set[File](file)
       },
-      cleanFiles <+= baseDirectory { b => b / "dist"}
-    ))
+      cleanFiles <+= baseDirectory { b => b / "dist"},
+      zipArtifact <<= name(Artifact(_, "zip", "zip"))
+    ) ++ addArtifact(zipArtifact, packageDist).settings)
     .aggregate(popeyeCore, popeyeBench)
     .dependsOn(popeyeCore, popeyeBench)
 
