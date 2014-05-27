@@ -24,6 +24,7 @@ case "$1" in
             adduser --quiet --system --home /usr/share/qmon-popeye-@APP_NAME@ --shell /usr/sbin/nologin qmon-popeye-@APP_NAME@
         fi
         chown -R qmon-popeye-@APP_NAME@ /var/log/qmon-popeye-@APP_NAME@
+        update-alternatives --install /etc/qmon-popeye-@APP_NAME@/conf qmon-popeye-@APP_NAME@-conf /etc/qmon-popeye-@APP_NAME@/conf.dist 1
     ;;
 
     abort-upgrade|abort-remove|abort-deconfigure)

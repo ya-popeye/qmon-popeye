@@ -13,6 +13,7 @@ APP_VERSION="@VERSION@"
 install:
 	dh_testdir
 	dh_install --list-missing -X.svn -X.git
+	dh_installdirs
 	dh_installlogrotate
 	dh_installdocs
 	dh_installchangelogs

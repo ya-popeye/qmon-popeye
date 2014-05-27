@@ -22,6 +22,7 @@ set -e
 case "$1" in
     purge)
 	      deluser --remove-all-files qmon-popeye-@APP_NAME@
+	      update-alternatives --remove qmon-popeye-@APP_NAME@-conf /etc/qmon-popeye-@APP_NAME@/conf.dist || :
     ;;
 
     remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
