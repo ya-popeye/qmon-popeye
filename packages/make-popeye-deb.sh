@@ -5,8 +5,8 @@ set +e
 
 home=$(dirname $0)
 
-group=$(cat ../build.sbt | grep organization | awk '{ print $5 }' | tr -d '"' )
-version=$(cat ../build.sbt | grep version | awk '{ print $5 }' | tr -d '"' )
+group=$(cat $home/../build.sbt | grep organization | awk '{ print $5 }' | tr -d '"' )
+version=$(cat $home/../build.sbt | grep version | awk '{ print $5 }' | tr -d '"' )
 
 sed -i.bak -e "s/@GROUP@/$group/g" -e "s/@VERSION@/$version/g" debian/rules
 $home/debian/make-app.sh slicer
