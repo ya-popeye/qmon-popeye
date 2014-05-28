@@ -17,8 +17,11 @@ import spray.http.Uri.IPv6Host
  */
 class HBaseConfigured(config: Config, zkQuorum: String, poolSize: Int) extends Closeable {
   val hbaseConfiguration = makeHBaseConfig(config)
-  hbaseConfiguration.set("hbase.zookeeper.quorum", zkQuorum)
-  updateZkPort(zkQuorum)
+  hbaseConfiguration.set(HConstants.ZOOKEEPER_QUORUM, "hbase.zookeeper.quorum", zkQuorum)
+  private val parts: Array[String] = zkQuorum.split("/")
+  updateZkPort(parts(0))
+  if (parts.length > 1)
+    hbaseConfiguration.set(HConstants.ZOOKEEPER_ZNODE_PARENT, parts(1))
   val hTablePool = new HTablePool(hbaseConfiguration, poolSize)
 
   def close(): Unit = {
