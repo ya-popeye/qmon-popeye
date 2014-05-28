@@ -103,7 +103,12 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
   }
 
   it should "perform time range queries" in {
-    val storageStub = new PointsStorageStub()
+    val timeRangeIdMapping = new TimeRangeIdMapping {
+      override def getRangeId( timestampInSeconds: Int ): BytesKey = {
+        new BytesKey(Array[Byte](0, (timestampInSeconds / 3600).toByte))
+      }
+    }
+    val storageStub = new PointsStorageStub(timeRangeIdMapping)
     val points = (0 to 6).map {
       i =>
         messagePoint(

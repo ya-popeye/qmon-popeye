@@ -9,8 +9,14 @@ import akka.actor.{ActorSystem, Props}
 import com.codahale.metrics.MetricRegistry
 import scala.concurrent.ExecutionContext
 
+object PointsStorageStub {
+  val timeRangeIdMapping: FixedTimeRangeID = {
+    val namespace: BytesKey = new BytesKey(Array[Byte](0, 0))
+    new FixedTimeRangeID(namespace)
+  }
+}
 
-class PointsStorageStub()
+class PointsStorageStub(timeRangeIdMapping: TimeRangeIdMapping = PointsStorageStub.timeRangeIdMapping)
                        (implicit val actorSystem: ActorSystem,
                         implicit val executionContext: ExecutionContext) {
   val pointsStorageMetrics = new HBaseStorageMetrics("hbase", new MetricRegistry())
@@ -28,8 +34,7 @@ class PointsStorageStub()
   val metrics = getUniqueId(uniqActor, HBaseStorage.MetricKind)
   val attrNames = getUniqueId(uniqActor, HBaseStorage.AttrNameKind)
   val attrValues = getUniqueId(uniqActor, HBaseStorage.AttrValueKind)
-  private lazy val namespace: BytesKey = new BytesKey(Array[Byte](0, 0))
-  val tsdbFormat = new TsdbFormat(new FixedTimeRangeID(namespace))
+  val tsdbFormat = new TsdbFormat(timeRangeIdMapping)
   val storage = new HBaseStorage(
     tableName,
     hTablePool,
