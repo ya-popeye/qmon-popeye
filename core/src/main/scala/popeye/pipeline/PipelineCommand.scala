@@ -1,36 +1,54 @@
 package popeye.pipeline
 
 import akka.actor.ActorSystem
-import com.codahale.metrics._
+import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.Config
-import popeye.pipeline.kafka.KafkaPipelineChannel
-import popeye.storage.hbase.HBaseStorage
+import popeye.pipeline.kafka.{KafkaSinkStarter, KafkaSinkFactory, KafkaPipelineChannel}
+import popeye.storage.hbase.HBasePipelineSinkFactory
+import scala.concurrent.Future
 import popeye._
 import scala.concurrent.ExecutionContext
-import popeye.storage.BlackHole
+import popeye.storage.BlackHolePipelineSinkFactory
 import popeye.pipeline.server.telnet.TelnetPointsServer
 import popeye.pipeline.memory.MemoryPipelineChannel
+import popeye.proto.PackedPoints
 import popeye.monitoring.MonitoringHttpServer
 import java.net.InetSocketAddress
 import scopt.OptionParser
 import popeye.MainConfig
-import scala.Some
+import popeye.pipeline.sinks.{BulkloadSinkStarter, BulkloadSinkFactory}
+import akka.dispatch.ExecutionContexts
+import java.util.concurrent.Executors
+import com.google.common.util.concurrent.ThreadFactoryBuilder
 
 object PipelineCommand {
 
   val sources: Map[String, PipelineSourceFactory] = Map(
     "telnet" -> TelnetPointsServer.sourceFactory())
 
-  val sinks: Map[String, PipelineSinkFactory] = Map(
-    "hbase-sink" -> HBaseStorage.sinkFactory(),
-    "blackhole" -> BlackHole.sinkFactory()
-  )
 
-  def sinkForType(typeName: String): PipelineSinkFactory = {
-    sinks.getOrElse(
-      typeName,
-      throw new IllegalArgumentException(f"No such sink type: $typeName, available types: ${sinks.keys}")
-    )
+  def sinkFactories(ectx: ExecutionContext,
+                    actorSystem: ActorSystem,
+                    storagesConfig: Config,
+                    metrics: MetricRegistry,
+                    idGenerator: IdGenerator): Map[String, PipelineSinkFactory] = {
+    val kafkaStarter = new KafkaSinkStarter(actorSystem, ectx, idGenerator, metrics)
+    val bulkloadStarter = new BulkloadSinkStarter(kafkaStarter, actorSystem.scheduler, ectx, metrics)
+    val sinks = Map(
+      "hbase-sink" -> new HBasePipelineSinkFactory(storagesConfig, actorSystem, ectx, metrics),
+      "kafka-sink" -> new KafkaSinkFactory(kafkaStarter),
+      "bulkload-sink" -> new BulkloadSinkFactory(bulkloadStarter, storagesConfig),
+      "blackhole" -> new BlackHolePipelineSinkFactory(actorSystem, ectx),
+      "fail" -> new PipelineSinkFactory {
+        def startSink(sinkName: String, config: Config): PointsSink = new PointsSink {
+          def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] =
+            Future.failed(new RuntimeException("fail sink"))
+        }
+      }
+    )                                            
+    sinks.withDefault{
+      typeName => throw new IllegalArgumentException(f"No such sink type: $typeName, available types: ${sinks.keys}")
+    }
   }
 
   def sourceForType(typeName: String): PipelineSourceFactory = {
@@ -48,12 +66,13 @@ class PipelineCommand extends PopeyeCommand {
   }
 
   def run(actorSystem: ActorSystem, metrics: MetricRegistry, config: Config, mainConfig: MainConfig): Unit = {
-
-    val ectx = ExecutionContext.global
+    val daemonThreadFatory = new ThreadFactoryBuilder().setDaemon(true).build()
+    val ectx = ExecutionContexts.fromExecutorService(Executors.newCachedThreadPool(daemonThreadFatory))
     val pc = config.getConfig("popeye.pipeline")
     val channelConfig = pc.getConfig("channel")
     val storageConfig = config.getConfig("popeye.storages")
     val idGenerator = new IdGenerator(config.getInt("generator.id"), config.getInt("generator.datacenter"))
+    val sinks = PipelineCommand.sinkFactories(ectx, actorSystem, storageConfig, metrics, idGenerator)
     val channel = pc.getString("channel.type") match {
       case "kafka" =>
         new KafkaPipelineChannel(
@@ -67,10 +86,16 @@ class PipelineCommand extends PopeyeCommand {
         throw new NoSuchElementException(s"Requested channel type not supported")
 
     }
+    val readersConfig = ConfigUtil.asMap(pc.getConfig("channelReaders"))
 
-    for ((sinkName, sinkConfig) <- ConfigUtil.asMap(pc.getConfig("sinks"))) {
-      val typeName = sinkConfig.getString("type")
-      PipelineCommand.sinkForType(typeName).startSink(sinkName, channel, sinkConfig, storageConfig, ectx)
+    for ((readerName, readerConfig) <- readersConfig) {
+      val mainSinkConfig = readerConfig.getConfig("mainSink")
+      val mainSink = sinks(mainSinkConfig.getString("type")).startSink(f"$readerName-mainSink", mainSinkConfig)
+
+      val dropSinkConfig = readerConfig.getConfig("dropSink")
+      val dropSink = sinks(dropSinkConfig.getString("type")).startSink(f"$readerName-dropSink", dropSinkConfig)
+
+      channel.startReader("popeye-" + readerName, mainSink, dropSink)
     }
     for ((sourceName, sourceConfig) <- ConfigUtil.asMap(pc.getConfig("sources"))) {
       val typeName = sourceConfig.getString("type")

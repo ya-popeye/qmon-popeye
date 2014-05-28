@@ -6,7 +6,7 @@ import com.typesafe.config.Config
 import popeye.IdGenerator
 import popeye.pipeline._
 import popeye.proto.PackedPoints
-import scala.concurrent.{ExecutionContext, Promise, Future}
+import scala.concurrent.{ExecutionContext, Promise}
 import akka.routing.FromConfig
 
 /**
@@ -36,20 +36,37 @@ class KafkaPipelineChannel(val config: Config,
     val producerConfig = KafkaPointsProducer.producerConfig(config)
     val kafkaClient = new PopeyeKafkaProducerFactoryImpl(producerConfig)
     val dispatcher = config.getString("producer.dispatcher")
-    val props = KafkaPointsProducer.props("kafka", config, idGenerator, kafkaClient, metrics, Some(dispatcher))
-      .withRouter(FromConfig())
+    val pointsProducerConfig = new KafkaPointsProducerConfig(config)
+    val props = KafkaPointsProducer.props(
+      "kafka",
+      pointsProducerConfig,
+      idGenerator,
+      kafkaClient,
+      metrics,
+      Some(dispatcher)
+    ).withRouter(FromConfig())
     actorSystem.actorOf(props, "kafka-producer")
   }
 
-  def startReader(group: String, sink: PointsSink): Unit = {
+  def startReader(group: String, mainSink: PointsSink, dropSink: PointsSink): Unit = {
     val nWorkers = config.getInt("consumer.workers")
+    val topic = config.getString("topic")
     for (i <- 0 until nWorkers) {
       consumerId += 1
-      actorSystem.actorOf(KafkaPointsConsumer.props(config.getString("topic"), group, config, metrics, sink, new PointsSink {
-        def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] = {
-          throw new IllegalStateException("Drop not enabled")
-        }
-      }, executionContext).withDispatcher(config.getString("consumer.dispatcher")), s"kafka-consumer-$group-$consumerId")
+      val name = s"kafka-consumer-$group-$topic-$consumerId"
+      val props = KafkaPointsConsumer.props(
+        name,
+        topic,
+        group,
+        config,
+        metrics,
+        mainSink,
+        dropSink,
+        packedPoints => SendAndDrop(pointsToSend = packedPoints),
+        executionContext
+      ).withDispatcher(config.getString("consumer.dispatcher"))
+
+      actorSystem.actorOf(props, name)
     }
   }
 }

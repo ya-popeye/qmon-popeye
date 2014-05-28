@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit
 import scala.concurrent.duration._
 import popeye.pipeline.PopeyeClientActor._
 
-class PopeyeClientActor(remote: InetSocketAddress, hostIndex: Int, nBatches: Int) extends Actor {
+class PopeyeClientActor(remote: InetSocketAddress, hostIndex: Int, nBatches: Int, randomTags: Int) extends Actor {
 
   import Tcp._
   import context.system
@@ -58,7 +58,7 @@ class PopeyeClientActor(remote: InetSocketAddress, hostIndex: Int, nBatches: Int
       case SendNewPoints =>
         val timestamp = (System.currentTimeMillis() / 1000).toInt
         val strings = for (metric <- MetricGenerator.metrics; _ <- 1 to nBatches) yield {
-          MetricGenerator.pointString(metric, timestamp, random(), hostIndex)
+          MetricGenerator.pointString(metric, timestamp, random(), hostIndex, randomTags)
         }
         val byteString: ByteString = ByteString(strings.mkString)
         connection ! Write(byteString)
@@ -116,8 +116,8 @@ object PopeyeClientActor {
   val ioFails = metrics.counter("io-fails")
   val connections = metrics.counter("connections")
 
-  def props(remote: InetSocketAddress, id: Int, nBatches: Int) =
-    Props(classOf[PopeyeClientActor], remote, id, nBatches)
+  def props(remote: InetSocketAddress, id: Int, nBatches: Int, randomTags: Int) =
+    Props(classOf[PopeyeClientActor], remote, id, nBatches, randomTags)
 
   def main(args: Array[String]) {
     implicit val timeout = Timeout(5 seconds)
@@ -131,7 +131,8 @@ object PopeyeClientActor {
     val metricsDir = mandatoryParams(3)
     val isInteractive = optionalParams.contains("--interactive")
     val system = ActorSystem()
-    val actors = (1 to nHosts).map(i => system.actorOf(PopeyeClientActor.props(address, i, nBatches)))
+    val randomTags = optionalParams.find(_.contains("--random")).map(str => str.split("_")(1).toInt).getOrElse(0)
+    val actors = (1 to nHosts).map(i => system.actorOf(PopeyeClientActor.props(address, i, nBatches, randomTags)))
 
     val consoleReporter = ConsoleReporter
       .forRegistry(PopeyeClientActor.metrics)
@@ -168,7 +169,7 @@ object PopeyeClientActor {
       inReader.readLine()
       val oldHosts = hosts + 1
       hosts += 100
-      val actors = (oldHosts to hosts).map(i => system.actorOf(PopeyeClientActor.props(address, i, nBatches)))
+      val actors = (oldHosts to hosts).map(i => system.actorOf(PopeyeClientActor.props(address, i, nBatches, randomTags)))
       for (actor <- actors) {
         Thread.sleep(10)
         actor ! Start

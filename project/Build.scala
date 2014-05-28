@@ -7,7 +7,6 @@ import de.johoop.findbugs4sbt.FindBugs._
 import de.johoop.findbugs4sbt.ReportType
 import de.johoop.findbugs4sbt.Effort
 import scala._
-import scala.Some
 
 object Util {
   implicit def dependencyFilterer(deps: Seq[ModuleID]) = new Object {
@@ -25,6 +24,7 @@ object Compiler {
     javacOptions in Compile ++= Seq("-source", "1.7", "-target", "1.7"),
     resolvers ++= Seq(
       "spray repo" at "http://repo.spray.io",
+      "cdh" at "https://repository.cloudera.com/artifactory/cloudera-repos",
       Resolver.url("octo47 repo", url("http://octo47.github.com/repo/"))({
         val patt = Resolver.mavenStylePatterns.artifactPatterns
         new Patterns(patt, patt, true)
@@ -83,6 +83,8 @@ object Version {
   val FakeHBase = "0.1.2"
   val Scopt = "3.1.0"
   val Avro = "1.7.5"
+  val Hadoop = "2.3.0-cdh5.0.1"
+  val HBase = "0.96.1.1-cdh5.0.1"
 
   val slf4jDependencies: Seq[ModuleID] = Seq(
     "org.slf4j" % "jcl-over-slf4j" % Version.Slf4j,
@@ -105,17 +107,13 @@ object HBase {
 
   import Util._
 
-  val Hadoop = "2.3.0-cdh5.0.1"
-  val HBase = "0.96.1.1-cdh5.0.1"
-
   val settings = Seq(
-    resolvers ++= Seq(
-      "cdh" at "https://repository.cloudera.com/artifactory/cloudera-repos"
-    ),
     libraryDependencies ++= Seq(
-      "org.apache.hadoop" % "hadoop-common" % Hadoop,
-      "org.apache.hbase" % "hbase-client" % HBase,
-      "org.apache.hbase" % "hbase-common" % HBase
+      "org.apache.hadoop" % "hadoop-common" % Version.Hadoop,
+      "org.apache.hbase" % "hbase-common" % Version.HBase,
+      "org.apache.hbase" % "hbase-client" % Version.HBase,
+      "org.apache.hbase" % "hbase-server" % Version.HBase,
+      "org.apache.hbase" % "hbase-hadoop-compat" % Version.HBase
     ).excluding(
       ExclusionRule(name = "commons-daemon"),
       ExclusionRule(name = "commons-cli"),
@@ -123,7 +121,6 @@ object HBase {
       ExclusionRule(name = "jsp-api"),
       ExclusionRule(name = "servlet-api"),
       ExclusionRule(name = "kfs"),
-      ExclusionRule(name = "avro"),
       ExclusionRule(name = "mockito-all"),
       ExclusionRule(organization = "org.jruby"),
       ExclusionRule(organization = "tomcat"),
@@ -191,6 +188,8 @@ object PopeyeBuild extends Build {
     settings = defaultSettings ++ FindBugs.settings ++ HBase.settings)
     .settings(
     libraryDependencies ++= Version.slf4jDependencies ++ Seq(
+      "org.apache.hadoop" % "hadoop-common" % Version.Hadoop,
+      "org.apache.hadoop" % "hadoop-client" % Version.Hadoop,
       "com.github.scopt" %% "scopt" % Version.Scopt,
       "com.google.protobuf" % "protobuf-java" % "2.5.0",
       "org.apache.kafka" %% "kafka" % Version.Kafka,
@@ -209,7 +208,7 @@ object PopeyeBuild extends Build {
       "org.apache.avro" % "avro" % Version.Avro % "test"
     ).excluding(Version.slf4jExclusions :_*)
      .excluding(Version.commonExclusions :_*)
-    )
+  )
 
   lazy val popeyeBench = Project(
     id = "popeye-bench",

@@ -8,12 +8,9 @@ import scala.collection.mutable.ArrayBuffer
 /**
  * @author Andrey Stepachev
  */
-final class PackedPoints(val avgMessageSize: Int = 100, val messagesPerExtent: Int = 100, val initialCapacity: Int = 0) {
-  private[proto] val points = new ExpandingBuffer(initialMessages * avgMessageSize)
+final class PackedPoints(points: ExpandingBuffer, numberOfPointsInBuffer: Int = 0) extends scala.collection.Iterable[Point] {
   private val pointsCoder = CodedOutputStream.newInstance(points)
-  private var pointsCount_ = 0
-
-  private def initialMessages = if (initialCapacity > 0) initialCapacity else messagesPerExtent
+  private var pointsCount_ = numberOfPointsInBuffer
 
   def pointsCount = pointsCount_
 
@@ -44,7 +41,7 @@ final class PackedPoints(val avgMessageSize: Int = 100, val messagesPerExtent: I
   }
 
   def consume(amount: Int): PackedPoints = {
-    val p = new PackedPoints()
+    val p = PackedPoints()
     p.consumeFrom(this, amount)
     p
   }
@@ -55,14 +52,14 @@ final class PackedPoints(val avgMessageSize: Int = 100, val messagesPerExtent: I
   }
 
   override def clone(): PackedPoints = {
-    val copy = new PackedPoints()
+    val copy = PackedPoints()
     copy.pointsCoder.writeRawBytes(copy.buffer)
     copy.pointsCount_ = this.pointsCount_
     copy
   }
 
   def consumeFrom(pp: PackedPoints, pointsToConsume: Int) = {
-    require(pp.pointsCount >= pointsToConsume, "Nonempty pack required")
+    require(pp.pointsCount >= pointsToConsume, "not enough points")
     val cs = CodedInputStream.newInstance(pp.buffer, pp.bufferOffset, pp.bufferLength)
     var readSize = 0
     for (message <- 0 until pointsToConsume) {
@@ -76,32 +73,6 @@ final class PackedPoints(val avgMessageSize: Int = 100, val messagesPerExtent: I
     pp.consumeBytes(readSize)
     pp.pointsCount_ -= pointsToConsume
     this
-  }
-
-  def foreach[U](f: (Point) => U): Unit = {
-    val cs = CodedInputStream.newInstance(buffer, bufferOffset, bufferLength)
-    for (message <- 0 until pointsCount) {
-      val size = cs.readRawVarint32()
-      val limit = cs.pushLimit(size)
-      val point = Point.newBuilder().mergeFrom(cs).build
-      cs.popLimit(limit)
-      f(point)
-    }
-  }
-
-  def map[U](f: (Point) => U): Seq[U] = {
-    val cs = CodedInputStream.newInstance(buffer, bufferOffset, bufferLength)
-    for (message <- 0 until pointsCount) yield {
-      val size = cs.readRawVarint32()
-      val limit = cs.pushLimit(size)
-      val point = Point.newBuilder().mergeFrom(cs).build
-      cs.popLimit(limit)
-      f(point)
-    }
-  }
-
-  def toPointsSeq: Seq[Point] = {
-    map(p => p)
   }
 
   private[proto] def buffer = {
@@ -119,6 +90,23 @@ final class PackedPoints(val avgMessageSize: Int = 100, val messagesPerExtent: I
     points.consume(amount)
   }
 
+  override def iterator: Iterator[Point] = new Iterator[Point] {
+    var index = 0
+    val cs = CodedInputStream.newInstance(buffer, bufferOffset, bufferLength)
+
+    override def next(): Point = {
+      index += 1
+      val size = cs.readRawVarint32()
+      val limit = cs.pushLimit(size)
+      val point = Point.newBuilder().mergeFrom(cs).build
+      cs.popLimit(limit)
+      point
+    }
+
+    override def hasNext: Boolean = index < pointsCount_
+  }
+
+  override def size: Int = pointsCount_
 }
 
 object PackedPoints {
@@ -137,19 +125,18 @@ object PackedPoints {
 
   def decodePoints(buffer: Array[Byte]): Seq[Point] = {
     val cs = CodedInputStream.newInstance(buffer)
-    val points = decodePoints(cs, buffer.length / expectedMessageSize)
+    val points = decodePoints(cs)
     points
   }
-
 
   def decodeWithBatchId(buffer: Array[Byte]): (Long, Seq[Point]) = {
     val cs = CodedInputStream.newInstance(buffer)
     val batchId = cs.readInt64()
-    val points = decodePoints(cs, buffer.length / expectedMessageSize)
+    val points = decodePoints(cs)
     (batchId, points)
   }
 
-  def decodePoints(cs: CodedInputStream, sizeHint: Int): Seq[Point] = {
+  def decodePoints(cs: CodedInputStream): Seq[Point] = {
     val points = new ArrayBuffer[Point]()
     while (!cs.isAtEnd) {
       val size = cs.readRawVarint32()
@@ -160,19 +147,28 @@ object PackedPoints {
     points
   }
 
+  def fromBytes(bytes: Array[Byte]): PackedPoints = {
+    val pointsCount = decodePoints(bytes).size
+    val buffer = new ExpandingBuffer(bytes.size)
+    buffer.write(bytes)
+    new PackedPoints(buffer, pointsCount)
+  }
+
   @inline
   def apply(): PackedPoints = {
-    new PackedPoints
+    PackedPoints(sizeHint = 100)
   }
 
   @inline
-  def apply(messagesPerExtent: Int): PackedPoints = {
-    new PackedPoints(messagesPerExtent = messagesPerExtent)
+  def apply(sizeHint: Int): PackedPoints = {
+    val avgMessageSize = 100
+    val points = new ExpandingBuffer(sizeHint * avgMessageSize)
+    new PackedPoints(points)
   }
 
   @inline
-  def apply(points: Seq[Point]): PackedPoints = {
-    val pack = new PackedPoints(initialCapacity = points.size)
+  def apply(points: Iterable[Point]): PackedPoints = {
+    val pack = PackedPoints(points.size)
     points foreach pack.append
     pack
   }

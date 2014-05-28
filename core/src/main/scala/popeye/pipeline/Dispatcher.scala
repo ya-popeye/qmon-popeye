@@ -28,6 +28,10 @@ class DispatcherConfig(config: Config) {
   val lowWatermark = config.getInt("low-watermark")
 }
 
+object DispatcherMetrics {
+  private val id = new AtomicInteger(0)
+}
+
 class DispatcherMetrics(prefix: String, override val metricRegistry: MetricRegistry) extends Instrumented {
   val writeTimer = metrics.timer(s"$prefix.wall-time")
   val sendTimer = metrics.timer(s"$prefix.send-time")
@@ -36,10 +40,9 @@ class DispatcherMetrics(prefix: String, override val metricRegistry: MetricRegis
   val batchTime = metrics.timer(s"$prefix.process-batch-time")
   val batchFailedMeter = metrics.meter(s"$prefix.batch-failed")
   val batchCompleteMeter = metrics.meter(s"$prefix.batch-complete")
-  private val id = new AtomicInteger(0)
 
   def addWorkQueueSizeGauge(queue: AtomicList[ActorRef]) = {
-    metrics.gauge(s"$prefix.work-queue-size-${id.getAndIncrement}") {
+    metrics.gauge(s"$prefix.work-queue-size-${DispatcherMetrics.id.getAndIncrement}") {
       queue.size
     }
   }

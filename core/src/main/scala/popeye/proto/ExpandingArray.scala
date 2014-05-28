@@ -36,8 +36,7 @@ class ExpandingArray[Elem](extentSize: Int)
     filled += 1
   }
 
-  def add(elemArr: Array[Elem], offset: Int, amount: Int): Unit = {
-    val len = amount - offset
+  def add(elemArr: Array[Elem], offset: Int, len: Int): Unit = {
     ensureSize(length + len)
     System.arraycopy(elemArr, offset, elems, filled, len)
     filled += len

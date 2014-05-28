@@ -7,7 +7,7 @@ import popeye.proto.Message.Point
 import popeye.proto.PackedPoints
 import popeye.pipeline.PointsSource
 import kafka.message.MessageAndMetadata
-import scala.Some
+import scala.{collection, Some}
 import com.codahale.metrics.MetricRegistry
 
 class KafkaPointsSourceImplMetrics(val prefix: String,
@@ -31,15 +31,9 @@ class KafkaPointsSourceImpl(consumerConnector: ConsumerConnector, topic: String,
   }
 
   private def topicStream(topic: String): KafkaStream[Array[Byte], Array[Byte]] = {
-    var streams = Map[String, KafkaStream[Array[Byte], Array[Byte]]]()
-    streams.get(topic) match {
-      case Some(stream) => stream
-      case None =>
-        val stream = consumerConnector.createMessageStreams(Map(topic -> 1))
-          .getOrElse(topic, throw new KafkaException(s"Unable to get stream for topic $topic")).headOption
-        streams = streams.updated(topic, stream.getOrElse(throw new KafkaException(s"Unable to get stream for topic $topic")))
-        stream.get
-    }
+    val streamsMap = consumerConnector.createMessageStreams(Map(topic -> 1))
+    val streamOption = streamsMap.get(topic).flatMap(_.headOption)
+    streamOption.getOrElse(throw new KafkaException(s"Unable to get stream for topic $topic"))
   }
 
   def hasNext: Boolean = try {
@@ -50,11 +44,11 @@ class KafkaPointsSourceImpl(consumerConnector: ConsumerConnector, topic: String,
       false
   }
 
-  def consume(): Option[(Long, Seq[Point])] = {
+  def consume(): Option[(Long, PackedPoints)] = {
     if (hasNext) {
       val msg: MessageAndMetadata[Array[Byte], Array[Byte]] = iterator.next()
       val batchId = deser.fromBytes(msg.key)
-      Some((batchId, PackedPoints.decodePoints(msg.message)))
+      Some((batchId, PackedPoints.fromBytes(msg.message)))
     } else {
       None
     }

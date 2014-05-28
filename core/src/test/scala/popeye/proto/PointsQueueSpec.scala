@@ -1,20 +1,19 @@
 package popeye.proto
 
 import PointsQueue._
-import com.codahale.metrics.{ConsoleReporter, MetricRegistry}
 import java.util.Random
-import org.scalatest.FlatSpec
+import org.scalatest.{Matchers, FlatSpec}
 import popeye.test.PopeyeTestUtils._
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Promise}
 import scala.collection.mutable.ArrayBuffer
 import popeye.proto.Message.Point
-import org.scalatest.matchers.ShouldMatchers
+import popeye.Logging
 
 /**
  * @author Andrey Stepachev
  */
-class PointsQueueSpec extends FlatSpec with ShouldMatchers {
+class PointsQueueSpec extends FlatSpec with Matchers with Logging {
 
 
   behavior of "PointsQueue"
@@ -75,7 +74,7 @@ class PointsQueueSpec extends FlatSpec with ShouldMatchers {
           else {
             resultingPoints ++= (for{
               pack <- batch
-              point <- pack.toPointsSeq
+              point <- pack
             } yield point)
             if (idx < points.size) {
               val sliceSize = Math.min(points.size - idx, rnd.nextInt(iter) + 1)

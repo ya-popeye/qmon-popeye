@@ -43,7 +43,7 @@ class KafkaPointsProducerWorker(kafkaClient: PopeyeKafkaProducerFactory,
   }
 }
 
-class KafkaPointsProducer(producerConfig: Config,
+class KafkaPointsProducer(val config: KafkaPointsProducerConfig,
                           val idGenerator: IdGenerator,
                           kafkaClient: PopeyeKafkaProducerFactory,
                           val metrics: KafkaProducerMetrics,
@@ -52,7 +52,6 @@ class KafkaPointsProducer(producerConfig: Config,
 
   type Config = KafkaPointsProducerConfig
   type Metrics = KafkaProducerMetrics
-  val config = new KafkaPointsProducerConfig(producerConfig)
 
   override val supervisorStrategy = OneForOneStrategy(loggingEnabled = true) {
     case _ ⇒ Restart
@@ -67,15 +66,6 @@ class KafkaPointsProducer(producerConfig: Config,
     context.actorOf(
       propsWithDispatcher,
       "points-sender-" + idx)
-  }
-}
-
-class KafkaPointsSink(producer: ActorRef)(implicit eCtx: ExecutionContext) extends PointsSink {
-  def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] = {
-    val promise = Promise[Long]()
-    KafkaPointsProducer.produce(producer, Some(promise), points)
-    val pointsInPack = points.pointsCount
-    promise.future map { batchId => pointsInPack.toLong}
   }
 }
 
@@ -95,7 +85,7 @@ object KafkaPointsProducer {
     new ProducerConfig(producerProps)
   }
 
-  def props(prefix: String, config: Config, idGenerator: IdGenerator,
+  def props(prefix: String, config: KafkaPointsProducerConfig, idGenerator: IdGenerator,
             kafkaClient: PopeyeKafkaProducerFactory, metricRegistry: MetricRegistry, akkaDispatcher: Option[String] = None) = {
     val metrics = new KafkaProducerMetrics(prefix, metricRegistry)
     Props.apply(new KafkaPointsProducer(
@@ -110,7 +100,12 @@ object KafkaPointsProducer {
 }
 
 class KeyPartitioner(props: VerifiableProperties = null) extends Partitioner {
-  def partition(data: Any, numPartitions: Int): Int = (data.asInstanceOf[Long] % numPartitions).toInt
+
+  def partition(data: Any, numPartitions: Int): Int = {
+    import scala.util.hashing.MurmurHash3
+    val hash = MurmurHash3.listHash(List(data.asInstanceOf[Long]), 0)
+    math.abs(hash) % numPartitions
+  }
 }
 
 class KeySerialiser(props: VerifiableProperties = null) extends Encoder[Long] {

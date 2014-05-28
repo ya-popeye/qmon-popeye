@@ -16,13 +16,42 @@ popeye.pipeline {
    }
   }
 
-  sinks = {
-    opentsdb-sink = ${common.popeye.pipeline.hbase-sink} {
-      zk.quorum = "localhost:2182"
+  channelReaders = {
+    opentsdb-reader = {
+      mainSink = ${common.popeye.pipeline.hbase-sink} {
+        type = fail
+        read-chunk-size = 10
+        zk.quorum = "localhost:2182"
+        topic = "popeye-points"
+      }
+      dropSink = {
+        type = bulkload-sink
+        kafka = ${common.popeye.pipeline.kafka} {
+          topic = popeye-points-drop
+          group = opentsdb
+          max-lag = 300s
+          zk.quorum = "localhost:2181"
+          broker.list = "localhost:9092,localhost:9091"
+        }
+        storage = hbaseStorage
+        jobRunner = {
+          restart.period = 15s
+          zk = {
+            quorum = "localhost:2181/popeye"
+            session.timeout = 5s
+            connection.timeout = 5s
+          }
+          output.hdfs.path = /tmp/hadoop/output
+          jars.hdfs.path = /popeye/lib
+          hadoop.conf.paths = ["/home/quasi/programming/sandbox/hadoop/hadoop-2.3.0-cdh5.0.0/etc/hadoop/mapred-site.xml",
+                               "/home/quasi/programming/sandbox/hadoop/hadoop-2.3.0-cdh5.0.0/etc/hadoop/core-site.xml"]
+        }
+        hbase = {
+          zk.quorum.hosts = "localhost"
+          zk.quorum.port = 2182
+        }
+      }
     }
-   //    bh = {
-   //       type = blackhole
-   //    }
   }
 
   sources = {
