@@ -10,9 +10,7 @@ import com.codahale.metrics.MetricRegistry
 import scala.concurrent.ExecutionContext
 
 
-class PointsStorageStub(metricNames: Seq[String] = Seq(),
-                        attributeNames: Seq[String] = Seq(),
-                        attributeValues: Seq[String] = Seq())
+class PointsStorageStub()
                        (implicit val actorSystem: ActorSystem,
                         implicit val executionContext: ExecutionContext) {
   val pointsStorageMetrics = new HBaseStorageMetrics("hbase", new MetricRegistry())
@@ -25,11 +23,11 @@ class PointsStorageStub(metricNames: Seq[String] = Seq(),
     def createHTableInterface(config: Configuration, tableName: Array[Byte]): HTableInterface = hTable
   })
 
-  val uniqActor: TestActorRef[FixedUniqueIdActor] = TestActorRef(Props.apply(new FixedUniqueIdActor()))
+  val uniqActor: TestActorRef[InMemoryUniqueIdActor] = TestActorRef(Props.apply(new InMemoryUniqueIdActor()))
 
-  val metrics = setup(uniqActor, HBaseStorage.MetricKind, metricNames)
-  val attrNames = setup(uniqActor, HBaseStorage.AttrNameKind, attributeNames)
-  val attrValues = setup(uniqActor, HBaseStorage.AttrValueKind, attributeValues)
+  val metrics = getUniqueId(uniqActor, HBaseStorage.MetricKind)
+  val attrNames = getUniqueId(uniqActor, HBaseStorage.AttrNameKind)
+  val attrValues = getUniqueId(uniqActor, HBaseStorage.AttrValueKind)
   private lazy val namespace: BytesKey = new BytesKey(Array[Byte](0, 0))
   val tsdbFormat = new TsdbFormat(new FixedTimeRangeID(namespace))
   val storage = new HBaseStorage(
@@ -43,21 +41,8 @@ class PointsStorageStub(metricNames: Seq[String] = Seq(),
     readChunkSize = 10
   )
 
-  private def setup(actor: TestActorRef[FixedUniqueIdActor], kind: String, seq: Seq[String]): UniqueId = {
-    val uniq = new UniqueIdImpl(HBaseStorage.UniqueIdMapping.get(kind).get, kind, actor)
-    seq.map {
-      item => actor.underlyingActor.add(HBaseStorage.ResolvedName(kind, namespace, item, uniq.toBytes(id.incrementAndGet())))
-    }
-    uniq
+  private def getUniqueId(actor: TestActorRef[InMemoryUniqueIdActor], kind: String): UniqueId = {
+    new UniqueIdImpl(HBaseStorage.UniqueIdMapping.get(kind).get, kind, actor)
   }
-
-  private def addUniqId(name: String, uniq: UniqueId) =
-    uniqActor.underlyingActor.add(HBaseStorage.ResolvedName(uniq.kind, namespace, name, uniq.toBytes(id.incrementAndGet())))
-
-  def addMetric(name: String) = addUniqId(name, metrics)
-
-  def addAttrName(name: String) = addUniqId(name, attrNames)
-
-  def addAttrValue(name: String) = addUniqId(name, attrValues)
 }
 

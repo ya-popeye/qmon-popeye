@@ -68,8 +68,6 @@ class OpenTSDBHttpApiServerTest extends Logging {
         val timestamp = currentTime - (numberOfPoints - i) * (timeIntervalInHours * 3600 / numberOfPoints)
         messagePoint(metricName, timestamp, value(i), tags)
       }
-    addMetric(metricName)
-    addTags(tags)
     val writeFuture = storageStub.storage.writePoints(PackedPoints(points))
     Await.ready(writeFuture, 5 seconds)
   }
@@ -88,7 +86,6 @@ class OpenTSDBHttpApiServerTest extends Logging {
   def addMetric(metricName: String) {
     if (!metrics.contains(metricName)) {
       metrics += metricName
-      storageStub.addMetric(metricName)
     }
   }
 
@@ -96,11 +93,9 @@ class OpenTSDBHttpApiServerTest extends Logging {
     for ((name, value) <- tags) {
       if (!attrNames.contains(name)) {
         attrNames += name
-        storageStub.addAttrName(name)
       }
       if (!attrValues.contains(value)) {
         attrValues += value
-        storageStub.addAttrValue(value)
       }
     }
   }

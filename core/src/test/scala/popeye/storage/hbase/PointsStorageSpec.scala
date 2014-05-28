@@ -30,11 +30,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
   it should "save and load point correctly" in {
     import scala.collection.JavaConverters._
     val attrNames: Seq[String] = Seq("host", "anotherHost", "additionalHost")
-    val storageStub = new PointsStorageStub(
-      metricNames = PopeyeTestUtils.names,
-      attributeNames = attrNames,
-      attributeValues = PopeyeTestUtils.hosts
-    )
+    val storageStub = new PointsStorageStub()
     val random = new Random(0)
     val metric = PopeyeTestUtils.names.head
     val attributes = attrNames.map {
@@ -64,11 +60,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
   it should "produce key values" in {
     implicit val random = new java.util.Random(1234)
 
-    val storageStub = new PointsStorageStub(
-      metricNames = PopeyeTestUtils.names,
-      attributeNames = Seq("host"),
-      attributeValues = PopeyeTestUtils.hosts
-    )
+    val storageStub = new PointsStorageStub()
 
     val events = mkEvents(msgs = 4)
     val future = storageStub.storage.writePoints(PackedPoints(events))
@@ -91,11 +83,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
   ignore should "performance test" in {
     implicit val random = new java.util.Random(1234)
 
-    val storageStub = new PointsStorageStub(
-      metricNames = PopeyeTestUtils.names,
-      attributeNames = Seq("host"),
-      attributeValues = PopeyeTestUtils.hosts
-    )
+    val storageStub = new PointsStorageStub()
 
     val events = mkEvents(msgs = 4000)
     for (i <- 1 to 600) {
@@ -115,11 +103,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
   }
 
   it should "perform time range queries" in {
-    val storageStub = new PointsStorageStub(
-      metricNames = PopeyeTestUtils.names,
-      attributeNames = Seq("host"),
-      attributeValues = PopeyeTestUtils.hosts
-    )
+    val storageStub = new PointsStorageStub()
     val points = (0 to 6).map {
       i =>
         messagePoint(
@@ -142,12 +126,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
   }
 
   it should "perform multiple attributes queries" in {
-    val storageStub = new PointsStorageStub(
-      metricNames = Seq("metric"),
-      //order of attribute names is important
-      attributeNames = Seq("b", "a"),
-      attributeValues = Seq("foo")
-    )
+    val storageStub = new PointsStorageStub()
     val point = messagePoint(
       metricName = "metric",
       timestamp = 0,
@@ -168,11 +147,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
 
 
   it should "perform multiple attribute value queries" in {
-    val storageStub = new PointsStorageStub(
-      metricNames = Seq("metric"),
-      attributeNames = Seq("type"),
-      attributeValues = Seq("foo", "bar", "junk")
-    )
+    val storageStub = new PointsStorageStub()
     val fooPoint = messagePoint(
       metricName = "metric",
       timestamp = 0,
@@ -205,11 +180,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
   }
 
   it should "perform multiple attribute value queries (All filter)" in {
-    val storageStub = new PointsStorageStub(
-      metricNames = Seq("metric"),
-      attributeNames = Seq("type", "attr"),
-      attributeValues = Seq("foo", "bar")
-    )
+    val storageStub = new PointsStorageStub()
     val fooPoint = messagePoint(
       metricName = "metric",
       timestamp = 0,
