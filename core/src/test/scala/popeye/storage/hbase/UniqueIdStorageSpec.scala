@@ -8,6 +8,7 @@ import org.scalatest.{Matchers, FlatSpec}
 import popeye.test.MockitoStubs
 import popeye.storage.hbase.HBaseStorage._
 import org.scalatest.OptionValues._
+import popeye.test.PopeyeTestUtils.bytesKey
 
 /**
  * @author Andrey Stepachev
@@ -92,6 +93,20 @@ class UniqueIdStorageSpec extends FlatSpec with Matchers with MockitoStubs {
     }
     storage.getSuggestions(MetricKind, defaultNamespace, "aa", 10) should equal(Seq("aaa", "aab"))
     storage.getSuggestions(MetricKind, defaultNamespace, "aab", 10) should equal(Seq("aab"))
+  }
+
+  it should "be aware of namespaces" in {
+    val storage = createStorage(hTablePool)
+    import HBaseStorage.MetricKind
+    val names = Seq(
+      ("aaa", bytesKey(0), MetricKind),
+      ("aab", bytesKey(1), MetricKind)
+    )
+    for ((name, namespace, kind) <- names) {
+      storage.registerName(QualifiedName(kind, namespace, name))
+    }
+    storage.getSuggestions(MetricKind, bytesKey(0), "aa", 10) should equal(Seq("aaa"))
+    storage.getSuggestions(MetricKind, bytesKey(0), "aab", 10) should equal(Seq())
   }
 
   it should "filter kinds" in {

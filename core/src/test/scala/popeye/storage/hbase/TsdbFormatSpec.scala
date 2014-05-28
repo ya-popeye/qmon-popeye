@@ -369,8 +369,6 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     }
   }
 
-  def bytesKey(bytes: Byte*) = new BytesKey(Array[Byte](bytes: _*))
-
   def deterministicRandom: Random = {
     new Random(0)
   }

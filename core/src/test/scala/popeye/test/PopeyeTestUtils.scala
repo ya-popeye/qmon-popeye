@@ -8,7 +8,7 @@ import popeye.proto.Message
 import scala.collection.JavaConversions.iterableAsScalaIterable
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
-import popeye.pipeline.PointsSource
+import popeye.storage.hbase.BytesKey
 
 /**
  * @author Andrey Stepachev
@@ -56,6 +56,8 @@ object PopeyeTestUtils {
       value = Left(rnd.nextLong())
     )
   }
+
+  def bytesKey(bytes: Byte*) = new BytesKey(Array[Byte](bytes: _*))
 
   def createPoint(metric: String = "metric",
                   timestamp: Long = 0,
