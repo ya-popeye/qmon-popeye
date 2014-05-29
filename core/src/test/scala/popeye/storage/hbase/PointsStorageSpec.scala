@@ -48,7 +48,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
       .addAllAttributes(attributes)
       .setIntValue(0)
       .build()
-    Await.ready(storageStub.storage.writePoints(PackedPoints(Seq(point))), 5 seconds)
+    Await.ready(storageStub.storage.writeMessagePoints(point), 5 seconds)
     val points = storageStub.hTable.getScanner(HBaseStorage.PointsFamily).map(_.raw).flatMap {
       kv =>
         kv.map(storageStub.storage.keyValueToPoint)

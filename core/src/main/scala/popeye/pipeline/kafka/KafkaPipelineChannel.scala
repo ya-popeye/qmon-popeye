@@ -23,7 +23,7 @@ class KafkaPipelineChannel(val config: KafkaPipelineChannelConfig,
       producer = Some(startProducer())
     new PipelineChannelWriter {
       def write(promise: Option[Promise[Long]], points: PackedPoints): Unit = {
-        KafkaPointsProducer.produce(producer.get, promise, points)
+        KafkaPointsProducer.producePacked(producer.get, promise, points)
       }
     }
   }
@@ -33,7 +33,7 @@ class KafkaPipelineChannel(val config: KafkaPipelineChannelConfig,
       prefix = "kafka",
       config = config.popeyeProducerConfig,
       idGenerator = context.idGenerator,
-      kafkaClient = new KafkaPointsSinkFactory(config.producerConfig),
+      kafkaClient = new KafkaPointsClientFactory(config.producerConfig),
       metricRegistry = context.metrics,
       akkaDispatcher = Some(config.producerDispatcher)
     ).withRouter(FromConfig())

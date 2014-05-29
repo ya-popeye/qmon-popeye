@@ -20,6 +20,7 @@ import popeye.pipeline.sinks.{BulkloadSinkStarter, BulkloadSinkFactory}
 import akka.dispatch.ExecutionContexts
 import java.util.concurrent.Executors
 import com.google.common.util.concurrent.ThreadFactoryBuilder
+import popeye.proto.Message.Point
 
 object PipelineCommand {
 
@@ -53,8 +54,15 @@ object PipelineCommand {
       "blackhole" -> new BlackHolePipelineSinkFactory(actorSystem, ectx),
       "fail" -> new PipelineSinkFactory {
         def startSink(sinkName: String, config: Config): PointsSink = new PointsSink {
-          def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] =
+          override def sendPoints(batchId: Long, points: Point*): Future[Long] = {
             Future.failed(new RuntimeException("fail sink"))
+          }
+
+          override def sendPacked(batchId: Long, buffers: PackedPoints*): Future[Long] = {
+            Future.failed(new RuntimeException("fail sink"))
+          }
+
+          override def close(): Unit = {}
         }
       }
     )                                            

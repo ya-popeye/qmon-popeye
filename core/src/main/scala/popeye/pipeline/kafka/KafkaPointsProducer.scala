@@ -8,7 +8,7 @@ import com.typesafe.config.Config
 import kafka.producer._
 import kafka.utils.VerifiableProperties
 import popeye.pipeline._
-import popeye.proto.PackedPoints
+import popeye.proto.{Message, PackedPoints}
 import popeye.{IdGenerator, ConfigUtil}
 import scala.concurrent.{ExecutionContext, Future, Promise}
 
@@ -73,8 +73,12 @@ object KafkaPointsProducer {
 
   type ProducerFactory = (ProducerConfig) => Producer[Int, Array[Byte]]
 
-  def produce(producer: ActorRef, promise: Option[Promise[Long]], points: PackedPoints) = {
-    producer ! DispatcherProtocol.Pending(promise)(Seq(points))
+  def producePacked(producer: ActorRef, promise: Option[Promise[Long]], points: PackedPoints*) = {
+    producer ! DispatcherProtocol.Pending(promise)(points)
+  }
+
+  def producePoints(producer: ActorRef, promise: Option[Promise[Long]], points: Message.Point*) = {
+    producer ! DispatcherProtocol.Pending(promise)(PackedPoints(points))
   }
 
   def producerConfig(kafkaConfig: Config): ProducerConfig = {

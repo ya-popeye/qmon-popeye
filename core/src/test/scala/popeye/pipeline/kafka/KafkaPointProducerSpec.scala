@@ -57,7 +57,7 @@ class KafkaPointProducerSpec extends AkkaTestKitSpec("tsdb-writer") with Mockito
         def newSender(topic: String): PointsSink = producer
       }, metricRegistry))
     val p = Promise[Long]()
-    KafkaPointsProducer.produce(actor, Some(p), PackedPoints(makeBatch()))
+    KafkaPointsProducer.producePoints(actor, Some(p), makeBatch() :_*)
     val done = Await.result(p.future, timeout.duration)
     actor.underlyingActor.metrics.batchCompleteMeter.count should be(1)
     system.shutdown()

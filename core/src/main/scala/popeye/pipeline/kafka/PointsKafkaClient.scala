@@ -6,7 +6,7 @@ import popeye.proto.PackedPoints
 import popeye.pipeline.{PointsSinkFactory, PointsSink}
 import scala.concurrent.Future
 
-class KafkaPointsSink(topic: String, producerConfig: ProducerConfig) extends PointsSink {
+class PointsKafkaClient(topic: String, producerConfig: ProducerConfig) extends PointsSink {
   val producer = new Producer[Long, Array[Byte]](producerConfig)
 
   def sendPoints(batchId: Long, points: Point*): Future[Long] = {
@@ -27,8 +27,8 @@ class KafkaPointsSink(topic: String, producerConfig: ProducerConfig) extends Poi
 
 }
 
-class KafkaPointsSinkFactory(producerConfig: ProducerConfig)
+class KafkaPointsClientFactory(producerConfig: ProducerConfig)
   extends PointsSinkFactory {
 
-  def newSender(topic: String): PointsSink = new KafkaPointsSink(topic, producerConfig)
+  def newSender(topic: String): PointsSink = new PointsKafkaClient(topic, producerConfig)
 }
