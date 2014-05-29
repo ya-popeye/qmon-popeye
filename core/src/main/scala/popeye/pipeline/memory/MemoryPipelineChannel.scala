@@ -1,26 +1,21 @@
 package popeye.pipeline.memory
 
-import akka.actor.{ActorRef, ActorSystem}
-import com.codahale.metrics.MetricRegistry
-import com.typesafe.config.Config
-import popeye.{Logging, IdGenerator}
+import popeye.Logging
 import popeye.pipeline._
 import popeye.proto.PackedPoints
 import scala.concurrent.{Future, Promise}
+import com.typesafe.config.Config
 
-class MemoryPipelineChannel(val config: Config,
-                            val actorSystem: ActorSystem,
-                            val metrics: MetricRegistry,
-                            val idGenerator: IdGenerator)
+class MemoryPipelineChannel(val context: PipelineContext)
   extends PipelineChannel with Logging {
 
   val readers: AtomicList[PointsSink] = new AtomicList[PointsSink]
 
   def newWriter(): PipelineChannelWriter = new PipelineChannelWriter {
     def write(promise: Option[Promise[Long]], points: PackedPoints): Unit = {
-      import actorSystem.dispatcher
+      import context.actorSystem.dispatcher
 
-      val batchId = idGenerator.nextId()
+      val batchId = context.idGenerator.nextId()
       debug(s"$batchId: writing points")
 
       val allReaders: Future[Long] = Future.sequence(readers.map { r=>
@@ -38,3 +33,19 @@ class MemoryPipelineChannel(val config: Config,
     readers.add(mainSink)
   }
 }
+
+object MemoryPipelineChannel {
+  def apply(config: Config, context: PipelineContext): MemoryPipelineChannel = {
+    new MemoryPipelineChannel(context)
+  }
+  def factory(): PipelineChannelFactory = {
+    new PipelineChannelFactory {
+      override def make(config: Config, context: PipelineContext): PipelineChannel = {
+        MemoryPipelineChannel(config, context)
+      }
+    }
+  }
+
+}
+
+
