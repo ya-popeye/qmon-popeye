@@ -55,7 +55,14 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val allQualifiedNames = sampleIdMap.keys.toSet
     val names: Seq[QualifiedName] = tsdbFormat.getAllQualifiedNames(samplePoint)
     names.toSet should equal(allQualifiedNames)
-    names.distinct should equal(names)
+  }
+
+  it should "choose namespace by base time" in {
+    val tsdbFormat = createTsdbFormatWithRangeIds((3600, 4000, bytesKey(0, 0)), (4000, 5000, bytesKey(0, 1)))
+    val point = createPoint(metric = "test", timestamp = 4000, attributes = Seq())
+    val allQualifiedNames = Set(QualifiedName(MetricKind, bytesKey(0, 0), "test"))
+    val names: Seq[QualifiedName] = tsdbFormat.getAllQualifiedNames(point)
+    names.toSet should equal(allQualifiedNames)
   }
 
   it should "create KeyValue rows" in {

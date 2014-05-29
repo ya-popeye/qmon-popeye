@@ -366,7 +366,8 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping) extends Logging {
   }
 
   private def getRangeId(point: Message.Point): BytesKey = {
-    val id = timeRangeIdMapping.getRangeId(point.getTimestamp.toInt)
+    val baseTime = getBaseTime(point.getTimestamp.toInt)
+    val id = timeRangeIdMapping.getRangeId(baseTime)
     require(
       id.length == UniqueIdNamespaceWidth,
       f"TsdbFormat depends on namespace width: ${id.length} not equal to ${UniqueIdNamespaceWidth}"
