@@ -39,7 +39,7 @@ object KafkaPointsConsumerConfig {
     val brokerList = config.getString("broker.list")
     val batchSize = config.getInt("batch-size")
     val maxParallelSenders = config.getInt("max-parallel-senders")
-    val consumerProperties = ConfigUtil.mergeProperties(config, "consumer.config")
+    val consumerProperties = ConfigUtil.mergeProperties(config, "config")
     consumerProperties.setProperty("zookeeper.connect", zkQuorum)
     consumerProperties.setProperty("metadata.broker.list", brokerList)
     consumerProperties.setProperty("consumer.timeout.ms", tick.toMillis.toString)

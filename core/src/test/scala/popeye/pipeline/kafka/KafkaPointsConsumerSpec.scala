@@ -55,6 +55,8 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
     | max-lag = 60s
     | max-parallel-senders = $maxParallelSenders
     | tick = ${tick}ms
+    | zk.quorum = "localhost:2181"
+    | broker.list = "localhost:9092"
       """.stripMargin)
     .withFallback(ConfigFactory.parseResources("reference.conf")
     .getConfig("common.popeye.pipeline.kafka.consumer"))
