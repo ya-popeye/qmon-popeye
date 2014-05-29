@@ -1,9 +1,12 @@
 package popeye.proto
 
 import com.google.protobuf.{CodedInputStream, CodedOutputStream}
-import java.io.OutputStream
 import popeye.proto.Message.Point
 import scala.collection.mutable.ArrayBuffer
+
+final class BatchOfPoints(
+                           val batchId: Long,
+                           val packedPoints: PackedPoints)
 
 /**
  * @author Andrey Stepachev

@@ -7,17 +7,18 @@ import com.typesafe.config.{ConfigFactory, Config}
 import java.util.Random
 import org.scalatest.matchers.ShouldMatchers
 import org.scalatest.mock.MockitoSugar
-import popeye.pipeline.{PointsSource, PointsSink, AtomicList}
+import popeye.pipeline.{PointsSink, PointsSource, AtomicList}
 import popeye.test.{PopeyeTestUtils, MockitoStubs}
 import PopeyeTestUtils._
 import popeye.proto.{Message, PackedPoints}
 import popeye.pipeline.test.AkkaTestKitSpec
-import scala.concurrent.{ExecutionContext, Promise, Await, Future}
+import scala.concurrent.{ExecutionContext, Promise, Await}
 import scala.concurrent.duration._
 import popeye.pipeline.kafka.KafkaPointsConsumer.DropStrategy
-import popeye.proto.Message.Point
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.Executors
+import scala.concurrent.Future
+import popeye.proto.Message.Point
 
 
 /**
@@ -183,34 +184,38 @@ class MyListener(failBatches: Set[Long], parallelism: Int = 1)(callback: (MyList
   val droppedPoints = new AtomicList[PackedPoints]
   implicit val exct = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(parallelism))
 
-  def sinkPipe: PointsSink = new PointsSink {
-    def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] = {
-      batchIds.find(failBatches.contains) match {
-        case Some(x) =>
+  def sinkPipe: PointsSink = new BatchCounter(sinkedBatches, sinkedPoints)
+
+  def dropPipe: PointsSink = new BatchCounter(droppedBatches, droppedPoints, checkFail = false)
+
+  class BatchCounter(val batches: AtomicList[Long], val points: AtomicList[PackedPoints],
+                     checkFail: Boolean = true) extends PointsSink {
+    override def sendPoints(batchId: Long, points: Point*): Future[Long] = {
+      registerBatch(batchId, PackedPoints(points))
+    }
+
+    override def sendPacked(batchId: Long, buffers: PackedPoints*): Future[Long] = {
+      registerBatch(batchId, buffers: _*)
+    }
+
+    def registerBatch(batchId: Long, buffers: PackedPoints*): Future[Long] = {
+      failBatches.find(_ == batchId) match {
+        case Some(x) if checkFail =>
           Future.failed(new IllegalArgumentException("Expected exception"))
         case None =>
-          batchIds.foreach {
-            sinkedBatches.add
+          var count = 0l;
+          batches.add(batchId)
+          for (buf <- buffers) {
+            points.add(buf)
+            count += buf.pointsCount
           }
-          sinkedPoints.add(points)
           Future {
             callback.apply(MyListener.this)
-            batchIds.length
+            count
           }
       }
     }
-  }
 
-  def dropPipe: PointsSink = new PointsSink {
-    def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] = {
-      batchIds.foreach {
-        droppedBatches.add
-      }
-      droppedPoints.add(points)
-      Future {
-        callback.apply(MyListener.this)
-        batchIds.length
-      }
-    }
+    override def close() = {}
   }
 }

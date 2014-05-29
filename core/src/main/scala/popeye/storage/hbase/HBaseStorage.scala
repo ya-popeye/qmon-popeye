@@ -5,7 +5,7 @@ import java.util
 import org.apache.hadoop.hbase.KeyValue
 import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.util.Bytes
-import popeye.proto.{PackedPoints, Message}
+import popeye.proto.{Message, PackedPoints}
 import popeye.{Instrumented, Logging}
 import scala.collection.JavaConversions._
 import scala.concurrent.duration._
@@ -14,13 +14,13 @@ import com.typesafe.config.Config
 import akka.actor.{ActorRef, Props, ActorSystem}
 import java.util.concurrent.TimeUnit
 import popeye.util.hbase.{HBaseUtils, HBaseConfigured}
-import popeye.pipeline.PointsSink
 import java.nio.charset.Charset
 import org.apache.hadoop.hbase.filter.{RegexStringComparator, CompareFilter, RowFilter}
 import java.nio.ByteBuffer
 import HBaseStorage._
 import scala.collection.immutable.SortedMap
 import popeye.util.hbase.HBaseUtils.ChunkedResults
+import popeye.pipeline.PointsSink
 
 object HBaseStorage {
   final val Encoding = Charset.forName("UTF-8")
@@ -233,9 +233,16 @@ object HBaseStorage {
 }
 
 class HBasePointsSink(storage: HBaseStorage)(implicit eCtx: ExecutionContext) extends PointsSink {
-  def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] = {
-    storage.writePoints(points)(eCtx)
+
+  override def sendPoints(batchId: Long, points: Message.Point*): Future[Long] = {
+    storage.writePoints(points :_*)(eCtx)
   }
+
+  override def sendPacked(batchId: Long, buffers: PackedPoints*): Future[Long] = {
+    storage.writePoints(buffers :_*)(eCtx)
+  }
+
+  override def close(): Unit = {}
 }
 
 
@@ -465,17 +472,26 @@ class HBaseStorage(tableName: String,
   def ping(): Unit = {
     Await.result(metricNames.resolveIdByName("_.ping", create = true)(resolveTimeout), resolveTimeout)
   }
+
+  def writePoints(packed: PackedPoints*)(implicit eCtx: ExecutionContext): Future[Long] = {
+    writePoints(Left(packed))
+  }
+
+  def writePoints(points: Message.Point*)(implicit eCtx: ExecutionContext): Future[Long] = {
+    writePoints(Right(points))
+  }
+
   /**
    * Write points, returned future is awaitable, but can be already completed
-   * @param points what to write
+   * @param data what to write
    * @return number of written points
    */
-  def writePoints(points: PackedPoints)(implicit eCtx: ExecutionContext): Future[Long] = {
+  def writePoints(data: Either[Seq[PackedPoints], Seq[Message.Point]])(implicit eCtx: ExecutionContext): Future[Long] = {
 
     val ctx = metrics.writeTime.timerContext()
       // resolve identifiers
       // unresolved will be delayed for future expansion
-    convertToKeyValues(points).flatMap {
+    convertToKeyValues(data).flatMap {
       case (partiallyConvertedPoints, keyValues) =>
         // write resolved points
         val writeComplete = if (!keyValues.isEmpty) Future[Int] {
@@ -507,7 +523,7 @@ class HBaseStorage(tableName: String,
     } else Future.successful[Int](0)
   }
 
-  private def convertToKeyValues(points: PackedPoints)
+  private def convertToKeyValues(data: Either[Seq[PackedPoints], Seq[Message.Point]])
                                 (implicit eCtx: ExecutionContext)
   : Future[(PartiallyConvertedPoints, Seq[KeyValue])] = Future {
     val idCache: QualifiedName => Option[BytesKey] = {
@@ -515,7 +531,7 @@ class HBaseStorage(tableName: String,
       case QualifiedName(AttrNameKind, name) => attributeNames.findIdByName(name)
       case QualifiedName(AttrValueKind, name) => attributeValues.findIdByName(name)
     }
-    val result@(partiallyConvertedPoints, keyValues) = tsdbFormat.convertToKeyValues(points, idCache)
+    val result@(partiallyConvertedPoints, keyValues) = tsdbFormat.convertToKeyValues(data, idCache)
     metrics.resolvedPointsMeter.mark(keyValues.size)
     metrics.delayedPointsMeter.mark(partiallyConvertedPoints.points.size)
     result

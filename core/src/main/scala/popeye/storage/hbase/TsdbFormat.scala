@@ -1,6 +1,6 @@
 package popeye.storage.hbase
 
-import popeye.proto.Message
+import popeye.proto.{PackedPoints, Message}
 import popeye.storage.hbase.HBaseStorage.{QualifiedName, MetricKind, AttrNameKind, AttrValueKind}
 import org.apache.hadoop.hbase.KeyValue
 import org.apache.hadoop.hbase.util.Bytes
@@ -44,14 +44,14 @@ class TsdbFormat extends Logging {
 
   import TsdbFormat._
 
-  def convertToKeyValues(points: Iterable[Message.Point],
+  def convertToKeyValues(data: Either[Seq[PackedPoints], Seq[Message.Point]],
                          idCache: QualifiedName => Option[BytesKey]
                           ): (PartiallyConvertedPoints, Seq[KeyValue]) = {
     val resolvedNames = mutable.HashMap[QualifiedName, BytesKey]()
     val unresolvedNames = mutable.HashSet[QualifiedName]()
     val unconvertedPoints = mutable.ArrayBuffer[Message.Point]()
     val convertedPoints = mutable.ArrayBuffer[KeyValue]()
-    for (point <- points) {
+    def process(point: Message.Point) = {
       val names = getAllQualifiedNames(point)
       val nameAndIds = names.map(name => (name, idCache(name)))
       val cacheMisses = nameAndIds.collect {case (name, None) => name}
@@ -63,6 +63,18 @@ class TsdbFormat extends Logging {
         unresolvedNames ++= cacheMisses
         unconvertedPoints += point
       }
+    }
+    data match {
+      case Left(packs) =>
+        for(pack <- packs) {
+          for (point <- pack) {
+            process(point)
+          }
+        }
+      case Right(points) =>
+        for (point <- points) {
+          process(point)
+        }
     }
     require(unresolvedNames.isEmpty == unconvertedPoints.isEmpty)
     if(unresolvedNames.isEmpty) require(resolvedNames.isEmpty)

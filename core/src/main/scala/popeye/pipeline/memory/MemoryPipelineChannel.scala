@@ -19,7 +19,7 @@ class MemoryPipelineChannel(val context: PipelineContext)
       debug(s"$batchId: writing points")
 
       val allReaders: Future[Long] = Future.sequence(readers.map { r=>
-        r.send(Seq(batchId), points)
+        r.sendPacked(batchId, points)
       }).collect{ case x =>
         debug(s"$batchId write complete: ${x.mkString}}")
         batchId
