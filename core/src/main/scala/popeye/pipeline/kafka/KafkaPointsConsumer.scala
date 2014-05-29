@@ -207,7 +207,11 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
   }
 
   private def deliverPoints(points: PointBatches) {
-    val batchId = idGenerator.nextId()
+    val batchId = if (points.batchIds.size == 1) {
+      points.batchIds.head
+    } else {
+      idGenerator.nextId()
+    }
     val sendFuture = sendPoints(batchId, points.pointsToSend)
     val dropFuture = dropPoints(batchId, points.batchIds, points.pointsToDrop)
     (sendFuture zip dropFuture) onComplete {

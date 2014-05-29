@@ -78,7 +78,7 @@ object KafkaPointsProducer {
   }
 
   def producePoints(producer: ActorRef, promise: Option[Promise[Long]], points: Message.Point*) = {
-    producer ! DispatcherProtocol.Pending(promise)(PackedPoints(points))
+    producer ! DispatcherProtocol.Pending(promise)(Seq(PackedPoints(points)))
   }
 
   def producerConfig(kafkaConfig: Config): ProducerConfig = {

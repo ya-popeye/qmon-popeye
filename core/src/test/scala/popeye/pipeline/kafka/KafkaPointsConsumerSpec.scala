@@ -19,13 +19,14 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.Executors
 import scala.concurrent.Future
 import popeye.proto.Message.Point
-import popeye.IdGenerator
+import popeye.{Logging, IdGenerator}
 
 
 /**
  * @author Andrey Stepachev
  */
-class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") with MockitoSugar with MockitoStubs with ShouldMatchers {
+class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer")
+with MockitoSugar with MockitoStubs with ShouldMatchers with Logging {
 
   implicit val sch = system.scheduler
   implicit val ectx = system.dispatcher
@@ -40,6 +41,7 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
     val testCompletion = Promise[Unit]()
     val listener = new MyListener(failBatches = Set(2))({
       me =>
+        debug(s"sinkedBatches=${me.sinkedBatches}, droppedBatches=${me.droppedBatches}")
       if (me.sinkedBatches.size == 1 && me.droppedBatches.size == 1) testCompletion.success(())
     })
     val noOpStrategy: PackedPoints => SendAndDrop = points => SendAndDrop(pointsToSend = points)
@@ -183,7 +185,7 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
   }
 }
 
-class MyListener(failBatches: Set[Long], parallelism: Int = 1)(callback: (MyListener) => Unit) {
+class MyListener(failBatches: Set[Long], parallelism: Int = 1)(callback: (MyListener) => Unit) extends Logging{
   val sinkedBatches = new AtomicList[Long]
   val droppedBatches = new AtomicList[Long]
   val sinkedPoints = new AtomicList[PackedPoints]
@@ -204,21 +206,32 @@ class MyListener(failBatches: Set[Long], parallelism: Int = 1)(callback: (MyList
       registerBatch(batchId, buffers: _*)
     }
 
+    def deliver(batchId: Long, buffers: PackedPoints*): Future[Long] = {
+      debug(s"Accounted batch $batchId")
+      var count = 0l;
+      batches.add(batchId)
+      for (buf <- buffers) {
+        points.add(buf)
+        count += buf.pointsCount
+      }
+      Future {
+        callback.apply(MyListener.this)
+        count
+      }
+    }
+
     def registerBatch(batchId: Long, buffers: PackedPoints*): Future[Long] = {
-      failBatches.find(_ == batchId) match {
-        case Some(x) if checkFail =>
-          Future.failed(new IllegalArgumentException("Expected exception"))
-        case None =>
-          var count = 0l;
-          batches.add(batchId)
-          for (buf <- buffers) {
-            points.add(buf)
-            count += buf.pointsCount
-          }
-          Future {
-            callback.apply(MyListener.this)
-            count
-          }
+      debug(s"Got batch $batchId")
+      if (checkFail) {
+        failBatches.find(_ == batchId) match {
+          case Some(x) =>
+            debug(s"Failed batch $batchId")
+            Future.failed(new IllegalArgumentException("Expected exception"))
+          case None =>
+            deliver(batchId, buffers :_*)
+        }
+      } else {
+        deliver(batchId, buffers :_*)
       }
     }
 

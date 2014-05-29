@@ -13,12 +13,12 @@ class EmbeddedZookeeper(maxConnections: Int = 100) {
   val logDir = Files.createTempDirectory(tmpPath, "popeye-zookeeper-test-log").toFile
   val zookeeper = new ZooKeeperServer(snapshotDir, logDir, 3000)
   val factory = new NIOServerCnxnFactory()
-  factory.configure(new InetSocketAddress("localhost", /*any port*/ 0), maxConnections)
+  factory.configure(new InetSocketAddress("127.0.0.1", /*any port*/ 0), maxConnections)
   factory.startup(zookeeper)
 
   val clients = new AtomicList[ZkClient]
 
-  def connectString = f"localhost:${factory.getLocalPort}"
+  def connectString = f"127.0.0.1:${factory.getLocalPort}"
 
   val zkConnectionTimeout = 6000
   val zkSessionTimeout = 6000
