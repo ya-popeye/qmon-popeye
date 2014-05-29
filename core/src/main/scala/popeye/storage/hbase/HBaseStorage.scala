@@ -465,6 +465,7 @@ class HBaseStorageConfig(val config: Config,
   val resolveTimeout = new FiniteDuration(config.getMilliseconds(s"uids.resolve-timeout"), TimeUnit.MILLISECONDS)
   val readChunkSize = config.getInt("read-chunk-size")
   val uidsConfig = config.getConfig("uids")
+  val idRotationPeriodInHours = config.getInt("uids.rotation-period-hours")
 }
 
 /**
@@ -492,7 +493,7 @@ class HBaseStorageConfigured(config: HBaseStorageConfig) {
       config.resolveTimeout)
     val attrValues = makeUniqueIdCache(config.uidsConfig, HBaseStorage.AttrValueKind, uniqIdResolved, uniqueIdStorage,
       config.resolveTimeout)
-    val tsdbFormat = new TsdbFormat(new FixedTimeRangeID(new BytesKey(Array[Byte](0, 0))))
+    val tsdbFormat = new TsdbFormat(new PeriodicTimeRangeId(config.idRotationPeriodInHours))
     new HBaseStorage(
       config.pointsTableName,
       hbase.hTablePool,
