@@ -1,0 +1,44 @@
+#!/usr/bin/make -f
+# debian/rules that uses debhelper.
+
+# Uncomment this to turn on verbose mode.
+export DH_VERBOSE=1
+
+APP_GROUP=@GROUP@
+APP_NAME=popeye_2.10
+APP_VERSION=@VERSION@
+
+.PHONY: binary build clean
+
+install:
+	dh_testdir
+	dh_install --list-missing -X.svn -X.git
+	dh_installdirs
+	dh_link
+	dh_installlogrotate
+	dh_installdocs
+	dh_installchangelogs
+	dh_installinit --no-start --no-restart-on-upgrade
+	dh_compress
+	dh_fixperms
+	dh_makeshlibs
+	dh_installdeb
+	dh_shlibdeps
+	dh_gencontrol
+	dh_md5sums
+	dh_builddeb
+
+
+binary: install
+
+
+build:
+	dh_testdir
+	wget -O 'qmon-popeye.zip' "http://maven.yandex.net/nexus/service/local/artifact/maven/redirect?r=yandex_common&g=${APP_GROUP}&a=${APP_NAME}&v=${APP_VERSION}&p=zip"
+	unzip qmon-popeye.zip
+	chmod +x popeye-*/bin/*
+
+clean:
+	dh_testdir
+	rm -rf popeye-*
+	dh_clean

@@ -1,0 +1,2 @@
+var/log/qmon-popeye-@APP_NAME@ usr/share/qmon-popeye-@APP_NAME@/log
+etc/qmon-popeye-@APP_NAME@/conf usr/share/qmon-popeye-@APP_NAME@/config

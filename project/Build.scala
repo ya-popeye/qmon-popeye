@@ -1,8 +1,11 @@
 import sbt._
 import sbt.ExclusionRule
 import sbt.Keys._
-import QMonDistPlugin._
+import com.twitter.sbt._
 import net.virtualvoid.sbt.graph.{Plugin => Dep}
+import de.johoop.findbugs4sbt.FindBugs._
+import de.johoop.findbugs4sbt.ReportType
+import de.johoop.findbugs4sbt.Effort
 import scala._
 
 object Util {
@@ -18,10 +21,10 @@ object Compiler {
   val defaultSettings = Seq(
     scalacOptions in Compile ++= Seq("-target:jvm-1.6", "-deprecation", "-unchecked", "-feature",
       "-language:postfixOps", "-language:implicitConversions"),
-    javacOptions in Compile ++= Seq("-source", "1.6", "-target", "1.6"),
+    javacOptions in Compile ++= Seq("-source", "1.7", "-target", "1.7"),
     resolvers ++= Seq(
       "spray repo" at "http://repo.spray.io",
-      "cdh5.0.0" at "https://repository.cloudera.com/artifactory/cloudera-repos",
+      "cdh" at "https://repository.cloudera.com/artifactory/cloudera-repos",
       Resolver.url("octo47 repo", url("http://octo47.github.com/repo/"))({
         val patt = Resolver.mavenStylePatterns.artifactPatterns
         new Patterns(patt, patt, true)
@@ -43,6 +46,27 @@ object Tests {
   )
 }
 
+object FindBugs {
+  val settings = findbugsSettings ++ Seq(
+    findbugsReportType := ReportType.Xml,
+    findbugsIncludeFilters := Some(
+      <FindBugsFilter>
+        <Match>
+          <Package name="~popeye.*"/>
+        </Match>
+      </FindBugsFilter>
+    ),
+    findbugsExcludeFilters := Some(
+      <FindBugsFilter>
+        <Match>
+          <Package name="~.*"/>
+        </Match>
+      </FindBugsFilter>
+    ),
+    findbugsEffort := Effort.Low
+  )
+}
+
 object Version {
   val Scala = "2.10.3"
   val Akka = "2.2.3"
@@ -59,8 +83,8 @@ object Version {
   val FakeHBase = "0.1.2"
   val Scopt = "3.1.0"
   val Avro = "1.7.5"
-  val Hadoop = "2.3.0-cdh5.0.0"
-  val HBase = "0.96.1.1-cdh5.0.0"
+  val Hadoop = "2.3.0-cdh5.0.1"
+  val HBase = "0.96.1.1-cdh5.0.1"
 
   val slf4jDependencies: Seq[ModuleID] = Seq(
     "org.slf4j" % "jcl-over-slf4j" % Version.Slf4j,
@@ -109,28 +133,60 @@ object HBase {
   )
 }
 
+object Publish {
+
+  lazy val settings = Seq(
+//    credentials += Credentials(Path.userHome / ".ivy2" / "credentials.txt"),
+    publishTo <<= version { v=>
+      if (v.endsWith("SNAPSHOT"))
+        Some("yandex_common_snapshots"
+          at "http://maven.yandex.net/nexus/content/repositories/yandex_common_snapshots/")
+      else
+        Some("yandex_common_releases"
+          at "http://maven.yandex.net/nexus/content/repositories/yandex_common_releases/")
+    }
+  )
+}
+
 object PopeyeBuild extends Build {
 
   import Util._
+  import PackageDist._
+
+  val zipArtifact =
+    SettingKey[Artifact]("package-dist-zip-artifact", "Artifact definition for built dist");
+
+  lazy val releaseSettings = Seq(
+    Defaults.defaultSettings,
+    DefaultRepos.newSettings,
+    ArtifactoryPublisher.newSettings,
+    GitProject.gitSettings,
+    VersionManagement.newSettings,
+    ReleaseManagement.newSettings
+  ).foldLeft(Seq[Setting[_]]()) { (s, a)  => s ++ a} ++ Seq(
+    exportJars := false
+  )
+
+  lazy val distSettings = Seq(
+    BuildProperties.newSettings,
+    PublishSourcesAndJavadocs.newSettings,
+    PackageDist.newSettings
+  ).foldLeft(Seq[Setting[_]]()) { (s, a) => s ++ a}
 
   lazy val defaultSettings =
     Defaults.defaultSettings ++
       Compiler.defaultSettings ++
       Tests.defaultSettings ++
-      Dep.graphSettings
-
-  lazy val popeye = Project(
-    id = "popeye",
-    base = file("."),
-    settings = defaultSettings
-  ).aggregate(popeyeCore, popeyeBench)
+      Dep.graphSettings ++
+      Publish.settings ++
+      PopeyeBuild.releaseSettings ++
+      Seq(exportJars := true)
 
   lazy val popeyeCore = Project(
     id = "popeye-core",
     base = file("core"),
-    settings = defaultSettings ++ QMonDistPlugin.distSettings ++ HBase.settings)
+    settings = defaultSettings ++ FindBugs.settings ++ HBase.settings)
     .settings(
-    distMainClass := "popeye.Main",
     libraryDependencies ++= Version.slf4jDependencies ++ Seq(
       "org.apache.hadoop" % "hadoop-common" % Version.Hadoop,
       "org.apache.hadoop" % "hadoop-client" % Version.Hadoop,
@@ -157,9 +213,8 @@ object PopeyeBuild extends Build {
   lazy val popeyeBench = Project(
     id = "popeye-bench",
     base = file("bench"),
-    settings = defaultSettings ++ QMonDistPlugin.distSettings).dependsOn(popeyeCore)
+    settings = defaultSettings).dependsOn(popeyeCore)
     .settings(
-    distMainClass := "popeye.transport.bench.GenerateMain",
     libraryDependencies ++= Version.slf4jDependencies ++ Seq(
       "nl.grons" %% "metrics-scala" % Version.Metrics,
       "com.typesafe.akka" %% "akka-actor" % Version.Akka,
@@ -171,5 +226,27 @@ object PopeyeBuild extends Build {
     ).excluding(Version.commonExclusions :_*)
      .excluding(Version.slf4jExclusions :_*)
   )
+
+  lazy val popeye = Project(
+    id = "popeye",
+    base = file("."),
+    settings = defaultSettings ++ distSettings ++ Seq(
+      packageDistScriptsOutputPath <<= packageDistDir { b => Some(b / "bin")},
+      packageDistScriptsPath <<= baseDirectory { b => Some(b / "src/main/bin")},
+      packageDistConfigPath <<= baseDirectory { b => Some(b / "src/main/etc")},
+
+      // make sbt-package-dist happy
+      packageDistCopyJars <<= packageDistDir map { pd =>
+        val file = pd / ".build"
+        IO.touch(file, setModified = true)
+        Set[File](file)
+      },
+      cleanFiles <+= baseDirectory { b => b / "dist"},
+      zipArtifact <<= name(Artifact(_, "zip", "zip"))
+    ) ++ addArtifact(zipArtifact, packageDist).settings)
+    .aggregate(popeyeCore, popeyeBench)
+    .dependsOn(popeyeCore, popeyeBench)
+
+
 }
 

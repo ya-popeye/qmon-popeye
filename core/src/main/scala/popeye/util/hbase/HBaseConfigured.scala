@@ -10,16 +10,25 @@ import org.apache.zookeeper.ZooKeeper
 import java.util.StringTokenizer
 import scala.collection.mutable.ArrayBuffer
 import spray.http.Uri.IPv6Host
+import popeye.Logging
 
 
 /**
  * @author Andrey Stepachev
  */
-class HBaseConfigured(config: Config, zkQuorum: String, poolSize: Int) extends Closeable {
+class HBaseConfigured(config: Config, zkQuorum: String, poolSize: Int) extends Closeable with Logging {
   val hbaseConfiguration = makeHBaseConfig(config)
-  hbaseConfiguration.set("hbase.zookeeper.quorum", zkQuorum)
-  updateZkPort(zkQuorum)
+  log.info("using quorum: {}", zkQuorum)
+  private val parts: Array[String] = zkQuorum.split("/")
+  hbaseConfiguration.set(HConstants.ZOOKEEPER_QUORUM, parts(0))
+  updateZkPort(parts(0))
+  if (parts.length > 1) {
+    val zkChroot: String = "/" + parts(1)
+    hbaseConfiguration.set(HConstants.ZOOKEEPER_ZNODE_PARENT, zkChroot)
+    log.info("hbase chrooted to: {}", zkChroot)
+  }
   val hTablePool = new HTablePool(hbaseConfiguration, poolSize)
+
 
   def close(): Unit = {
     hTablePool.close()
@@ -50,6 +59,7 @@ class HBaseConfigured(config: Config, zkQuorum: String, poolSize: Int) extends C
       case 1 =>
         // ok, we got nondefault port
         hbaseConfiguration.setInt(HConstants.ZOOKEEPER_CLIENT_PORT, uniq.head.toInt)
+        log.info("hbase zk port: {}", uniq.head.toInt)
       case _ =>
         throw new IllegalStateException("Found more then one zk port, " +
           "hbase doesn't understand different zk ports for different servers: " + uniq.toString())

@@ -24,3 +24,5 @@ debian/qmon-popeye-pump/
 debian/qmon-popeye-slicer/
 debian/qmon-popeye-query/
 debian/*.debhelper
+
+bin/dist

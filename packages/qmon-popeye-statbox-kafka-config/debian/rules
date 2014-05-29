@@ -1,0 +1,23 @@
+#! /usr/bin/make -f
+
+.PHONY: binary build clean
+
+BINDIR = /usr/bin
+LIBDIR = /usr/share/perl5
+
+install:
+	dh_install -X.svn -X.git
+	dh_installlogrotate
+	dh_installcron
+	dh_installdeb
+	dh_gencontrol
+	dh_md5sums
+	dh_builddeb
+
+binary: install
+
+build: clean
+	dh_testdir
+
+clean:
+	dh_clean
