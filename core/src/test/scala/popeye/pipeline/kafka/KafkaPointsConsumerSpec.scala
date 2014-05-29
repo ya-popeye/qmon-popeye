@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.Executors
 import scala.concurrent.Future
 import popeye.proto.Message.Point
+import popeye.IdGenerator
 
 
 /**
@@ -29,6 +30,7 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
   implicit val sch = system.scheduler
   implicit val ectx = system.dispatcher
   implicit val rnd = new Random(1234)
+  val idGenerator = new IdGenerator(1)
 
   "Dispatcher" should "buffer" in {
     val config = mkConfig()//.withValue("tick", ConfigValueFactory.fromAnyRef(10000))
@@ -54,7 +56,8 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
     | max-parallel-senders = $maxParallelSenders
     | tick = ${tick}ms
       """.stripMargin)
-    .withFallback(ConfigFactory.parseResources("reference.conf").getConfig("common.popeye.pipeline.kafka.consumer"))
+    .withFallback(ConfigFactory.parseResources("reference.conf")
+    .getConfig("common.popeye.pipeline.kafka.consumer"))
     .resolve()
 
   it should "use drop strategy" in {
@@ -145,7 +148,7 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
                      source: PointsSource,
                      listener: MyListener,
                      dropStrategy: DropStrategy) = {
-    val dconf = new KafkaPointsConsumerConfig("test", "test", config)
+    val dconf = KafkaPointsConsumerConfig("test", "test", config)
     val metrics = new KafkaPointsConsumerMetrics("test", new MetricRegistry)
     TestActorRef(Props.apply(new KafkaPointsConsumer(
       dconf,
@@ -154,6 +157,7 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
       listener.sinkPipe,
       listener.dropPipe,
       dropStrategy,
+      idGenerator,
       ectx
     )))
   }

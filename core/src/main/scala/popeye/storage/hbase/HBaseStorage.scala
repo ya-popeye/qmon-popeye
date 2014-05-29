@@ -235,11 +235,11 @@ object HBaseStorage {
 class HBasePointsSink(storage: HBaseStorage)(implicit eCtx: ExecutionContext) extends PointsSink {
 
   override def sendPoints(batchId: Long, points: Message.Point*): Future[Long] = {
-    storage.writePoints(points :_*)(eCtx)
+    storage.writeMessagePoints(points :_*)(eCtx)
   }
 
   override def sendPacked(batchId: Long, buffers: PackedPoints*): Future[Long] = {
-    storage.writePoints(buffers :_*)(eCtx)
+    storage.writePackedPoints(buffers :_*)(eCtx)
   }
 
   override def close(): Unit = {}
@@ -473,11 +473,11 @@ class HBaseStorage(tableName: String,
     Await.result(metricNames.resolveIdByName("_.ping", create = true)(resolveTimeout), resolveTimeout)
   }
 
-  def writePoints(packed: PackedPoints*)(implicit eCtx: ExecutionContext): Future[Long] = {
+  def writePackedPoints(packed: PackedPoints*)(implicit eCtx: ExecutionContext): Future[Long] = {
     writePoints(Left(packed))
   }
 
-  def writePoints(points: Message.Point*)(implicit eCtx: ExecutionContext): Future[Long] = {
+  def writeMessagePoints(points: Message.Point*)(implicit eCtx: ExecutionContext): Future[Long] = {
     writePoints(Right(points))
   }
 

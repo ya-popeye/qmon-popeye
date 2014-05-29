@@ -1,22 +1,18 @@
 package popeye.pipeline.kafka
 
-import akka.actor.{ActorRef, ActorSystem}
-import com.codahale.metrics.MetricRegistry
+import akka.actor.ActorRef
 import com.typesafe.config.Config
-import popeye.IdGenerator
 import popeye.pipeline._
 import popeye.proto.PackedPoints
-import scala.concurrent.{ExecutionContext, Promise}
+import scala.concurrent.Promise
 import akka.routing.FromConfig
+
 
 /**
  * @author Andrey Stepachev
  */
-class KafkaPipelineChannel(val config: Config,
-                           val actorSystem: ActorSystem,
-                           executionContext: ExecutionContext,
-                           val metrics: MetricRegistry,
-                           val idGenerator: IdGenerator)
+class KafkaPipelineChannel(val config: KafkaPipelineChannelConfig,
+                           val context: PipelineContext)
   extends PipelineChannel {
 
   var producer: Option[ActorRef] = None
@@ -33,40 +29,51 @@ class KafkaPipelineChannel(val config: Config,
   }
 
   private def startProducer(): ActorRef = {
-    val producerConfig = KafkaPointsProducer.producerConfig(config)
-    val kafkaClient = new PopeyeKafkaProducerFactoryImpl(producerConfig)
-    val dispatcher = config.getString("producer.dispatcher")
-    val pointsProducerConfig = new KafkaPointsProducerConfig(config)
     val props = KafkaPointsProducer.props(
-      "kafka",
-      pointsProducerConfig,
-      idGenerator,
-      kafkaClient,
-      metrics,
-      Some(dispatcher)
+      prefix = "kafka",
+      config = config.popeyeProducerConfig,
+      idGenerator = context.idGenerator,
+      kafkaClient = new KafkaPointsSinkFactory(config.producerConfig),
+      metricRegistry = context.metrics,
+      akkaDispatcher = Some(config.producerDispatcher)
     ).withRouter(FromConfig())
-    actorSystem.actorOf(props, "kafka-producer")
+    context.actorSystem.actorOf(props, "kafka-producer")
   }
 
   def startReader(group: String, mainSink: PointsSink, dropSink: PointsSink): Unit = {
-    val nWorkers = config.getInt("consumer.workers")
-    val topic = config.getString("topic")
+    val nWorkers = config.consumerWorkers
+    val topic = config.topic
     for (i <- 0 until nWorkers) {
       consumerId += 1
       val name = s"kafka-consumer-$group-$topic-$consumerId"
       val props = KafkaPointsConsumer.props(
-        name,
-        topic,
-        group,
-        config,
-        metrics,
+        config.consumerConfigFactory(group),
+        context.metrics,
         mainSink,
         dropSink,
         packedPoints => SendAndDrop(pointsToSend = packedPoints),
-        executionContext
-      ).withDispatcher(config.getString("consumer.dispatcher"))
+        context.idGenerator,
+        context.ectx
+      ).withDispatcher(config.consumerDispatcher)
 
       actorSystem.actorOf(props, name)
     }
   }
 }
+
+object KafkaPipelineChannel {
+
+  def apply(config: Config, context: PipelineContext): KafkaPipelineChannel = {
+    val c = KafkaPipelineChannelConfig(config)
+    new KafkaPipelineChannel(c, context)
+  }
+
+  def factory(): PipelineChannelFactory = {
+    new PipelineChannelFactory {
+      override def make(config: Config, context: PipelineContext): PipelineChannel = {
+        KafkaPipelineChannel(config, context)
+      }
+    }
+  }
+}
+

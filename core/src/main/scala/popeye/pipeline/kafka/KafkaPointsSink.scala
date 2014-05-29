@@ -9,12 +9,12 @@ import scala.concurrent.Future
 class KafkaPointsSink(topic: String, producerConfig: ProducerConfig) extends PointsSink {
   val producer = new Producer[Long, Array[Byte]](producerConfig)
 
-  def sendPoints(batchId: Long, points: Point*): Unit = {
+  def sendPoints(batchId: Long, points: Point*): Future[Long] = {
     producer.send(new KeyedMessage(topic, batchId, PackedPoints(points).copyOfBuffer))
     Future.successful(points.length)
   }
 
-  def sendPacked(batchId: Long, buffers: PackedPoints*): Unit = {
+  def sendPacked(batchId: Long, buffers: PackedPoints*): Future[Long] = {
     producer.send(buffers.map { b =>
       new KeyedMessage(topic, batchId, b.copyOfBuffer)
     }: _*)

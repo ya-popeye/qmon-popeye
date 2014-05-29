@@ -66,7 +66,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
     )
 
     val events = mkEvents(msgs = 4)
-    val future = storageStub.storage.writePoints(PackedPoints(events))
+    val future = storageStub.storage.writeMessagePoints(events :_*)
     val written = Await.result(future, 5 seconds)
     written should be(events.size)
     val points = storageStub.hTable.getScanner(HBaseStorage.PointsFamily).map(_.raw).flatMap {
@@ -77,7 +77,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
     events.toList.sortBy(_.getTimestamp) should equal(points.toList.sortBy(_.getTimestamp))
 
     // write once more, we shold write using short path
-    val future2 = storageStub.storage.writePoints(PackedPoints(events))
+    val future2 = storageStub.storage.writeMessagePoints(events :_*)
     val written2 = Await.result(future2, 5 seconds)
     written2 should be(events.size)
 
@@ -94,7 +94,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
 
     val events = mkEvents(msgs = 4000)
     for (i <- 1 to 600) {
-      val future = storageStub.storage.writePoints(PackedPoints(events))
+      val future = storageStub.storage.writeMessagePoints(events :_*)
       val written = Await.result(future, 5 seconds)
       written should be(events.size)
     }
@@ -241,7 +241,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
   }
 
   def writePoints(state: PointsStorageStub, points: Seq[Message.Point]) {
-    Await.result(state.storage.writePoints(PackedPoints(points)), 5 seconds)
+    Await.result(state.storage.writeMessagePoints(points :_*), 5 seconds)
   }
 
   def messagePoint(metricName: String, timestamp: Long, value: Long, attrs: Seq[(String, String)]) = {

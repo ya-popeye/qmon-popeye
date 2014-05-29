@@ -70,7 +70,7 @@ class OpenTSDBHttpApiServerTest extends Logging {
       }
     addMetric(metricName)
     addTags(tags)
-    val writeFuture = storageStub.storage.writePoints(PackedPoints(points))
+    val writeFuture = storageStub.storage.writeMessagePoints(points :_*)
     Await.ready(writeFuture, 5 seconds)
   }
 
