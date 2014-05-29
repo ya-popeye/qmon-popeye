@@ -2,8 +2,9 @@ package popeye.query
 
 import popeye.storage.hbase.HBaseStorage.{PointsStream, ValueNameFilterCondition}
 import scala.concurrent.{ExecutionContext, Future}
-import popeye.storage.hbase.{UniqueIdStorage, HBaseStorage}
+import popeye.storage.hbase.{TsdbFormat, TimeRangeIdMapping, UniqueIdStorage, HBaseStorage}
 import popeye.query.PointsStorage.NameType.NameType
+import scala.collection.immutable.SortedSet
 
 trait PointsStorage {
   def getPoints(metric: String,
@@ -17,6 +18,7 @@ object PointsStorage {
 
 
   val MaxNumberOfSuggestions: Int = 10
+  val MaxIdRotations = 3
 
   object NameType extends Enumeration {
     type NameType = Value
@@ -25,6 +27,7 @@ object PointsStorage {
 
   def createPointsStorage(pointsStorage: HBaseStorage,
                           uniqueIdStorage: UniqueIdStorage,
+                          timeRangeIdMapping: TimeRangeIdMapping,
                           executionContext: ExecutionContext) = new PointsStorage {
 
     def getPoints(metric: String,
@@ -40,7 +43,16 @@ object PointsStorage {
         case AttributeNameType => HBaseStorage.AttrNameKind
         case AttributeValueType => HBaseStorage.AttrValueKind
       }
-      uniqueIdStorage.getSuggestions(kind, ???, namePrefix, MaxNumberOfSuggestions)
+      val currentTime = System.currentTimeMillis()
+      val currentBaseTime = currentTime - currentTime % TsdbFormat.MAX_TIMESPAN
+      val namespaces = timeRangeIdMapping.backwardIterator(currentBaseTime.toInt)
+        .take(MaxIdRotations)
+        .map(_.id)
+        .toSeq
+      val suggestions = namespaces.flatMap {
+        ns => uniqueIdStorage.getSuggestions(kind, ns, namePrefix, MaxNumberOfSuggestions)
+      }
+      SortedSet(suggestions: _*).toSeq
     }
   }
 }
