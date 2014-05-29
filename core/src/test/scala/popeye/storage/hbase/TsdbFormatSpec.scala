@@ -146,17 +146,22 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     ex.getMessage should (include("row") and include("size"))
   }
 
-  def createTsdbFormat(timeRangeIdMapping: Int => Seq[Int] = _ => defaultNamespace.bytes.map(_.toInt)): TsdbFormat = {
-    new TsdbFormat(new TimeRangeIdMapping {
-      override def getRangeId(timestampInSeconds: Int): BytesKey =
-        new BytesKey(timeRangeIdMapping(timestampInSeconds).map(_.toByte).toArray)
-    })
+  def createTsdbFormat(): TsdbFormat = {
+    new TsdbFormat(new FixedTimeRangeID(defaultNamespace))
+  }
+
+  def createTsdbFormatWithRangeIds(ranges: (Int, Int, BytesKey)*): TsdbFormat = {
+    new TsdbFormat(createTimeRangeIdMapping(ranges: _*))
+  }
+
+  def createTsdbFormatWithPeriodicRangeIds(period: Int): TsdbFormat = {
+    new TsdbFormat(new PeriodicTimeRangeId(period))
   }
 
   behavior of "TsdbFormat.getScanNames"
 
   it should "get qualified names" in {
-    val tsdbFormat = createTsdbFormat(time => Seq(0, time / 3600))
+    val tsdbFormat = createTsdbFormatWithRangeIds((0, 3600, bytesKey(0, 0)), (3600, 7200, bytesKey(0, 1)))
     val attrs = Map(
       "single" -> SingleValueName("name"),
       "mult" -> MultipleValueNames(Seq("mult1", "mult2")),
@@ -182,12 +187,8 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
   }
 
   it should "choose namespace by base time" in {
-    val tsdbFormat = createTsdbFormat {
-      timestamp =>
-        timestamp should equal(3600)
-        Seq(0, 1)
-    }
-    tsdbFormat.getScanNames("", (4000, 4001), Map())
+    val tsdbFormat = createTsdbFormatWithRangeIds((3600, 4000, bytesKey(0, 0)), (4000, 5000, bytesKey(0, 1)))
+    tsdbFormat.getScanNames("", (4000, 4001), Map()) should contain(QualifiedName(MetricKind, bytesKey(0, 0), ""))
   }
 
   behavior of "TsdbFormat.getScans"
@@ -202,7 +203,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
   }
 
   it should "create 2 scans" in {
-    val tsdbFormat = createTsdbFormat(time => Seq(0, time / 3600))
+    val tsdbFormat = createTsdbFormatWithRangeIds((0, 3600, bytesKey(0, 0)), (3600, 7200, bytesKey(0, 1)))
     val idMap = sampleNamesToIdMapping.flatMap {
       case ((kind, name), id) => Seq(
         QualifiedName(kind, bytesKey(0, 0), name) -> id,
@@ -216,7 +217,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
   }
 
   it should "not create scan if not enough ids resolved" in {
-    val tsdbFormat = createTsdbFormat(time => Seq(0, time / 3600))
+    val tsdbFormat = createTsdbFormatWithRangeIds((0, 3600, bytesKey(0, 0)), (3600, 7200, bytesKey(0, 1)))
     val idMap = sampleNamesToIdMapping.flatMap {
       case ((kind, name), id) => Seq(
         QualifiedName(kind, bytesKey(0, 0), name) -> id

@@ -127,8 +127,6 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping) extends Logging {
 
   import TsdbFormat._
 
-  private case class TimeRangeAndNamespace(start: Int, stop: Int, namespace: BytesKey)
-
   def convertToKeyValues(points: Iterable[Message.Point],
                          idCache: QualifiedName => Option[BytesKey]
                           ): (PartiallyConvertedPoints, Seq[KeyValue]) = {
@@ -257,7 +255,7 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping) extends Logging {
                    timeRange: (Int, Int),
                    attributes: Map[String, ValueNameFilterCondition]): Set[QualifiedName] = {
     val (startTime, stopTime) = timeRange
-    val namespaces = getTimeRanges(startTime, stopTime).map(_.namespace)
+    val namespaces = getTimeRanges(startTime, stopTime).map(_.id)
     namespaces.flatMap {
       namespace =>
         val metricName = QualifiedName(MetricKind, namespace, metric)
@@ -289,7 +287,7 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping) extends Logging {
     val ranges = getTimeRanges(startTime, stopTime)
     ranges.map {
       range =>
-       val namespace = range.namespace
+        val namespace = range.id
         for {
          metricId <- idMap.get(QualifiedName(MetricKind, namespace, metric))
          attrIdFilters <- covertAttrNamesToIds(namespace, attributes, idMap)
@@ -352,17 +350,19 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping) extends Logging {
   }
 
   private def getTimeRanges(startTime: Int, stopTime: Int) = {
-    val baseStartTime = startTime - (startTime % MAX_TIMESPAN)
-    val baseTimes = (baseStartTime until stopTime).by(MAX_TIMESPAN)
-    val startTimes = startTime +: baseTimes.tail
-    val stopTimes = baseTimes.tail :+ stopTime
-    val timeRangeIds = baseTimes.map(timeRangeIdMapping.getRangeId)
-    (startTimes, stopTimes, timeRangeIds).zipped.groupBy(_._3).toSeq.map {
-      case (id, tuples) =>
-        val start = tuples.head._1
-        val stop = tuples.last._2
-        TimeRangeAndNamespace(start, stop, id)
-    }.sortBy(_.start)
+    val baseStartTime = getBaseTime(startTime)
+    val baseStopTime = getBaseTime(stopTime)
+    val ranges = timeRangeIdMapping.backwardIterator(baseStopTime)
+      .takeWhile(_.stop > baseStartTime)
+      .toVector
+      .reverse
+    if (ranges.size == 1) {
+      Vector(ranges.head.copy(start = startTime, stop = stopTime))
+    } else {
+      ranges
+        .updated(0, ranges(0).copy(start = startTime))
+        .updated(ranges.length - 1, ranges(ranges.length - 1).copy(stop = stopTime))
+    }
   }
 
   private def getRangeId(point: Message.Point): BytesKey = {
@@ -372,6 +372,10 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping) extends Logging {
       f"TsdbFormat depends on namespace width: ${id.length} not equal to ${UniqueIdNamespaceWidth}"
     )
     id
+  }
+
+  private def getBaseTime(timestamp: Int) = {
+    timestamp - (timestamp % MAX_TIMESPAN)
   }
 
   private def parseValue(qualifierBytes: Array[Byte], valueBytes: Array[Byte]): (Short, Either[Long, Float]) = {

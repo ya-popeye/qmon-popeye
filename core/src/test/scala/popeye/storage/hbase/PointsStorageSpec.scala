@@ -1,6 +1,5 @@
 package popeye.storage.hbase
 
-import org.scalatest.matchers.{MustMatchers, ShouldMatchers}
 import popeye.test.PopeyeTestUtils._
 import popeye.test.{PopeyeTestUtils, MockitoStubs}
 import popeye.pipeline.test.AkkaTestKitSpec
@@ -9,10 +8,7 @@ import scala.concurrent.{Future, Await}
 import scala.concurrent.duration._
 import popeye.proto.{PackedPoints, Message}
 import nl.grons.metrics.scala.Meter
-import java.util.regex.Pattern
 import scala.util.Random
-import java.nio.CharBuffer
-import popeye.storage.hbase.HBaseStorage.ValueIdFilterCondition._
 import popeye.storage.hbase.HBaseStorage._
 import scala.collection.immutable.SortedMap
 
@@ -103,11 +99,8 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
   }
 
   it should "perform time range queries" in {
-    val timeRangeIdMapping = new TimeRangeIdMapping {
-      override def getRangeId( timestampInSeconds: Int ): BytesKey = {
-        new BytesKey(Array[Byte](0, (timestampInSeconds / 3600).toByte))
-      }
-    }
+    val timeRanges = (0 to 3).map(id => (id * 3600, (id + 1) * 3600, bytesKey(0, id.toByte)))
+    val timeRangeIdMapping = createTimeRangeIdMapping(timeRanges: _*)
     val storageStub = new PointsStorageStub(timeRangeIdMapping)
     val points = (0 to 6).map {
       i =>

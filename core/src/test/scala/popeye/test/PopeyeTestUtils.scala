@@ -8,7 +8,7 @@ import popeye.proto.Message
 import scala.collection.JavaConversions.iterableAsScalaIterable
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
-import popeye.storage.hbase.BytesKey
+import popeye.storage.hbase.{TimeRangeAndId, TimeRangeIdMapping, TsdbFormat, BytesKey}
 
 /**
  * @author Andrey Stepachev
@@ -58,6 +58,16 @@ object PopeyeTestUtils {
   }
 
   def bytesKey(bytes: Byte*) = new BytesKey(Array[Byte](bytes: _*))
+
+  def createTimeRangeIdMapping(ranges: (Int, Int, BytesKey)*) = new TimeRangeIdMapping {
+    val sortedRanges = ranges.sortBy(r => -r._1)
+
+    override def backwardIterator(timestampInSeconds: Int): Iterator[TimeRangeAndId] = {
+      sortedRanges.iterator
+        .map { case (start, stop, id) => TimeRangeAndId(start, stop, id) }
+        .dropWhile(range => !range.contains(timestampInSeconds))
+    }
+  }
 
   def createPoint(metric: String = "metric",
                   timestamp: Long = 0,
