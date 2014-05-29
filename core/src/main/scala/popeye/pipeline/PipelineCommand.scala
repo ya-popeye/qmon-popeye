@@ -6,16 +6,16 @@ import com.typesafe.config.Config
 import popeye.pipeline.kafka.{KafkaSinkStarter, KafkaSinkFactory, KafkaPipelineChannel}
 import popeye.storage.hbase.HBasePipelineSinkFactory
 import scala.concurrent.Future
-import popeye._
 import scala.concurrent.ExecutionContext
 import popeye.storage.BlackHolePipelineSinkFactory
 import popeye.pipeline.server.telnet.TelnetPointsServer
+import popeye.pipeline.kafka.KafkaPipelineChannel
 import popeye.pipeline.memory.MemoryPipelineChannel
 import popeye.proto.PackedPoints
 import popeye.monitoring.MonitoringHttpServer
 import java.net.InetSocketAddress
 import scopt.OptionParser
-import popeye.MainConfig
+import popeye.{ConfigUtil, PopeyeCommand, IdGenerator, MainConfig}
 import popeye.pipeline.sinks.{BulkloadSinkStarter, BulkloadSinkFactory}
 import akka.dispatch.ExecutionContexts
 import java.util.concurrent.Executors
@@ -23,9 +23,21 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder
 
 object PipelineCommand {
 
+  val channels: Map[String, PipelineChannelFactory] = Map(
+    "kafka" -> KafkaPipelineChannel.factory(),
+    "memory" -> MemoryPipelineChannel.factory()
+  )
+
   val sources: Map[String, PipelineSourceFactory] = Map(
     "telnet" -> TelnetPointsServer.sourceFactory())
 
+  def channelsForType(channelType: String): PipelineChannelFactory = {
+    channels.getOrElse(
+      channelType,
+      throw new IllegalArgumentException(f"No such channel type: $channelType, " +
+        f"available types: ${channels.keys}")
+    )
+  }
 
   def sinkFactories(ectx: ExecutionContext,
                     actorSystem: ActorSystem,
@@ -54,7 +66,8 @@ object PipelineCommand {
   def sourceForType(typeName: String): PipelineSourceFactory = {
     sources.getOrElse(
       typeName,
-      throw new IllegalArgumentException(f"No such source type: $typeName, available types: ${sources.keys}")
+      throw new IllegalArgumentException(f"No such source type: $typeName, " +
+        f"available types: ${sources.keys}")
     )
   }
 }
@@ -69,23 +82,19 @@ class PipelineCommand extends PopeyeCommand {
     val daemonThreadFatory = new ThreadFactoryBuilder().setDaemon(true).build()
     val ectx = ExecutionContexts.fromExecutorService(Executors.newCachedThreadPool(daemonThreadFatory))
     val pc = config.getConfig("popeye.pipeline")
-    val channelConfig = pc.getConfig("channel")
-    val storageConfig = config.getConfig("popeye.storages")
-    val idGenerator = new IdGenerator(config.getInt("generator.id"), config.getInt("generator.datacenter"))
-    val sinks = PipelineCommand.sinkFactories(ectx, actorSystem, storageConfig, metrics, idGenerator)
-    val channel = pc.getString("channel.type") match {
-      case "kafka" =>
-        new KafkaPipelineChannel(
-          channelConfig.getConfig("kafka"),
-          actorSystem, ectx, metrics, idGenerator)
-      case "memory" =>
-        new MemoryPipelineChannel(
-          channelConfig.getConfig("memory"),
-          actorSystem, metrics, idGenerator)
-      case x =>
-        throw new NoSuchElementException(s"Requested channel type not supported")
+    val idGenerator = new IdGenerator(
+      config.getInt("generator.id"),
+      config.getInt("generator.datacenter"))
+    val context = new PipelineContext(actorSystem, metrics, idGenerator, ectx)
 
-    }
+    val channelConfig = pc.getConfig("channel")
+    val channelType: String = pc.getString("channel.type")
+    val typeConfig: Config = channelConfig.getConfig(channelType)
+    val channel = PipelineCommand.channelsForType(channelType)
+      .make(typeConfig, context)
+
+    val storageConfig = config.getConfig("popeye.storages")
+    val sinks = PipelineCommand.sinkFactories(ectx, actorSystem, storageConfig, metrics, idGenerator)
     val readersConfig = ConfigUtil.asMap(pc.getConfig("channelReaders"))
 
     for ((readerName, readerConfig) <- readersConfig) {
@@ -107,5 +116,4 @@ class PipelineCommand extends PopeyeCommand {
     val address = new InetSocketAddress(host, port.toInt)
     MonitoringHttpServer.runServer(address, metrics, actorSystem)
   }
-
 }
