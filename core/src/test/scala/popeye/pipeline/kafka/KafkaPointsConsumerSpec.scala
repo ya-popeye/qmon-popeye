@@ -7,27 +7,31 @@ import com.typesafe.config.{ConfigFactory, Config}
 import java.util.Random
 import org.scalatest.matchers.ShouldMatchers
 import org.scalatest.mock.MockitoSugar
-import popeye.pipeline.{PointsSource, PointsSink, AtomicList}
+import popeye.pipeline.{PointsSink, PointsSource, AtomicList}
 import popeye.test.{PopeyeTestUtils, MockitoStubs}
 import PopeyeTestUtils._
 import popeye.proto.{Message, PackedPoints}
 import popeye.pipeline.test.AkkaTestKitSpec
-import scala.concurrent.{ExecutionContext, Promise, Await, Future}
+import scala.concurrent.{ExecutionContext, Promise, Await}
 import scala.concurrent.duration._
 import popeye.pipeline.kafka.KafkaPointsConsumer.DropStrategy
-import popeye.proto.Message.Point
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.Executors
+import scala.concurrent.Future
+import popeye.proto.Message.Point
+import popeye.{Logging, IdGenerator}
 
 
 /**
  * @author Andrey Stepachev
  */
-class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") with MockitoSugar with MockitoStubs with ShouldMatchers {
+class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer")
+with MockitoSugar with MockitoStubs with ShouldMatchers with Logging {
 
   implicit val sch = system.scheduler
   implicit val ectx = system.dispatcher
   implicit val rnd = new Random(1234)
+  val idGenerator = new IdGenerator(1)
 
   "Dispatcher" should "buffer" in {
     val config = mkConfig()//.withValue("tick", ConfigValueFactory.fromAnyRef(10000))
@@ -37,6 +41,7 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
     val testCompletion = Promise[Unit]()
     val listener = new MyListener(failBatches = Set(2))({
       me =>
+        debug(s"sinkedBatches=${me.sinkedBatches}, droppedBatches=${me.droppedBatches}")
       if (me.sinkedBatches.size == 1 && me.droppedBatches.size == 1) testCompletion.success(())
     })
     val noOpStrategy: PackedPoints => SendAndDrop = points => SendAndDrop(pointsToSend = points)
@@ -52,8 +57,11 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
     | max-lag = 60s
     | max-parallel-senders = $maxParallelSenders
     | tick = ${tick}ms
+    | zk.quorum = "localhost:2181"
+    | broker.list = "localhost:9092"
       """.stripMargin)
-    .withFallback(ConfigFactory.parseResources("reference.conf").getConfig("common.popeye.pipeline.kafka.consumer"))
+    .withFallback(ConfigFactory.parseResources("reference.conf")
+    .getConfig("common.popeye.pipeline.kafka.consumer"))
     .resolve()
 
   it should "use drop strategy" in {
@@ -144,7 +152,7 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
                      source: PointsSource,
                      listener: MyListener,
                      dropStrategy: DropStrategy) = {
-    val dconf = new KafkaPointsConsumerConfig("test", "test", config)
+    val dconf = KafkaPointsConsumerConfig("test", "test", config)
     val metrics = new KafkaPointsConsumerMetrics("test", new MetricRegistry)
     TestActorRef(Props.apply(new KafkaPointsConsumer(
       dconf,
@@ -153,6 +161,7 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
       listener.sinkPipe,
       listener.dropPipe,
       dropStrategy,
+      idGenerator,
       ectx
     )))
   }
@@ -176,41 +185,56 @@ class KafkaPointsConsumerSpec extends AkkaTestKitSpec("KafkaPointsConsumer") wit
   }
 }
 
-class MyListener(failBatches: Set[Long], parallelism: Int = 1)(callback: (MyListener) => Unit) {
+class MyListener(failBatches: Set[Long], parallelism: Int = 1)(callback: (MyListener) => Unit) extends Logging{
   val sinkedBatches = new AtomicList[Long]
   val droppedBatches = new AtomicList[Long]
   val sinkedPoints = new AtomicList[PackedPoints]
   val droppedPoints = new AtomicList[PackedPoints]
   implicit val exct = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(parallelism))
 
-  def sinkPipe: PointsSink = new PointsSink {
-    def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] = {
-      batchIds.find(failBatches.contains) match {
-        case Some(x) =>
-          Future.failed(new IllegalArgumentException("Expected exception"))
-        case None =>
-          batchIds.foreach {
-            sinkedBatches.add
-          }
-          sinkedPoints.add(points)
-          Future {
-            callback.apply(MyListener.this)
-            batchIds.length
-          }
-      }
-    }
-  }
+  def sinkPipe: PointsSink = new BatchCounter(sinkedBatches, sinkedPoints)
 
-  def dropPipe: PointsSink = new PointsSink {
-    def send(batchIds: Seq[Long], points: PackedPoints): Future[Long] = {
-      batchIds.foreach {
-        droppedBatches.add
+  def dropPipe: PointsSink = new BatchCounter(droppedBatches, droppedPoints, checkFail = false)
+
+  class BatchCounter(val batches: AtomicList[Long], val points: AtomicList[PackedPoints],
+                     checkFail: Boolean = true) extends PointsSink {
+    override def sendPoints(batchId: Long, points: Point*): Future[Long] = {
+      registerBatch(batchId, PackedPoints(points))
+    }
+
+    override def sendPacked(batchId: Long, buffers: PackedPoints*): Future[Long] = {
+      registerBatch(batchId, buffers: _*)
+    }
+
+    def deliver(batchId: Long, buffers: PackedPoints*): Future[Long] = {
+      debug(s"Accounted batch $batchId")
+      var count = 0l;
+      batches.add(batchId)
+      for (buf <- buffers) {
+        points.add(buf)
+        count += buf.pointsCount
       }
-      droppedPoints.add(points)
       Future {
         callback.apply(MyListener.this)
-        batchIds.length
+        count
       }
     }
+
+    def registerBatch(batchId: Long, buffers: PackedPoints*): Future[Long] = {
+      debug(s"Got batch $batchId")
+      if (checkFail) {
+        failBatches.find(_ == batchId) match {
+          case Some(x) =>
+            debug(s"Failed batch $batchId")
+            Future.failed(new IllegalArgumentException("Expected exception"))
+          case None =>
+            deliver(batchId, buffers :_*)
+        }
+      } else {
+        deliver(batchId, buffers :_*)
+      }
+    }
+
+    override def close() = {}
   }
 }

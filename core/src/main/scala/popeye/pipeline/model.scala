@@ -6,6 +6,11 @@ import com.typesafe.config.Config
 import popeye.IdGenerator
 import popeye.proto.PackedPoints
 
+sealed class PipelineContext(val actorSystem: ActorSystem,
+                             val metrics: MetricRegistry,
+                             val idGenerator: IdGenerator,
+                             val ectx: ExecutionContext)
+
 trait PipelineSourceFactory {
   def startSource(sinkName: String, channel: PipelineChannel, config: Config, ect:ExecutionContext): Unit
 }
@@ -15,15 +20,18 @@ trait PipelineSinkFactory {
 }
 
 trait PipelineChannelFactory {
-  def make(actorSystem: ActorSystem, metrics: MetricRegistry, ect:ExecutionContext): PipelineChannel
+  def make(config: Config, context: PipelineContext): PipelineChannel
 }
 
 trait PipelineChannel {
-  def actorSystem: ActorSystem
-  def metrics: MetricRegistry
-  def idGenerator: IdGenerator
+  def context(): PipelineContext
   def newWriter(): PipelineChannelWriter
   def startReader(group: String, mainSink: PointsSink, dropSink: PointsSink): Unit
+
+  def actorSystem = context().actorSystem
+  def metrics = context().metrics
+  def idGenerator = context().idGenerator
+  def ectx = context().ectx
 }
 
 trait PipelineChannelWriter {

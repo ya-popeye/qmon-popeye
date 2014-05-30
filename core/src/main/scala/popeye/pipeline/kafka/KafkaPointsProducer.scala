@@ -8,7 +8,7 @@ import com.typesafe.config.Config
 import kafka.producer._
 import kafka.utils.VerifiableProperties
 import popeye.pipeline._
-import popeye.proto.PackedPoints
+import popeye.proto.{Message, PackedPoints}
 import popeye.{IdGenerator, ConfigUtil}
 import scala.concurrent.{ExecutionContext, Future, Promise}
 
@@ -21,13 +21,13 @@ class KafkaPointsProducerConfig(config: Config)
 class KafkaProducerMetrics(prefix: String, metricsRegistry: MetricRegistry)
   extends PointsDispatcherMetrics(s"$prefix.producer", metricsRegistry)
 
-class KafkaPointsProducerWorker(kafkaClient: PopeyeKafkaProducerFactory,
+class KafkaPointsProducerWorker(kafkaClient: PointsSinkFactory,
                                 val batcher: KafkaPointsProducer)
   extends PointsDispatcherWorkerActor {
 
   type Batcher = KafkaPointsProducer
 
-  val producer = kafkaClient.newProducer(batcher.config.topic)
+  val producer = kafkaClient.newSender(batcher.config.topic)
 
   override val supervisorStrategy = OneForOneStrategy(loggingEnabled = true) {
     case _ => Restart
@@ -45,7 +45,7 @@ class KafkaPointsProducerWorker(kafkaClient: PopeyeKafkaProducerFactory,
 
 class KafkaPointsProducer(val config: KafkaPointsProducerConfig,
                           val idGenerator: IdGenerator,
-                          kafkaClient: PopeyeKafkaProducerFactory,
+                          kafkaClient: PointsSinkFactory,
                           val metrics: KafkaProducerMetrics,
                           akkaDispatcher: Option[String])
   extends PointsDispatcherActor {
@@ -62,7 +62,7 @@ class KafkaPointsProducer(val config: KafkaPointsProducerConfig,
   def spawnWorker(): ActorRef = {
     idx += 1
     val workerProps = Props.apply(new KafkaPointsProducerWorker(kafkaClient, this)).withDeploy(Deploy.local)
-    val propsWithDispatcher = akkaDispatcher.map(disp => workerProps.withDispatcher(disp)).getOrElse(workerProps)
+    val propsWithDispatcher = akkaDispatcher.fold(workerProps)(disp => workerProps.withDispatcher(disp))
     context.actorOf(
       propsWithDispatcher,
       "points-sender-" + idx)
@@ -73,8 +73,12 @@ object KafkaPointsProducer {
 
   type ProducerFactory = (ProducerConfig) => Producer[Int, Array[Byte]]
 
-  def produce(producer: ActorRef, promise: Option[Promise[Long]], points: PackedPoints) = {
-    producer ! DispatcherProtocol.Pending(promise)(Seq(points))
+  def producePacked(producer: ActorRef, promise: Option[Promise[Long]], points: PackedPoints*) = {
+    producer ! DispatcherProtocol.Pending(promise)(points)
+  }
+
+  def producePoints(producer: ActorRef, promise: Option[Promise[Long]], points: Message.Point*) = {
+    producer ! DispatcherProtocol.Pending(promise)(Seq(PackedPoints(points)))
   }
 
   def producerConfig(kafkaConfig: Config): ProducerConfig = {
@@ -86,7 +90,8 @@ object KafkaPointsProducer {
   }
 
   def props(prefix: String, config: KafkaPointsProducerConfig, idGenerator: IdGenerator,
-            kafkaClient: PopeyeKafkaProducerFactory, metricRegistry: MetricRegistry, akkaDispatcher: Option[String] = None) = {
+            kafkaClient: PointsSinkFactory, metricRegistry: MetricRegistry,
+            akkaDispatcher: Option[String] = None) = {
     val metrics = new KafkaProducerMetrics(prefix, metricRegistry)
     Props.apply(new KafkaPointsProducer(
       config,

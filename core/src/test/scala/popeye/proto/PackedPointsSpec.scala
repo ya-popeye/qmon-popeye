@@ -11,7 +11,6 @@ import java.io.ByteArrayOutputStream
  */
 class PackedPointsSpec extends FlatSpec with Matchers {
 
-
   behavior of "PackedPoints"
 
   it should "consume" in {

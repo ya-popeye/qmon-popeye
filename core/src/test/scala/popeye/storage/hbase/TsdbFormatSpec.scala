@@ -88,7 +88,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
 
   it should "convert point if all names are in cache" in {
     val tsdbFormat = createTsdbFormat()
-    val (partiallyConvertedPoints, keyValues) = tsdbFormat.convertToKeyValues(Seq(samplePoint), sampleIdMap.get)
+    val (partiallyConvertedPoints, keyValues) = tsdbFormat.convertToKeyValues(Right(Seq(samplePoint)), sampleIdMap.get)
     partiallyConvertedPoints.points.isEmpty should be(true)
     keyValues.size should equal(1)
     keyValues.head should equal(tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap))
@@ -100,7 +100,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val tsdbFormat = createTsdbFormat()
     val notInCache = sampleIdMap.keys.head
     val idCache = (name: QualifiedName) => (sampleIdMap - notInCache).get(name)
-    val (partiallyConvertedPoints, keyValues) = tsdbFormat.convertToKeyValues(Seq(samplePoint), idCache)
+    val (partiallyConvertedPoints, keyValues) = tsdbFormat.convertToKeyValues(Right(Seq(samplePoint)), idCache)
     partiallyConvertedPoints.points.isEmpty should be(false)
     keyValues.isEmpty should be(true)
     partiallyConvertedPoints.unresolvedNames should equal(Set(notInCache))
@@ -113,9 +113,9 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
   it should "parse row result" in {
     val tsdbFormat = createTsdbFormat()
     val timeAndValues: Seq[(Long, Either[Long, Float])] = Seq(
-      (100, Left(1l)),
-      (200, Right(1.0f)),
-      (300, Left(2l))
+      (100l, Left(1l)),
+      (200l, Right(1.0f)),
+      (300l, Left(2l))
     )
     val points = timeAndValues.map {
       case (time, value) =>

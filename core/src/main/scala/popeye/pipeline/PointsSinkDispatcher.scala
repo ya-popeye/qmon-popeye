@@ -30,11 +30,13 @@ class PointsSinkDispatcherActor( val config: PointsDispatcherConfig,
   }
 }
 
-class PointsSinkWorkerActor(val factory: PointsSinkFactory, val batcher: PointsSinkDispatcherActor) extends PointsDispatcherWorkerActor {
+class PointsSinkWorkerActor(val factory: PointsSinkFactory,
+                            val batcher: PointsSinkDispatcherActor)
+  extends PointsDispatcherWorkerActor {
 
   type Batcher = PointsSinkDispatcherActor
 
-  val sink = factory.newPointsSink()
+  val sink = factory.newSender()
 
   override def postStop(): Unit = {
     super.postStop()
@@ -42,7 +44,7 @@ class PointsSinkWorkerActor(val factory: PointsSinkFactory, val batcher: PointsS
 
   def processBatch(batchId: Long, pack: Seq[PackedPoints]): Unit = {
     pack.foreach { points =>
-      Await.result(sink.send(Seq(batchId), points), Duration.Undefined)
+      Await.result(sink.sendPacked(batchId, points), Duration.Undefined)
     }
   }
 }

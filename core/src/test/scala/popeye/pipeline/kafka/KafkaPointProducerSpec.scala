@@ -15,6 +15,7 @@ import popeye.proto.PackedPoints
 import popeye.pipeline.test.AkkaTestKitSpec
 import scala.concurrent.duration._
 import scala.concurrent.{Promise, Await}
+import popeye.pipeline.{PointsSinkFactory, PointsSink}
 
 /**
  * @author Andrey Stepachev
@@ -46,20 +47,17 @@ class KafkaPointProducerSpec extends AkkaTestKitSpec("tsdb-writer") with Mockito
       """.stripMargin)
       .withFallback(ConfigFactory.parseResources("reference.conf"))
       .resolve()
-    val producer = mock[PopeyeKafkaProducer]
-    val kafkaProducerConfig =
-      new KafkaPointsProducerConfig(config.withFallback(config.getConfig("common.popeye.pipeline.kafka")))
+    val producer = mock[PointsSink]
+    val producerConfig: Config =
+      config.withFallback(config.getConfig("common.popeye.pipeline.kafka"))
     val actor: TestActorRef[KafkaPointsProducer] = TestActorRef(
-      KafkaPointsProducer.props(
-        "kafka",
-        kafkaProducerConfig,
-        idGenerator,
-        new PopeyeKafkaProducerFactory {
-          def newProducer(topic: String): PopeyeKafkaProducer = producer
-        },
-        metricRegistry))
+      KafkaPointsProducer.props("kafka",
+        new KafkaPointsProducerConfig(producerConfig),
+        idGenerator, new PointsSinkFactory {
+        def newSender(topic: String): PointsSink = producer
+      }, metricRegistry))
     val p = Promise[Long]()
-    KafkaPointsProducer.produce(actor, Some(p), PackedPoints(makeBatch()))
+    KafkaPointsProducer.producePoints(actor, Some(p), makeBatch() :_*)
     val done = Await.result(p.future, timeout.duration)
     actor.underlyingActor.metrics.batchCompleteMeter.count should be(1)
     system.shutdown()

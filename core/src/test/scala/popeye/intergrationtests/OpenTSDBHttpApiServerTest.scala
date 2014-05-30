@@ -68,7 +68,9 @@ class OpenTSDBHttpApiServerTest extends Logging {
         val timestamp = currentTime - (numberOfPoints - i) * (timeIntervalInHours * 3600 / numberOfPoints)
         messagePoint(metricName, timestamp, value(i), tags)
       }
-    val writeFuture = storageStub.storage.writePoints(PackedPoints(points))
+    addMetric(metricName)
+    addTags(tags)
+    val writeFuture = storageStub.storage.writeMessagePoints(points :_*)
     Await.ready(writeFuture, 5 seconds)
   }
 
