@@ -7,6 +7,15 @@ import org.apache.hadoop.conf.Configuration
 object CreateTsdbTables {
 
   def createTables(hbaseConfiguration: Configuration, pointsTableName: String, uidsTableName: String) {
+    val namespace = {
+      val pointsTokens = pointsTableName.split(":")
+      require(pointsTokens.size == 2, f"namespace not specified or wrong format: $pointsTableName")
+      val uidsTokens = pointsTableName.split(":")
+      require(uidsTokens.size == 2, f"namespace not specified or wrong format: $pointsTableName")
+      require(pointsTokens(0) == uidsTokens(0), f"namespaces mismatch: $pointsTableName $uidsTableName")
+      pointsTokens(0)
+    }
+
     val tsdbTable = {
       val tsdbColumn = new HColumnDescriptor("t")
       val tableDescriptor = new HTableDescriptor(TableName.valueOf(pointsTableName))
@@ -26,7 +35,7 @@ object CreateTsdbTables {
     val hBaseAdmin = new HBaseAdmin(hbaseConfiguration)
     try {
       try {
-        hBaseAdmin.createNamespace(NamespaceDescriptor.create("popeye").build())
+        hBaseAdmin.createNamespace(NamespaceDescriptor.create(namespace).build())
       } catch {
         case e: NamespaceExistException => // do nothing
       }
