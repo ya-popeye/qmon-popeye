@@ -1,5 +1,5 @@
 organization in ThisBuild := "ru.yandex.qmon.popeye"
 
-version in ThisBuild := "1.0.0"
+version in ThisBuild := "1.0.0.0"
 
 scalaVersion in ThisBuild := Version.Scala
