@@ -232,13 +232,14 @@ class HBaseStorage(tableName: String,
       qName =>
         uniqueIdsMap(qName.kind)
           .resolveIdByName(qName.namespace, qName.name, create = false)(resolveTimeout)
-          .map(id => (qName, id))
+          .map(id => Some(qName, id))
+          .recover { case e: NoSuchElementException => None }
     }
     val futurePointsStream =
       for {
         scanNameIdPairs <- scanNameIdPairsFuture
       } yield {
-        val scanNameToIdMap = scanNameIdPairs.toMap
+        val scanNameToIdMap = scanNameIdPairs.collect { case Some(x) => x }.toMap
         val scans = tsdbFormat.getScans(metric, timeRange, attributes, scanNameToIdMap)
         val chunkedResults = getChunkedResults(tableName, readChunkSize, scans)
         val groupByAttributeNames =

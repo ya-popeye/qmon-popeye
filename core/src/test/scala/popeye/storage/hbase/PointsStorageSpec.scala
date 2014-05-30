@@ -123,6 +123,24 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
     series should (not contain Point(6000, 5))
   }
 
+  it should "not fail if id is not present in some of time ranges" in {
+    val timeRangeIdMapping = createTimeRangeIdMapping((0, 3600, bytesKey(0, 0)), (3600, 7200, bytesKey(0, 1)))
+    val storageStub = new PointsStorageStub(timeRangeIdMapping)
+    val point = messagePoint(
+      metricName = "my.metric1",
+      timestamp = 0,
+      value = 0,
+      attrs = Seq()
+    )
+    writePoints(storageStub, Seq(point))
+    val future = storageStub.storage.getPoints("my.metric1", (0, 4000), Map())
+    val groupsMap = toGroupsMap(future)
+    val group = groupsMap(SortedMap())
+    group.size should equal(1)
+    val series = group(SortedMap())
+    series should contain(Point(0, 0))
+  }
+
   it should "perform multiple attributes queries" in {
     val storageStub = new PointsStorageStub()
     val point = messagePoint(

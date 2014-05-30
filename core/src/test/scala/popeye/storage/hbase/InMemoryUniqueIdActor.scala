@@ -5,8 +5,16 @@ import popeye.Logging
 import akka.actor.SupervisorStrategy.Restart
 import popeye.storage.hbase.HBaseStorage.{QualifiedName, QualifiedId, ResolvedName}
 import scala.collection.mutable
-import popeye.storage.hbase.UniqueIdProtocol.{ResolutionFailed, Resolved, FindName, FindId}
+import popeye.storage.hbase.UniqueIdProtocol._
 import org.apache.hadoop.hbase.util.Bytes
+import popeye.storage.hbase.UniqueIdProtocol.FindName
+import popeye.storage.hbase.UniqueIdProtocol.FindId
+import popeye.storage.hbase.HBaseStorage.QualifiedId
+import popeye.storage.hbase.HBaseStorage.QualifiedName
+import popeye.storage.hbase.UniqueIdProtocol.Resolved
+import scala.Some
+import popeye.storage.hbase.UniqueIdProtocol.ResolutionFailed
+import akka.actor.OneForOneStrategy
 
 class InMemoryUniqueIdActor extends Actor with Logging {
 
@@ -23,7 +31,7 @@ class InMemoryUniqueIdActor extends Actor with Logging {
     case r: FindId =>
       idToName.get(r.qid) match {
         case Some(name) => sender ! Resolved(ResolvedName(r.qid, name))
-        case None => sender ! ResolutionFailed(new IllegalArgumentException(s"Unknown id for request $r"))
+        case None => sender ! NotFoundId(r.qid)
       }
 
     case r: FindName =>
@@ -37,7 +45,7 @@ class InMemoryUniqueIdActor extends Actor with Logging {
             val id = array.slice(1, 4)
             sender ! Resolved(ResolvedName(r.qname, new BytesKey(id)))
           } else {
-            sender ! ResolutionFailed(new IllegalArgumentException(s"Unknown name for request $r"))
+            sender ! NotFoundName(r.qname)
           }
       }
   }
