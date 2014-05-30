@@ -43,8 +43,8 @@ object PointsStorage {
         case AttributeNameType => HBaseStorage.AttrNameKind
         case AttributeValueType => HBaseStorage.AttrValueKind
       }
-      val currentTime = System.currentTimeMillis()
-      val currentBaseTime = currentTime - currentTime % TsdbFormat.MAX_TIMESPAN
+      val currentTimeInSeconds = System.currentTimeMillis() / 1000
+      val currentBaseTime = currentTimeInSeconds - currentTimeInSeconds % TsdbFormat.MAX_TIMESPAN
       val namespaces = timeRangeIdMapping.backwardIterator(currentBaseTime.toInt)
         .take(MaxIdRotations)
         .map(_.id)
