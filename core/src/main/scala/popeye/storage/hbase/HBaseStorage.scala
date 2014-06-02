@@ -310,24 +310,26 @@ class HBaseStorage(tableName: String,
   }
 
   def writePackedPoints(packed: PackedPoints*)(implicit eCtx: ExecutionContext): Future[Long] = {
-    writePoints(Left(packed))
+    // view wrapper is used to concatenate Iterables lazily
+    val nonStrictCollection: Iterable[Iterable[Message.Point]] = packed.view
+    writePoints(nonStrictCollection.flatten)
   }
 
   def writeMessagePoints(points: Message.Point*)(implicit eCtx: ExecutionContext): Future[Long] = {
-    writePoints(Right(points))
+    writePoints(points)
   }
 
   /**
    * Write points, returned future is awaitable, but can be already completed
-   * @param data what to write
+   * @param points what to write
    * @return number of written points
    */
-  def writePoints(data: Either[Seq[PackedPoints], Seq[Message.Point]])(implicit eCtx: ExecutionContext): Future[Long] = {
+  def writePoints(points: Iterable[Message.Point])(implicit eCtx: ExecutionContext): Future[Long] = {
 
     val ctx = metrics.writeTime.timerContext()
       // resolve identifiers
       // unresolved will be delayed for future expansion
-    convertToKeyValues(data).flatMap {
+    convertToKeyValues(points).flatMap {
       case (partiallyConvertedPoints, keyValues) =>
         // write resolved points
         val writeComplete = if (!keyValues.isEmpty) Future[Int] {
@@ -359,13 +361,13 @@ class HBaseStorage(tableName: String,
     } else Future.successful[Int](0)
   }
 
-  private def convertToKeyValues(data: Either[Seq[PackedPoints], Seq[Message.Point]])
+  private def convertToKeyValues(points: Iterable[Message.Point])
                                 (implicit eCtx: ExecutionContext)
   : Future[(PartiallyConvertedPoints, Seq[KeyValue])] = Future {
     val idCache: QualifiedName => Option[BytesKey] = {
       case QualifiedName(kind, namespace, name) => uniqueIdsMap(kind).findIdByName(namespace, name)
     }
-    val result@(partiallyConvertedPoints, keyValues) = tsdbFormat.convertToKeyValues(data, idCache)
+    val result@(partiallyConvertedPoints, keyValues) = tsdbFormat.convertToKeyValues(points, idCache)
     metrics.resolvedPointsMeter.mark(keyValues.size)
     metrics.delayedPointsMeter.mark(partiallyConvertedPoints.points.size)
     result
