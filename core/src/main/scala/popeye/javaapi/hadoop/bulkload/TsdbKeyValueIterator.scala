@@ -25,7 +25,7 @@ class TsdbKeyValueIterator(pointsIterator: KafkaPointsIterator,
 
   def next(): java.util.List[KeyValue] = {
     val points = pointsIterator.next()
-    val (partiallyConvertedPoints, keyValues) = tsdbFormat.convertToKeyValues(Right(points), uniqueId.findByName)
+    val (partiallyConvertedPoints, keyValues) = tsdbFormat.convertToKeyValues(points, uniqueId.findByName)
     val loadedIds = uniqueId.findOrRegisterIdsByNames(partiallyConvertedPoints.unresolvedNames)
     (partiallyConvertedPoints.convert(loadedIds) ++ keyValues).asJava
   }

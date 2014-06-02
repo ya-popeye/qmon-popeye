@@ -127,14 +127,14 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping) extends Logging {
 
   import TsdbFormat._
 
-  def convertToKeyValues(data: Either[Seq[PackedPoints], Seq[Message.Point]],
+  def convertToKeyValues(points: Iterable[Message.Point],
                          idCache: QualifiedName => Option[BytesKey]
                           ): (PartiallyConvertedPoints, Seq[KeyValue]) = {
     val resolvedNames = mutable.HashMap[QualifiedName, BytesKey]()
     val unresolvedNames = mutable.HashSet[QualifiedName]()
     val unconvertedPoints = mutable.ArrayBuffer[Message.Point]()
     val convertedPoints = mutable.ArrayBuffer[KeyValue]()
-    def process(point: Message.Point) = {
+    for (point <- points) {
       val names = getAllQualifiedNames(point)
       val nameAndIds = names.map(name => (name, idCache(name)))
       val cacheMisses = nameAndIds.collect {case (name, None) => name}
@@ -146,18 +146,6 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping) extends Logging {
         unresolvedNames ++= cacheMisses
         unconvertedPoints += point
       }
-    }
-    data match {
-      case Left(packs) =>
-        for(pack <- packs) {
-          for (point <- pack) {
-            process(point)
-          }
-        }
-      case Right(points) =>
-        for (point <- points) {
-          process(point)
-        }
     }
     require(unresolvedNames.isEmpty == unconvertedPoints.isEmpty)
     if(unresolvedNames.isEmpty) require(resolvedNames.isEmpty)
