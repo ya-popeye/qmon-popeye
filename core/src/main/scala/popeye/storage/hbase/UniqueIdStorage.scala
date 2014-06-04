@@ -7,13 +7,15 @@ import popeye.storage.hbase.HBaseStorage._
 import scala.collection.JavaConversions._
 import popeye.storage.hbase.HBaseStorage.QualifiedId
 import popeye.storage.hbase.HBaseStorage.QualifiedName
-import scala.Some
+import scala.collection.JavaConverters._
 import popeye.util.hbase.HBaseUtils
 import java.util
+import org.apache.hadoop.hbase.filter.PrefixFilter
 
 object UniqueIdStorage {
   final val IdFamily = "id".getBytes
   final val NameFamily = "name".getBytes
+  final val AssociationsFamily = "assoc".getBytes
   final val MaxIdRow = Array[Byte](0)
 }
 
@@ -176,6 +178,42 @@ class UniqueIdStorage(tableName: String,
             val rowBytes = result.getRow
             val nameBytesLenght = rowBytes.length - namespaceWidth
             new String(rowBytes, namespaceWidth, nameBytesLenght, Encoding)
+        }
+    }
+  }
+
+  def addRelations(key: QualifiedId, values: Seq[QualifiedId]): Unit = {
+    val rowPrefix = key.namespace.bytes ++ Bytes.toBytes(key.kind) ++ key.id.bytes
+    val puts = for ((kind, groupedValues) <- values.groupBy(_.kind)) yield {
+      val put = new Put(rowPrefix ++ Bytes.toBytes(kind))
+      for (value <- groupedValues) {
+        require(key.namespace == value.namespace, "generations mismatch")
+        put.add(AssociationsFamily, value.id.bytes, Array())
+      }
+      put
+    }
+    withHTable {
+      table =>
+        table.batch(puts.toVector.asJava)
+    }
+  }
+
+  def getRelations(key: QualifiedId): Seq[QualifiedId] = {
+    val rowPrefix = key.namespace.bytes ++ Bytes.toBytes(key.kind) ++ key.id.bytes
+    val scan = new Scan(rowPrefix)
+    scan.setFilter(new PrefixFilter(rowPrefix))
+    val results = withHTable {
+      table =>
+        table.getScanner(scan).asScala.toBuffer
+    }
+    results.flatMap {
+      result =>
+        val row = result.getRow
+        val kind = Bytes.toString(row, rowPrefix.length, row.length - rowPrefix.length)
+        val assocIds = result.getFamilyMap(AssociationsFamily).asScala.keys
+        assocIds.map {
+          assocId =>
+            QualifiedId(kind, key.namespace, new BytesKey(assocId))
         }
     }
   }

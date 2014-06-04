@@ -83,7 +83,6 @@ class UniqueIdStorageSpec extends FlatSpec with Matchers with MockitoStubs {
 
   it should "find name suggestions" in {
     val storage = createStorage(hTablePool)
-    import HBaseStorage.MetricKind
     val names = Seq(
       ("aaa", MetricKind),
       ("aab", MetricKind)
@@ -97,7 +96,6 @@ class UniqueIdStorageSpec extends FlatSpec with Matchers with MockitoStubs {
 
   it should "be aware of namespaces" in {
     val storage = createStorage(hTablePool)
-    import HBaseStorage.MetricKind
     val names = Seq(
       ("aaa", bytesKey(0), MetricKind),
       ("aab", bytesKey(1), MetricKind)
@@ -111,7 +109,6 @@ class UniqueIdStorageSpec extends FlatSpec with Matchers with MockitoStubs {
 
   it should "filter kinds" in {
     val storage = createStorage(hTablePool)
-    import HBaseStorage.{MetricKind, AttrNameKind}
     val names = Seq(
       ("aaa", MetricKind),
       ("aab", MetricKind),
@@ -125,7 +122,6 @@ class UniqueIdStorageSpec extends FlatSpec with Matchers with MockitoStubs {
 
   it should "return no more than 'limit' suggestions" in {
     val storage = createStorage(hTablePool)
-    import HBaseStorage.MetricKind
     val names = Seq(
       ("aaa", MetricKind),
       ("aab", MetricKind),
@@ -135,6 +131,48 @@ class UniqueIdStorageSpec extends FlatSpec with Matchers with MockitoStubs {
       storage.registerName(QualifiedName(kind, defaultNamespace, name))
     }
     storage.getSuggestions(MetricKind, defaultNamespace, "a", limit = 2) should equal(Seq("aaa", "aab"))
+  }
+
+  behavior of "UniqueIdStorage.associations"
+
+  it should "save associations" in {
+    val storage = createStorage(hTablePool)
+    val key = QualifiedId(AttrNameKind, defaultNamespace, bytesKey(0, 0, 1))
+    val values = Seq(
+      QualifiedId(AttrValueKind, defaultNamespace, bytesKey(0, 0, 1)),
+      QualifiedId(AttrValueKind, defaultNamespace, bytesKey(0, 0, 2))
+    )
+    storage.addRelations(key, values)
+    storage.getRelations(key).toSet should equal(values.toSet)
+  }
+
+  it should "add associations" in {
+    val storage = createStorage(hTablePool)
+    val key = QualifiedId(AttrNameKind, defaultNamespace, bytesKey(0, 0, 1))
+    val firstValues = Seq(
+      QualifiedId(AttrValueKind, defaultNamespace, bytesKey(0, 0, 1))
+    )
+    val secondValues = Seq(
+      QualifiedId(AttrValueKind, defaultNamespace, bytesKey(0, 0, 2))
+    )
+    storage.addRelations(key, firstValues)
+    storage.addRelations(key, secondValues)
+    storage.getRelations(key).toSet should equal((firstValues ++ secondValues).toSet)
+  }
+
+  it should "not mix associations" in {
+    val storage = createStorage(hTablePool)
+    val key = QualifiedId(AttrNameKind, bytesKey(1), bytesKey(0, 0, 1))
+    val values = Seq(
+      QualifiedId(AttrValueKind, bytesKey(1), bytesKey(0, 0, 1))
+    )
+    val anotherKey = QualifiedId(MetricKind, bytesKey(1), bytesKey(0, 0, 1))
+    val anotherValues = Seq(
+      QualifiedId(AttrValueKind, bytesKey(1), bytesKey(0, 0, 2))
+    )
+    storage.addRelations(key, values)
+    storage.addRelations(anotherKey, anotherValues)
+    storage.getRelations(key).toSet should equal(values.toSet)
   }
 
   def namespaceKey(n: Byte) = new BytesKey(Array[Byte](n))

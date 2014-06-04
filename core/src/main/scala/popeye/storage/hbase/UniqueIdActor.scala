@@ -3,18 +3,25 @@ package popeye.storage.hbase
 import akka.actor._
 import popeye.Logging
 import popeye.storage.hbase.BytesKey._
+import popeye.storage.hbase.UniqueIdProtocol._
+import scala.Some
+import akka.actor.Terminated
+import akka.actor.SupervisorStrategy.Restart
+
+import HBaseStorage._
 import popeye.storage.hbase.UniqueIdProtocol.NotFoundName
 import popeye.storage.hbase.UniqueIdProtocol.FindName
 import popeye.storage.hbase.UniqueIdProtocol.NotFoundId
+import popeye.storage.hbase.HBaseStorage.QualifiedId
+import popeye.storage.hbase.HBaseStorage.QualifiedName
 import popeye.storage.hbase.UniqueIdProtocol.Resolved
 import scala.Some
+import akka.actor.OneForOneStrategy
 import popeye.storage.hbase.UniqueIdProtocol.FindId
 import popeye.storage.hbase.UniqueIdProtocol.Race
 import akka.actor.Terminated
 import popeye.storage.hbase.UniqueIdProtocol.ResolutionFailed
-import akka.actor.SupervisorStrategy.Restart
-
-import HBaseStorage._
+import scala.util.{Failure, Success, Try}
 
 object UniqueIdProtocol {
 
@@ -24,6 +31,10 @@ object UniqueIdProtocol {
 
   case class FindId(qid: QualifiedId) extends Request
 
+  case class GetRelations(key: QualifiedId) extends Request
+
+  case class AddRelations(key: QualifiedId, values: Seq[QualifiedId]) extends Request
+
   sealed trait Response
 
   case class Resolved(name: ResolvedName) extends Response
@@ -31,6 +42,10 @@ object UniqueIdProtocol {
   case class Race(name: QualifiedName) extends Response
 
   case class ResolutionFailed(t: Throwable) extends Response
+
+  case class RelationsOperationFailed(throwable: Throwable) extends Response
+
+  case class RelationsResult(key: QualifiedId, values: Seq[QualifiedId]) extends Response
 
   sealed trait NotFound extends Response
 
@@ -46,6 +61,10 @@ trait UniqueIdStorageTrait {
   def findById(ids: Seq[QualifiedId]): Seq[ResolvedName]
 
   def registerName(qname: QualifiedName): ResolvedName
+
+  def addRelations(key: QualifiedId, values: Seq[QualifiedId]): Unit
+
+  def getRelations(key: QualifiedId): Seq[QualifiedId]
 }
 
 object UniqueIdActor {
@@ -56,6 +75,10 @@ object UniqueIdActor {
       def findById(ids: Seq[QualifiedId]): Seq[ResolvedName] = storage.findById(ids)
 
       def registerName(qname: QualifiedName): ResolvedName = storage.registerName(qname)
+
+      def addRelations(key: QualifiedId, values: Seq[QualifiedId]): Unit = storage.addRelations(key, values)
+
+      def getRelations(key: QualifiedId): Seq[QualifiedId] = storage.getRelations(key)
     }
     new UniqueIdActor(storageWrapper, batchSize)
   }
@@ -115,6 +138,24 @@ class UniqueIdActor(storage: UniqueIdStorageTrait,
         lookupRequests = addTo(lookupRequests)
       }
       checkNames()
+
+    case AddRelations(key, values) =>
+      val attempt = Try {
+        storage.addRelations(key, values)
+      }
+      attempt match {
+        case Success(()) => sender ! RelationsResult(key, values)
+        case Failure(exception) => sender ! RelationsOperationFailed(exception)
+      }
+
+    case GetRelations(key) =>
+      val attempt = Try {
+        storage.getRelations(key)
+      }
+      attempt match {
+        case Success(values) => sender ! RelationsResult(key, values)
+        case Failure(exception) => sender ! RelationsOperationFailed(exception)
+      }
   }
 
   private def checkIds() = {
