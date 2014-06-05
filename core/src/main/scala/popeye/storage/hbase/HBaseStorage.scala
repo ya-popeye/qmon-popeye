@@ -205,9 +205,7 @@ case class HBaseStorageMetrics(name: String, override val metricRegistry: Metric
 
 class HBaseStorage(tableName: String,
                    hTablePool_ : HTablePool,
-                   metricNames: UniqueId,
-                   attributeNames: UniqueId,
-                   attributeValues: UniqueId,
+                   uniqueId: UniqueId,
                    tsdbFormat: TsdbFormat,
                    metrics: HBaseStorageMetrics,
                    resolveTimeout: Duration = 15 seconds,
@@ -217,12 +215,6 @@ class HBaseStorage(tableName: String,
 
   val tableBytes = tableName.getBytes(Encoding)
 
-  def uniqueIdsMap(kind: String): UniqueId = kind match {
-    case MetricKind => metricNames
-    case AttrNameKind => attributeNames
-    case AttrValueKind => attributeValues
-  }
-
   def getPoints(metric: String,
                 timeRange: (Int, Int),
                 attributes: Map[String, ValueNameFilterCondition])
@@ -230,8 +222,7 @@ class HBaseStorage(tableName: String,
     val scanNames = tsdbFormat.getScanNames(metric, timeRange, attributes)
     val scanNameIdPairsFuture = Future.traverse(scanNames) {
       qName =>
-        uniqueIdsMap(qName.kind)
-          .resolveIdByName(qName.namespace, qName.name, create = false)(resolveTimeout)
+        uniqueId.resolveIdByName(qName, create = false)(resolveTimeout)
           .map(id => Some(qName, id))
           .recover { case e: NoSuchElementException => None }
     }
@@ -262,8 +253,8 @@ class HBaseStorage(tableName: String,
       val rowResults = results.map(tsdbFormat.parseRowResult)
       val ids = tsdbFormat.getRowResultsIds(rowResults)
       val idNamePairsFuture = Future.traverse(ids) {
-        case qId@QualifiedId(kind, ns, id) =>
-          uniqueIdsMap(kind).resolveNameById(ns, id)(resolveTimeout).map(name => (qId, name))
+        case qId =>
+          uniqueId.resolveNameById(qId)(resolveTimeout).map(name => (qId, name))
       }
       idNamePairsFuture.map {
         idNamePairs =>
@@ -305,7 +296,8 @@ class HBaseStorage(tableName: String,
   }
 
   def ping(): Unit = {
-    val future = metricNames.resolveIdByName(new BytesKey(Array[Byte](0, 0)), "_.ping", create = true)(resolveTimeout)
+    val qName = QualifiedName(MetricKind, new BytesKey(Array[Byte](0, 0)), "_.ping")
+    val future = uniqueId.resolveIdByName(qName, create = true)(resolveTimeout)
     Await.result(future, resolveTimeout)
   }
 
@@ -364,34 +356,22 @@ class HBaseStorage(tableName: String,
   private def convertToKeyValues(points: Iterable[Message.Point])
                                 (implicit eCtx: ExecutionContext)
   : Future[(PartiallyConvertedPoints, Seq[KeyValue])] = Future {
-    val idCache: QualifiedName => Option[BytesKey] = {
-      case QualifiedName(kind, namespace, name) => uniqueIdsMap(kind).findIdByName(namespace, name)
-    }
-    val result@(partiallyConvertedPoints, keyValues) = tsdbFormat.convertToKeyValues(points, idCache)
+    val idCache: QualifiedName => Option[BytesKey] = uniqueId.findIdByName
+    val result@(partiallyConvertedPoints, keyValues) =
+      tsdbFormat.convertToKeyValues(points, idCache = idCache)
     metrics.resolvedPointsMeter.mark(keyValues.size)
     metrics.delayedPointsMeter.mark(partiallyConvertedPoints.points.size)
     result
   }
 
   private def resolveNames(names: Set[QualifiedName])(implicit eCtx: ExecutionContext): Future[Map[QualifiedName, BytesKey]] = {
-    val groupedNames = names.groupBy(_.kind)
-    def idsMapFuture(qualifiedNames: Set[QualifiedName], uniqueId: UniqueId): Future[Map[QualifiedName, BytesKey]] = {
-      val namesSeq = qualifiedNames.toSeq
-      val idsFuture = Future.traverse(namesSeq) {
-        qName => uniqueId.resolveIdByName(qName.namespace, qName.name, create = true)(resolveTimeout)
-      }
-      idsFuture.map {
-        ids => namesSeq.zip(ids)(scala.collection.breakOut)
-      }
+    val namesSeq = names.toSeq
+    val idsFuture = Future.traverse(namesSeq) {
+      qName => uniqueId.resolveIdByName(qName, create = true)(resolveTimeout)
     }
-    val metricsMapFuture = idsMapFuture(groupedNames.getOrElse(MetricKind, Set()), metricNames)
-    val attrNamesMapFuture = idsMapFuture(groupedNames.getOrElse(AttrNameKind, Set()), attributeNames)
-    val attrValueMapFuture = idsMapFuture(groupedNames.getOrElse(AttrValueKind, Set()), attributeValues)
-    for {
-      metricsMap <- metricsMapFuture
-      attrNameMap <- attrNamesMapFuture
-      attrValueMap <- attrValueMapFuture
-    } yield metricsMap ++ attrNameMap ++ attrValueMap
+    idsFuture.map {
+      ids => namesSeq.zip(ids)(scala.collection.breakOut): Map[QualifiedName, BytesKey]
+    }
   }
 
   private def writeKv(kvList: Seq[KeyValue]) = {
@@ -439,8 +419,8 @@ class HBaseStorage(tableName: String,
     val rowResult = tsdbFormat.parseRowResult(new Result(Seq(kv).asJava))
     val rowIds = tsdbFormat.getRowResultsIds(Seq(rowResult))
     val idNamePairsFuture = Future.traverse(rowIds) {
-      case qId@QualifiedId(kind, namespace, id) =>
-        uniqueIdsMap(kind).resolveNameById(namespace, id)(resolveTimeout).map {
+      case qId =>
+        uniqueId.resolveNameById(qId)(resolveTimeout).map {
           name => (qId, name)
         }
     }
@@ -508,34 +488,21 @@ class HBaseStorageConfigured(config: HBaseStorageConfig) {
   val storage = {
     implicit val eCtx = config.eCtx
 
-    val uniqIdResolved = config.actorSystem.actorOf(Props.apply(UniqueIdActor(uniqueIdStorage)))
-    val metrics = makeUniqueIdCache(config.uidsConfig, HBaseStorage.MetricKind, uniqIdResolved, uniqueIdStorage,
-      config.resolveTimeout)
-    val attrNames = makeUniqueIdCache(config.uidsConfig, HBaseStorage.AttrNameKind, uniqIdResolved, uniqueIdStorage,
-      config.resolveTimeout)
-    val attrValues = makeUniqueIdCache(config.uidsConfig, HBaseStorage.AttrValueKind, uniqIdResolved, uniqueIdStorage,
-      config.resolveTimeout)
+    val uniqIdResolver = config.actorSystem.actorOf(Props.apply(UniqueIdActor(uniqueIdStorage)))
+    val uniqueId = new UniqueIdImpl(
+      uniqIdResolver,
+      config.uidsConfig.getInt("cache.initial-capacity"),
+      config.uidsConfig.getInt("cache.max-capacity"),
+      config.resolveTimeout
+    )
     val tsdbFormat = new TsdbFormat(config.timeRangeIdMapping)
     new HBaseStorage(
       config.pointsTableName,
       hbase.hTablePool,
-      metrics,
-      attrNames,
-      attrValues,
+      uniqueId,
       tsdbFormat,
       new HBaseStorageMetrics(config.storageName, config.metricRegistry),
       config.resolveTimeout,
       config.readChunkSize)
   }
-
-  private def makeUniqueIdCache(config: Config, kind: String, resolver: ActorRef,
-                                storage: UniqueIdStorage, resolveTimeout: FiniteDuration)
-                               (implicit eCtx: ExecutionContext): UniqueId = {
-    new UniqueIdImpl(storage.kindWidth(kind), kind, resolver,
-      config.getInt(s"$kind.initial-capacity"),
-      config.getInt(s"$kind.max-capacity"),
-      resolveTimeout
-    )
-  }
-
 }
