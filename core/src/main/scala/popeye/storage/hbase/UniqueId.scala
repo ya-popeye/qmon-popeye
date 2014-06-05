@@ -18,116 +18,70 @@ import HBaseStorage._
 trait UniqueId {
 
   /**
-   * Id width for given UniqueId
-   * @return
-   */
-  def width: Short
-
-  /**
-   * Kind name for given UniqueId
-   * @return
-   */
-  def kind: String
-
-  /**
    * Lookup in cache
-   * @param name name to lookup
+   * @param qName name to lookup
    * @return optionally id
    */
-  def findIdByName(namespace: BytesKey, name: String): Option[BytesKey]
+  def findIdByName(qName: QualifiedName): Option[BytesKey]
 
   /**
    * Lookup name in cache
-   * @param id id to lookup for
+   * @param qId id to lookup for
    * @return optionally name
    */
-  def findNameById(namespace: BytesKey, id: BytesKey): Option[String]
+  def findNameById(qId: QualifiedId): Option[String]
 
   /**
    * Resolve asynchronously id using known name
-   * @param name name to resolve
+   * @param qName name to resolve
    * @param create create if not found
    * @return future with id
    */
-  def resolveIdByName(namespace: BytesKey,
-                      name: String,
+  def resolveIdByName(qName: QualifiedName,
                       create: Boolean,
                       retries: Int = 3)(implicit timeout: Duration): Future[BytesKey]
 
   /**
    * Resolve asynchronously name using known id
-   * @param id id to find name for
+   * @param qId id to find name for
    * @return future with name
    */
-  def resolveNameById(namespace: BytesKey, id: BytesKey)(implicit timeout: Duration): Future[String]
+  def resolveNameById(qId: QualifiedId)(implicit timeout: Duration): Future[String]
 
-  /**
-   * Helper method for id <> bytes conversion
-   * @param id id to convert to.
-   * @return key or exception if result is wider then allowed
-   */
-  def toBytes(id: Long): BytesKey = {
-    val barr = Bytes.toBytes(id)
-    for (i <- 0 to (barr.length - width)) {
-      if (barr(i) != 0)
-        throw new IllegalArgumentException("Id is wider then allowed")
-    }
-    util.Arrays.copyOfRange(barr, barr.length - width, barr.length)
-  }
-
-  /**
-   * Helper method for id <> bytes conversion (id expected in big endian order)
-   * @param id id to convert to.
-   * @return key or exception if result is wider then allowed
-   */
-  def toId(id: BytesKey, offset: Int, len: Int): Long = {
-    if (len != width)
-      throw new IllegalArgumentException("Id lenght mismatch")
-    var v = 0
-    for (i <- Range(id.bytes.length - 1, -1, -1)) {
-      v |= id(i)
-      v <<= 8
-    }
-    v
-  }
 }
 
 /**
  * Shared cache for id resolution
  * @author Andrey Stepachev
  */
-class UniqueIdImpl(val width: Short,
-               val kind: String,
-               resolver: ActorRef,
-               initialCapacity: Int = 1000,
-               maxCapacity: Int = 100000,
-               timeout: FiniteDuration = 30 seconds)
-              (implicit eCtx: ExecutionContext) extends UniqueId with Logging {
+class UniqueIdImpl(resolver: ActorRef,
+                   initialCapacity: Int = 1000,
+                   maxCapacity: Int = 100000,
+                   timeout: FiniteDuration = 30 seconds)
+                  (implicit eCtx: ExecutionContext) extends UniqueId with Logging {
 
   case class NamespaceAndName(namespace: BytesKey, name: String)
 
   /** Cache for forward mappings (name to ID). */
-  private final val nameCache = new ConcurrentLinkedHashMap.Builder[NamespaceAndName, Future[BytesKey]]
+  private final val nameCache = new ConcurrentLinkedHashMap.Builder[QualifiedName, Future[BytesKey]]
     .initialCapacity(initialCapacity)
     .maximumWeightedCapacity(maxCapacity)
     .build()
 
-  case class NamespaceAndId(namespace: BytesKey, id: BytesKey)
-
   /** Cache for backward mappings (ID to name).
     * The ID in the key is a byte[] converted to a String to be Comparable. */
-  private final val idCache = new ConcurrentLinkedHashMap.Builder[NamespaceAndId, Future[String]]
+  private final val idCache = new ConcurrentLinkedHashMap.Builder[QualifiedId, Future[String]]
     .initialCapacity(initialCapacity)
     .maximumWeightedCapacity(maxCapacity)
     .build()
 
   /**
    * Lookup in cache
-   * @param name name to lookup
+   * @param qName name to lookup
    * @return optionally id
    */
-  def findIdByName(namespace: BytesKey, name: String): Option[BytesKey] = {
-    nameCache.get(NamespaceAndName(namespace, name)) match {
+  def findIdByName(qName: QualifiedName): Option[BytesKey] = {
+    nameCache.get(qName) match {
       case null =>
         None
       case future =>
@@ -140,11 +94,11 @@ class UniqueIdImpl(val width: Short,
 
   /**
    * Lookup name in cache
-   * @param id id to lookup for
+   * @param qId id to lookup for
    * @return optionally name
    */
-  def findNameById(namespace: BytesKey, id: BytesKey): Option[String] = {
-    idCache.get(NamespaceAndId(namespace, id)) match {
+  def findNameById(qId: QualifiedId): Option[String] = {
+    idCache.get(qId) match {
       case null =>
         None
       case future =>
@@ -157,45 +111,43 @@ class UniqueIdImpl(val width: Short,
 
   /**
    * Resolve asynchronously id using known name
-   * @param name name to resolve
+   * @param qName name to resolve
    * @param create create if not found
    * @return future with id
    */
-  def resolveIdByName(namespace: BytesKey,
-                      name: String,
+  def resolveIdByName(qName: QualifiedName,
                       create: Boolean,
                       retries: Int = 3)(implicit timeout: Duration): Future[BytesKey] = {
     val promise = Promise[BytesKey]()
-    val key = NamespaceAndName(namespace, name)
-    nameCache.putIfAbsent(key, promise.future) match {
+    nameCache.putIfAbsent(qName, promise.future) match {
       case null =>
         val resolutionFuture =
-          resolver.ask(FindName(QualifiedName(kind, namespace, name), create))(new Timeout(timeout.toMillis))
+          resolver.ask(FindName(qName, create))(new Timeout(timeout.toMillis))
         val promiseCompletionFuture = resolutionFuture.map {
           case r: Resolved =>
             addToCache(r)
             promise.success(r.name.id)
           case r: Race =>
             info(s"Got $r, $retries retries left")
-            nameCache.remove(key)
+            nameCache.remove(qName)
             val idFuture = if (retries == 0) {
-              Future.failed(new UniqueIdRaceException(s"Can't battle race creating $name"))
+              Future.failed(new UniqueIdRaceException(s"Can't battle race creating $qName"))
             } else {
-              resolveIdByName(namespace, name, create = true, retries - 1)
+              resolveIdByName(qName, create = true, retries - 1)
             }
             promise.completeWith(idFuture)
           case f: ResolutionFailed =>
             log.debug("id resolution failed: {}" , f)
-            nameCache.remove(key)
+            nameCache.remove(qName)
             promise.failure(f.t)
           case n: NotFoundName =>
-            nameCache.remove(key)
+            nameCache.remove(qName)
             promise.failure(new NoSuchElementException(f"no id for name '${n.qname}'"))
         }
         promiseCompletionFuture.onFailure {
           case x: Throwable =>
             log.debug("resolution failed", x)
-            nameCache.remove(key)
+            nameCache.remove(qName)
             promise.failure(x)
         }
         promise.future
@@ -206,27 +158,26 @@ class UniqueIdImpl(val width: Short,
 
   /**
    * Resolve asynchronously name using known id
-   * @param id id to find name for
+   * @param qId id to find name for
    * @return future with name
    */
-  def resolveNameById(namespace: BytesKey, id: BytesKey)(implicit timeout: Duration): Future[String] = {
+  def resolveNameById(qId: QualifiedId)(implicit timeout: Duration): Future[String] = {
     val promise = Promise[String]()
-    val key = NamespaceAndId(namespace, id)
-    idCache.putIfAbsent(key, promise.future) match {
+    idCache.putIfAbsent(qId, promise.future) match {
       case null =>
         val responseFuture =
-          resolver.ask(FindId(QualifiedId(kind, namespace, id)))(new Timeout(timeout.toMillis)).mapTo[Response]
+          resolver.ask(FindId(qId))(new Timeout(timeout.toMillis)).mapTo[Response]
         val promiseCompletionFuture = responseFuture.map {
           case r: Resolved =>
             addToCache(r)
             promise.success(r.name.name)
           case f: ResolutionFailed =>
-            idCache.remove(key)
+            idCache.remove(qId)
             promise.failure(f.t)
         }
         promiseCompletionFuture.onFailure {
           case x: Throwable =>
-            idCache.remove(key)
+            idCache.remove(qId)
             promise.failure(x)
         }
         promise.future
@@ -236,8 +187,8 @@ class UniqueIdImpl(val width: Short,
 
   private def addToCache(r: Resolved) = {
     val ResolvedName(kind: String, namespace: BytesKey, name: String, id: BytesKey) = r.name
-    val nameCacheKey = NamespaceAndName(namespace, name)
-    val idCacheKey = NamespaceAndId(namespace, id)
+    val nameCacheKey = QualifiedName(kind, namespace, name)
+    val idCacheKey = QualifiedId(kind, namespace, id)
     nameCache.putIfAbsent(nameCacheKey, Promise[BytesKey]().success(r.name.id).future)
     idCache.putIfAbsent(idCacheKey, Promise[String]().success(r.name.name).future)
   }

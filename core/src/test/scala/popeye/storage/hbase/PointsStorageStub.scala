@@ -31,23 +31,15 @@ class PointsStorageStub(timeRangeIdMapping: TimeRangeIdMapping = PointsStorageSt
 
   val uniqActor: TestActorRef[InMemoryUniqueIdActor] = TestActorRef(Props.apply(new InMemoryUniqueIdActor()))
 
-  val metrics = getUniqueId(uniqActor, HBaseStorage.MetricKind)
-  val attrNames = getUniqueId(uniqActor, HBaseStorage.AttrNameKind)
-  val attrValues = getUniqueId(uniqActor, HBaseStorage.AttrValueKind)
+  val uniqueId = new UniqueIdImpl(uniqActor)
   val tsdbFormat = new TsdbFormat(timeRangeIdMapping)
   val storage = new HBaseStorage(
     tableName,
     hTablePool,
-    metrics,
-    attrNames,
-    attrValues,
+    uniqueId,
     tsdbFormat,
     pointsStorageMetrics,
     readChunkSize = 10
   )
-
-  private def getUniqueId(actor: TestActorRef[InMemoryUniqueIdActor], kind: String): UniqueId = {
-    new UniqueIdImpl(HBaseStorage.UniqueIdMapping.get(kind).get, kind, actor)
-  }
 }
 

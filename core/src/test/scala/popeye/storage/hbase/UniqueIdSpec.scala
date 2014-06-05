@@ -33,13 +33,13 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
 
   it should "handle empty cache" in {
     val (probe, uniq) = mkUniq()
-    uniq.findIdByName(metric) should be(None)
-    uniq.findNameById(metricId) should be(None)
+    uniq.findIdByName(qname) should be(None)
+    uniq.findNameById(qId) should be(None)
   }
 
   it should "resolve" in {
     val (probe, uniq) = mkUniq()
-    val future = uniq.resolveIdByName(metric, create = true)
+    val future = uniq.resolveIdByName(qname, create = true)
     probe.expectMsg(FindName(qname, create = true))
     probe.lastSender ! Resolved(ResolvedName(qname, id("abc")))
     Await.result(future, timeout) should be(id("abc"))
@@ -47,7 +47,7 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
 
   it should "resolve already created ids" in {
     val (probe, uniq) = mkUniq()
-    val future = uniq.resolveIdByName(metric, create = false)
+    val future = uniq.resolveIdByName(qname, create = false)
     probe.expectMsg(FindName(qname, create = false))
     probe.lastSender ! Resolved(ResolvedName(qname, id("abc")))
     Await.result(future, timeout) should be(id("abc"))
@@ -55,8 +55,8 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
 
   it should "concurrent resolve" in {
     val (probe, uniq) = mkUniq()
-    val future = uniq.resolveIdByName(metric, create = true)
-    val future2 = uniq.resolveIdByName(metric, create = true)
+    val future = uniq.resolveIdByName(qname, create = true)
+    val future2 = uniq.resolveIdByName(qname, create = true)
     probe.expectMsg(FindName(qname, create = true))
     probe.lastSender ! Resolved(ResolvedName(qname, id("abc")))
     Await.result(future, timeout) should be(id("abc"))
@@ -65,7 +65,7 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
 
   it should "handle resolve failure" in {
     val (probe, uniq) = mkUniq()
-    val future = uniq.resolveIdByName(metric, create = true)
+    val future = uniq.resolveIdByName(qname, create = true)
     probe.expectMsg(FindName(qname, create = true))
     probe.lastSender ! ResolutionFailed(new IOException("Some hbase error"))
     intercept[IOException] {
@@ -75,7 +75,7 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
 
   it should "handle resolve race" in {
     val (probe, uniq) = mkUniq()
-    val future = uniq.resolveIdByName(metric, create = true, retries = 2)
+    val future = uniq.resolveIdByName(qname, create = true, retries = 2)
     probe.expectMsg(timeout, FindName(qname, create = true))
     probe.lastSender ! Race(qname)
     probe.expectMsg(timeout, FindName(qname, create = true))
@@ -89,7 +89,7 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
 
   it should "not hang in nonexistent name resolving" in {
     val (probe, uniq) = mkUniq()
-    val future = uniq.resolveIdByName(qname.name, create = false)
+    val future = uniq.resolveIdByName(qname, create = false)
     probe.expectMsg(FindName(qname, create = false))
     probe.lastSender ! NotFoundName(qname)
     val exception = intercept[NoSuchElementException] {
@@ -102,7 +102,7 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
 
   it should "resolve" in {
     val (probe, uniq) = mkUniq()
-    val future = uniq.resolveNameById(metricId)
+    val future = uniq.resolveNameById(qId)
     probe.expectMsg(FindId(qId))
     probe.lastSender ! Resolved(ResolvedName(qname, metricId))
     Await.result(future, timeout) should be(metric)
@@ -110,8 +110,8 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
 
   it should "concurrent resolve" in {
     val (probe, uniq) = mkUniq()
-    val future = uniq.resolveNameById(metricId)
-    val future2 = uniq.resolveNameById(metricId)
+    val future = uniq.resolveNameById(qId)
+    val future2 = uniq.resolveNameById(qId)
     probe.expectMsg(FindId(qId))
     probe.lastSender ! Resolved(ResolvedName(qname, metricId))
     Await.result(future, timeout) should be(metric)
@@ -120,7 +120,7 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
 
   it should "handle resolve failure" in {
     val (probe, uniq) = mkUniq()
-    val future = uniq.resolveNameById(metricId)
+    val future = uniq.resolveNameById(qId)
     probe.expectMsg(FindId(qId))
     probe.lastSender ! ResolutionFailed(new IOException("Some hbase error"))
     intercept[IOException] {
@@ -132,22 +132,9 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
     new BytesKey(hex.getBytes)
   }
 
-  def mkUniq(): (TestProbe, ScopedUniqueId) = {
+  def mkUniq(): (TestProbe, UniqueId) = {
     val resolverProbe = TestProbe()
-    val uniq = new UniqueIdImpl(3, HBaseStorage.MetricKind, resolverProbe.ref, 1, 10, 1 seconds)
-    (resolverProbe, new ScopedUniqueId(uniq, defaultNamespace))
+    val uniq = new UniqueIdImpl(resolverProbe.ref, 1, 10, 1 seconds)
+    (resolverProbe, uniq)
   }
-
-  class ScopedUniqueId(uniqueId: UniqueId, namespace: BytesKey) {
-    def findIdByName(name: String): Option[BytesKey] = uniqueId.findIdByName(namespace, name)
-
-    def findNameById(id: BytesKey): Option[String] = uniqueId.findNameById(namespace, id)
-
-    def resolveIdByName(name: String, create: Boolean, retries: Int = 3)(implicit timeout: Duration): Future[BytesKey] =
-      uniqueId.resolveIdByName(namespace, name, create, retries)
-
-    def resolveNameById(id: BytesKey)(implicit timeout: Duration): Future[String] =
-      uniqueId.resolveNameById(namespace, id)
-  }
-
 }
