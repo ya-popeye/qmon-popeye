@@ -48,6 +48,10 @@ trait UniqueId {
    */
   def resolveNameById(qId: QualifiedId)(implicit timeout: Duration): Future[String]
 
+  def addRelations(qId: QualifiedId, values: Seq[QualifiedId])(implicit timeout: Duration): Future[Unit]
+
+  def getRelations(qId: QualifiedId)(implicit timeout: Duration): Future[Seq[QualifiedId]]
+
 }
 
 /**
@@ -60,8 +64,6 @@ class UniqueIdImpl(resolver: ActorRef,
                    timeout: FiniteDuration = 30 seconds)
                   (implicit eCtx: ExecutionContext) extends UniqueId with Logging {
 
-  case class NamespaceAndName(namespace: BytesKey, name: String)
-
   /** Cache for forward mappings (name to ID). */
   private final val nameCache = new ConcurrentLinkedHashMap.Builder[QualifiedName, Future[BytesKey]]
     .initialCapacity(initialCapacity)
@@ -71,6 +73,11 @@ class UniqueIdImpl(resolver: ActorRef,
   /** Cache for backward mappings (ID to name).
     * The ID in the key is a byte[] converted to a String to be Comparable. */
   private final val idCache = new ConcurrentLinkedHashMap.Builder[QualifiedId, Future[String]]
+    .initialCapacity(initialCapacity)
+    .maximumWeightedCapacity(maxCapacity)
+    .build()
+
+  private val relationsCache = new ConcurrentLinkedHashMap.Builder[QualifiedId, Future[Set[QualifiedId]]]
     .initialCapacity(initialCapacity)
     .maximumWeightedCapacity(maxCapacity)
     .build()
@@ -191,5 +198,35 @@ class UniqueIdImpl(resolver: ActorRef,
     val idCacheKey = QualifiedId(kind, namespace, id)
     nameCache.putIfAbsent(nameCacheKey, Promise[BytesKey]().success(r.name.id).future)
     idCache.putIfAbsent(idCacheKey, Promise[String]().success(r.name.name).future)
+  }
+
+  override def addRelations(qId: QualifiedId,
+                            values: Seq[QualifiedId])
+                           (implicit timeout: Duration): Future[Unit] = {
+    val cachedValuesFuture: Future[Set[QualifiedId]] =
+      Option(relationsCache.get(qId)).getOrElse(Future.successful(Set()))
+    val future = cachedValuesFuture.flatMap {
+      cachedValues =>
+        val valuesToWrite = values.filterNot(value => cachedValues.contains(value))
+        if (valuesToWrite.nonEmpty) {
+          resolver.ask(AddRelations(qId, values))(new Timeout(timeout.toMillis)).mapTo[Response].flatMap {
+            case _: RelationsResult =>
+              Future.successful(cachedValues ++ values)
+            case RelationsOperationFailed(t) => Future.failed(t)
+            case x => Future.failed(new RuntimeException(f"bad message: $x"))
+          }
+        } else {
+          Future.successful(cachedValues)
+        }
+    }
+    relationsCache.put(qId, future)
+    future.map(_ => ())
+  }
+
+  override def getRelations(qId: QualifiedId)(implicit timeout: Duration): Future[Seq[QualifiedId]] = {
+    resolver.ask(GetRelations(qId))(new Timeout(timeout.toMillis)).mapTo[Response].flatMap {
+      case RelationsResult(_, values) => Future.successful(values)
+      case RelationsOperationFailed(t) => Future.failed(t)
+    }
   }
 }

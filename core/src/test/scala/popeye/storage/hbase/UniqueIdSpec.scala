@@ -27,7 +27,7 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
   val qname = QualifiedName(HBaseStorage.MetricKind, defaultNamespace, metric)
   val metricId = id("\01\02\03")
   val qId = QualifiedId(HBaseStorage.MetricKind, defaultNamespace, metricId)
-  implicit val timeout: FiniteDuration = 500 seconds
+  implicit val timeout: FiniteDuration = 5 seconds
 
   behavior of "id->name"
 
@@ -128,11 +128,54 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
     }
   }
 
+  behavior of "relations"
+
+  it should "add relations" in {
+    val (probe, uniq) = mkUniq()
+    val qId = QualifiedId(HBaseStorage.MetricKind, defaultNamespace, id("a"))
+    val values = Seq(
+      QualifiedId(HBaseStorage.MetricKind, defaultNamespace, id("a")),
+      QualifiedId(HBaseStorage.MetricKind, defaultNamespace, id("b"))
+    )
+    val future = uniq.addRelations(qId, values)
+    probe.expectMsg(AddRelations(qId, values))
+    probe.lastSender ! RelationsResult(qId, values)
+    Await.result(future, timeout)
+  }
+
+  it should "not add relations twice" in {
+    val (probe, uniq) = mkUniq()
+    val qId = QualifiedId(HBaseStorage.MetricKind, defaultNamespace, id("a"))
+    val values = Seq(
+      QualifiedId(HBaseStorage.MetricKind, defaultNamespace, id("a")),
+      QualifiedId(HBaseStorage.MetricKind, defaultNamespace, id("b"))
+    )
+    val firstFuture = uniq.addRelations(qId, values)
+    val secondFuture = uniq.addRelations(qId, values)
+    probe.expectMsg(AddRelations(qId, values))
+    probe.lastSender ! RelationsResult(qId, values)
+    Await.result(firstFuture, timeout)
+    Await.result(secondFuture, timeout)
+  }
+
+  it should "get relations" in {
+    val (probe, uniq) = mkUniq()
+    val qId = QualifiedId(HBaseStorage.MetricKind, defaultNamespace, id("a"))
+    val values = Seq(
+      QualifiedId(HBaseStorage.MetricKind, defaultNamespace, id("a")),
+      QualifiedId(HBaseStorage.MetricKind, defaultNamespace, id("b"))
+    )
+    val future = uniq.getRelations(qId)
+    probe.expectMsg(GetRelations(qId))
+    probe.lastSender ! RelationsResult(qId, values)
+    Await.result(future, timeout).toSet should equal(values.toSet)
+  }
+
   def id(hex: String): BytesKey = {
     new BytesKey(hex.getBytes)
   }
 
-  def mkUniq(): (TestProbe, UniqueId) = {
+  def mkUniq(): (TestProbe, UniqueIdImpl) = {
     val resolverProbe = TestProbe()
     val uniq = new UniqueIdImpl(resolverProbe.ref, 1, 10, 1 seconds)
     (resolverProbe, uniq)
