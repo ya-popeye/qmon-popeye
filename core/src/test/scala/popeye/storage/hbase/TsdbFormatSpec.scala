@@ -35,7 +35,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       .build()
   }
 
-  val defaultNamespace = new BytesKey(Array[Byte](10, 10))
+  val defaultGenerationId = new BytesKey(Array[Byte](10, 10))
 
   val defaultShardAttributeName = "name"
 
@@ -64,7 +64,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     names.toSet should equal(allQualifiedNames)
   }
 
-  it should "choose namespace by base time" in {
+  it should "choose generation id by base time" in {
     val prefixMapping = createTimeRangeIdMapping((3600, 4000, bytesKey(0, 0)), (4000, 5000, bytesKey(0, 1)))
     val tsdbFormat = createTsdbFormat(prefixMapping)
     val point = createPoint(metric = "test", timestamp = 4000, attributes = Seq("name" -> "value"))
@@ -89,7 +89,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
 
     val sortedAttributeIds = attr ++ anotherAttr
 
-    val row = defaultNamespace.bytes ++ metricId ++ shardId ++ timestampBytes ++ sortedAttributeIds
+    val row = defaultGenerationId.bytes ++ metricId ++ shardId ++ timestampBytes ++ sortedAttributeIds
     keyValue.getRow should equal(row)
   }
 
@@ -189,7 +189,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     )
     val expectedPoints = timeAndValues.map { case (time, value) => HBaseStorage.Point(time.toInt, value) }
 
-    parsedRowResult.namespace should equal(defaultNamespace)
+    parsedRowResult.generationId should equal(defaultGenerationId)
     parsedRowResult.metricId should equal(sampleIdMap(qualifiedName(MetricKind, "test")))
     parsedRowResult.shardId should equal(bytesKey(4, 0, 1))
     parsedRowResult.attributeIds should equal(expectedAttributeIds)
@@ -207,9 +207,9 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     ex.getMessage should (include("row") and include("size"))
   }
 
-  def qualifiedName(kind: String, name: String) = QualifiedName(kind, defaultNamespace, name)
+  def qualifiedName(kind: String, name: String) = QualifiedName(kind, defaultGenerationId, name)
 
-  def createTsdbFormat(prefixMapping: TimeRangeIdMapping = new FixedTimeRangeID(defaultNamespace),
+  def createTsdbFormat(prefixMapping: TimeRangeIdMapping = new FixedTimeRangeID(defaultGenerationId),
                        shardAttributes: Set[String] = Set(defaultShardAttributeName)): TsdbFormat = {
     new TsdbFormat(prefixMapping, shardAttributes)
   }
@@ -252,7 +252,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     names should equal(expected)
   }
 
-  it should "choose namespace by base time" in {
+  it should "choose generation id by base time" in {
     val prefixMapping = createTimeRangeIdMapping((3600, 4000, bytesKey(0, 0)), (4000, 5000, bytesKey(0, 1)))
     val tsdbFormat = createTsdbFormat(prefixMapping)
     tsdbFormat.getScanNames(
@@ -277,12 +277,12 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val shardId = Array[Byte](4, 0, 1)
     val startTimestamp = Array[Byte](0, 0, 0, 0)
     val stopTimestamp = Array[Byte](0, 0, 0, 1)
-    val rowPrefix = defaultNamespace.bytes ++ metricId ++ shardId
+    val rowPrefix = defaultGenerationId.bytes ++ metricId ++ shardId
     scan.getStartRow should equal(rowPrefix ++ startTimestamp)
     scan.getStopRow should equal(rowPrefix ++ stopTimestamp)
   }
 
-  it should "create 2 scans over namespaces" in {
+  it should "create 2 scans over generations" in {
     val prefixMapping = createTimeRangeIdMapping((0, 3600, bytesKey(0, 0)), (3600, 7200, bytesKey(0, 1)))
     val tsdbFormat = createTsdbFormat(prefixMapping)
     val idMap = sampleNamesToIdMapping.flatMap {
@@ -297,8 +297,8 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
       idMap = idMap)
     scans.size should equal(2)
-    scans(0).getStartRow.slice(0, UniqueIdNamespaceWidth) should equal(Array[Byte](0, 0))
-    scans(1).getStartRow.slice(0, UniqueIdNamespaceWidth) should equal(Array[Byte](0, 1))
+    scans(0).getStartRow.slice(0, UniqueIdGenerationWidth) should equal(Array[Byte](0, 0))
+    scans(1).getStartRow.slice(0, UniqueIdGenerationWidth) should equal(Array[Byte](0, 1))
   }
 
   it should "not create scan if not enough ids resolved" in {
@@ -313,13 +313,13 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
       idMap = idMap)
     scans.size should equal(1)
-    scans(0).getStartRow.slice(0, UniqueIdNamespaceWidth) should equal(Array[Byte](0, 0))
+    scans(0).getStartRow.slice(0, UniqueIdGenerationWidth) should equal(Array[Byte](0, 0))
   }
 
   it should "create 2 scan over shards" in {
     val tsdbFormat = createTsdbFormat()
     val idMap = sampleIdMap.updated(
-      QualifiedName(ShardKind, defaultNamespace, shardAttributeToShardName("name", "anotherValue")),
+      QualifiedName(ShardKind, defaultGenerationId, shardAttributeToShardName("name", "anotherValue")),
       bytesKey(4, 0, 2)
     )
     val scans = tsdbFormat.getScans(

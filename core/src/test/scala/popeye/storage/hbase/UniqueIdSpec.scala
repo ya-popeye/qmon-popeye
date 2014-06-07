@@ -23,10 +23,10 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
   implicit val executionContext = system.dispatcher
 
   val metric = "test.metric.1"
-  val defaultNamespace: BytesKey = new BytesKey(Array[Byte](0, 0))
-  val qname = QualifiedName(HBaseStorage.MetricKind, defaultNamespace, metric)
+  val defaultGenerationId: BytesKey = new BytesKey(Array[Byte](0, 0))
+  val qname = QualifiedName(HBaseStorage.MetricKind, defaultGenerationId, metric)
   val metricId = id("\01\02\03")
-  val qId = QualifiedId(HBaseStorage.MetricKind, defaultNamespace, metricId)
+  val qId = QualifiedId(HBaseStorage.MetricKind, defaultGenerationId, metricId)
   implicit val timeout: FiniteDuration = 500 seconds
 
   behavior of "id->name"

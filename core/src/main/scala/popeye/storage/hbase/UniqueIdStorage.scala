@@ -25,7 +25,7 @@ class UniqueIdRaceException(msg: String) extends UniqueIdStorageException(msg)
 
 class UniqueIdStorage(tableName: String,
                       hTablePool: HTablePool,
-                      namespaceWidth: Int = UniqueIdNamespaceWidth,
+                      generationIdWidth: Int = UniqueIdGenerationWidth,
                       kindWidths: Map[String, Short] = UniqueIdMapping) extends Logging {
 
   import UniqueIdStorage._
@@ -50,10 +50,10 @@ class UniqueIdStorage(tableName: String,
         k <- r.raw().toSeq
       } yield {
         val rowBytes = k.getRow
-        val (namespaceBytes, nameBytes) = rowBytes.splitAt(namespaceWidth)
+        val (generationIdBytes, nameBytes) = rowBytes.splitAt(generationIdWidth)
         ResolvedName(
           kind = Bytes.toString(k.getQualifier),
-          namespace = new BytesKey(namespaceBytes),
+          generationId = new BytesKey(generationIdBytes),
           name = Bytes.toString(nameBytes),
           id = new BytesKey(k.getValue))
       }
@@ -65,7 +65,7 @@ class UniqueIdStorage(tableName: String,
   def findById(ids: Seq[QualifiedId]): Seq[ResolvedName] = {
     val gets = ids.map {
       id =>
-        val idRow = id.namespace.bytes ++ id.id.bytes
+        val idRow = id.generationId.bytes ++ id.id.bytes
         new Get(idRow).addColumn(NameFamily, Bytes.toBytes(id.kind))
     }
     withHTable { hTable =>
@@ -75,10 +75,10 @@ class UniqueIdStorage(tableName: String,
       } yield {
 
         val rowBytes = k.getRow
-        val (namespaceBytes, idBytes) = rowBytes.splitAt(namespaceWidth)
+        val (generationIdBytes, idBytes) = rowBytes.splitAt(generationIdWidth)
         ResolvedName(
           kind = Bytes.toString(k.getQualifier),
-          namespace = new BytesKey(namespaceBytes),
+          generationId = new BytesKey(generationIdBytes),
           name = Bytes.toString(k.getValue),
           id = new BytesKey(idBytes))
       }
@@ -88,20 +88,20 @@ class UniqueIdStorage(tableName: String,
 
   def registerName(qname: QualifiedName): ResolvedName = {
     debug(s"Registering name $qname")
-    validateNamespaceLen(qname.namespace)
+    validateGenerationIdLen(qname.generationId)
     val idWidth = kindWidths.getOrElse(qname.kind, throw new IllegalArgumentException(s"Unknown kind for $qname"))
     val kindQual = Bytes.toBytes(qname.kind)
     val nameBytes = qname.name.getBytes(Encoding)
-    val namespaceBytes = qname.namespace.bytes
+    val generationIdBytes = qname.generationId.bytes
     val nameRow = createNameRow(qname)
     withHTable { hTable =>
-      val id = hTable.incrementColumnValue(namespaceBytes ++ MaxIdRow, NameFamily, kindQual, 1)
+      val id = hTable.incrementColumnValue(generationIdBytes ++ MaxIdRow, NameFamily, kindQual, 1)
       debug(s"Got id for $qname: $id")
       val longIdBytes = Bytes.toBytes(id)
       val idBytes = java.util.Arrays.copyOfRange(longIdBytes, longIdBytes.length - idWidth, longIdBytes.length).reverse
       // check, that produced id is not larger, then required id width
       validateIdLen(idBytes, idWidth)
-      val idRow = namespaceBytes ++ idBytes
+      val idRow = generationIdBytes ++ idBytes
       if (!cas(hTable, idRow, NameFamily, kindQual, nameBytes)) {
         val msg = s"Failed assignment: $id -> $qname, already assigned $id, unbelievable"
         log.error(msg)
@@ -137,15 +137,14 @@ class UniqueIdStorage(tableName: String,
     }
   }
 
-  private def validateNamespaceLen(namespace: BytesKey) = {
-    require(namespace.bytes.length == namespaceWidth, f"namespace '$namespace' width is not equal to $namespaceWidth")
+  private def validateGenerationIdLen(generationId: BytesKey) = {
+    require(generationId.bytes.length == generationIdWidth, f"generationId '$generationId' width is not equal to $generationIdWidth")
   }
 
   private def createNameRow(qname: QualifiedName) = {
-    validateNamespaceLen(qname.namespace)
+    validateGenerationIdLen(qname.generationId)
     val nameBytes = qname.name.getBytes(Encoding)
-    val namespaceBytes = qname.namespace.bytes
-    namespaceBytes ++ nameBytes
+    qname.generationId.bytes ++ nameBytes
   }
 
   @inline
@@ -158,11 +157,11 @@ class UniqueIdStorage(tableName: String,
     }
   }
 
-  def getSuggestions(kind: String, namespace: BytesKey, namePrefix: String, limit: Int): Seq[String] = {
+  def getSuggestions(kind: String, generationId: BytesKey, namePrefix: String, limit: Int): Seq[String] = {
     require(kindWidths.keys.contains(kind), f"unknown kind: $kind; known kinds: ${kindWidths.keys}")
     val namePrefixBytes = namePrefix.getBytes(Encoding)
-    val startRow = namespace.bytes ++ namePrefixBytes
-    val endRow = namespace.bytes ++ HBaseUtils.addOneIfNotMaximum(namePrefixBytes)
+    val startRow = generationId.bytes ++ namePrefixBytes
+    val endRow = generationId.bytes ++ HBaseUtils.addOneIfNotMaximum(namePrefixBytes)
     val scan = new Scan(startRow, endRow)
     val qualifierSet = new util.TreeSet[Array[Byte]](Bytes.BYTES_COMPARATOR)
     qualifierSet.add(Bytes.toBytes(kind))
@@ -174,8 +173,8 @@ class UniqueIdStorage(tableName: String,
         table.getScanner(scan).next(limit).toSeq.map {
           result =>
             val rowBytes = result.getRow
-            val nameBytesLenght = rowBytes.length - namespaceWidth
-            new String(rowBytes, namespaceWidth, nameBytesLenght, Encoding)
+            val nameBytesLenght = rowBytes.length - generationIdWidth
+            new String(rowBytes, generationIdWidth, nameBytesLenght, Encoding)
         }
     }
   }
