@@ -341,7 +341,7 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping, shardAttributeNames: Se
     val shardAttrFilterNames = allFilters.keys.filter(name => shardAttributeNames.contains(name))
     require(
       shardAttrFilterNames.size == 1,
-      f"scan filters must have exactly one shard attribute; shars attributes: $shardAttributeNames"
+      f"scan filters must have exactly one shard attribute; shard attributes: $shardAttributeNames"
     )
     val shardAttrName = shardAttrFilterNames.head
     val shardAttrValues = allFilters(shardAttrName) match {
