@@ -18,7 +18,7 @@ object PointsStorage {
 
 
   val MaxNumberOfSuggestions: Int = 10
-  val MaxIdRotations = 3
+  val MaxGenerations = 3
 
   object NameType extends Enumeration {
     type NameType = Value
@@ -45,11 +45,11 @@ object PointsStorage {
       }
       val currentTimeInSeconds = System.currentTimeMillis() / 1000
       val currentBaseTime = currentTimeInSeconds - currentTimeInSeconds % TsdbFormat.MAX_TIMESPAN
-      val namespaces = timeRangeIdMapping.backwardIterator(currentBaseTime.toInt)
-        .take(MaxIdRotations)
+      val generationIds = timeRangeIdMapping.backwardIterator(currentBaseTime.toInt)
+        .take(MaxGenerations)
         .map(_.id)
         .toSeq
-      val suggestions = namespaces.flatMap {
+      val suggestions = generationIds.flatMap {
         ns => uniqueIdStorage.getSuggestions(kind, ns, namePrefix, MaxNumberOfSuggestions)
       }
       SortedSet(suggestions: _*).toSeq

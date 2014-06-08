@@ -24,7 +24,7 @@ class FixedTimeRangeID(id: BytesKey) extends TimeRangeIdMapping {
 class PeriodicTimeRangeId(periodInHours: Int) extends TimeRangeIdMapping {
 
   val periodInSeconds = periodInHours * 60 * 60 * 24
-  require(HBaseStorage.UniqueIdNamespaceWidth == 2, "PeriodicTimeRangeId depends on namespace width")
+  require(HBaseStorage.UniqueIdGenerationWidth == 2, "PeriodicTimeRangeId depends on generation id width")
 
   def backwardIterator(timestampInSeconds: Int): Iterator[TimeRangeAndId] = {
     val periodStartTime = timestampInSeconds - timestampInSeconds % periodInSeconds

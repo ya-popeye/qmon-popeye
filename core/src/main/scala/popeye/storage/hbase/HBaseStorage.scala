@@ -46,27 +46,27 @@ object HBaseStorage {
     ShardKind -> 3.toShort
   )
 
-  final val UniqueIdNamespaceWidth = 2
+  final val UniqueIdGenerationWidth = 2
 
-  sealed case class ResolvedName(kind: String, namespace: BytesKey, name: String, id: BytesKey) {
-    def this(qname: QualifiedName, id: BytesKey) = this(qname.kind, qname.namespace, qname.name, id)
+  sealed case class ResolvedName(kind: String, generationId: BytesKey, name: String, id: BytesKey) {
+    def this(qname: QualifiedName, id: BytesKey) = this(qname.kind, qname.generationId, qname.name, id)
 
-    def this(qid: QualifiedId, name: String) = this(qid.kind, qid.namespace, name, qid.id)
+    def this(qid: QualifiedId, name: String) = this(qid.kind, qid.generationId, name, qid.id)
 
-    def toQualifiedName = QualifiedName(kind, namespace, name)
+    def toQualifiedName = QualifiedName(kind, generationId, name)
 
-    def toQualifiedId = QualifiedId(kind, namespace, id)
+    def toQualifiedId = QualifiedId(kind, generationId, id)
   }
 
   object ResolvedName {
-    def apply(qname: QualifiedName, id: BytesKey) = new ResolvedName(qname.kind, qname.namespace, qname.name, id)
+    def apply(qname: QualifiedName, id: BytesKey) = new ResolvedName(qname.kind, qname.generationId, qname.name, id)
 
-    def apply(qid: QualifiedId, name: String) = new ResolvedName(qid.kind, qid.namespace, name, qid.id)
+    def apply(qid: QualifiedId, name: String) = new ResolvedName(qid.kind, qid.generationId, name, qid.id)
   }
 
-  sealed case class QualifiedName(kind: String, namespace: BytesKey, name: String)
+  sealed case class QualifiedName(kind: String, generationId: BytesKey, name: String)
 
-  sealed case class QualifiedId(kind: String, namespace: BytesKey, id: BytesKey)
+  sealed case class QualifiedId(kind: String, generationId: BytesKey, id: BytesKey)
 
 
   type PointsGroup = Map[PointAttributes, Seq[Point]]

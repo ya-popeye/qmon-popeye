@@ -60,8 +60,6 @@ class UniqueIdImpl(resolver: ActorRef,
                    timeout: FiniteDuration = 30 seconds)
                   (implicit eCtx: ExecutionContext) extends UniqueId with Logging {
 
-  case class NamespaceAndName(namespace: BytesKey, name: String)
-
   /** Cache for forward mappings (name to ID). */
   private final val nameCache = new ConcurrentLinkedHashMap.Builder[QualifiedName, Future[BytesKey]]
     .initialCapacity(initialCapacity)
@@ -186,9 +184,8 @@ class UniqueIdImpl(resolver: ActorRef,
   }
 
   private def addToCache(r: Resolved) = {
-    val ResolvedName(kind: String, namespace: BytesKey, name: String, id: BytesKey) = r.name
-    val nameCacheKey = QualifiedName(kind, namespace, name)
-    val idCacheKey = QualifiedId(kind, namespace, id)
+    val nameCacheKey = r.name.toQualifiedName
+    val idCacheKey = r.name.toQualifiedId
     nameCache.putIfAbsent(nameCacheKey, Promise[BytesKey]().success(r.name.id).future)
     idCache.putIfAbsent(idCacheKey, Promise[String]().success(r.name.name).future)
   }

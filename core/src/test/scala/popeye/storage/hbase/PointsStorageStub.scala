@@ -11,8 +11,8 @@ import scala.concurrent.ExecutionContext
 
 object PointsStorageStub {
   val timeRangeIdMapping: FixedTimeRangeID = {
-    val namespace: BytesKey = new BytesKey(Array[Byte](0, 0))
-    new FixedTimeRangeID(namespace)
+    val generationId: BytesKey = new BytesKey(Array[Byte](0, 0))
+    new FixedTimeRangeID(generationId)
   }
 }
 

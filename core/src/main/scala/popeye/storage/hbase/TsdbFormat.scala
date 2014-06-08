@@ -42,7 +42,7 @@ object TsdbFormat {
   val attributeValueWidth: Int = UniqueIdMapping(AttrValueKind)
   val shardIdWidth: Int = UniqueIdMapping(ShardKind)
 
-  val metricOffset = UniqueIdNamespaceWidth
+  val metricOffset = UniqueIdGenerationWidth
   val shardIdOffset = metricOffset + TsdbFormat.metricWidth
   val timestampOffset = shardIdOffset + TsdbFormat.attributeValueWidth
   val attributesOffset = timestampOffset + TsdbFormat.TIMESTAMP_BYTES
@@ -112,18 +112,18 @@ object TsdbFormat {
 
 }
 
-case class ParsedRowResult(namespace: BytesKey,
+case class ParsedRowResult(generationId: BytesKey,
                            metricId: BytesKey,
                            shardId: BytesKey,
                            attributeIds: SortedMap[BytesKey, BytesKey],
                            points: Seq[HBaseStorage.Point]) {
-  def getMetricName(idMap: Map[QualifiedId, String]) = idMap(QualifiedId(MetricKind, namespace, metricId))
+  def getMetricName(idMap: Map[QualifiedId, String]) = idMap(QualifiedId(MetricKind, generationId, metricId))
 
   def getAttributes(idMap: Map[QualifiedId, String]) = {
     attributeIds.map {
       case (nameId, valueId) =>
-        val name = idMap(QualifiedId(AttrNameKind, namespace, nameId))
-        val value = idMap(QualifiedId(AttrValueKind, namespace, valueId))
+        val name = idMap(QualifiedId(AttrNameKind, generationId, nameId))
+        val value = idMap(QualifiedId(AttrValueKind, generationId, valueId))
         (name, value)
     }
   }
@@ -211,12 +211,12 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping, shardAttributeNames: Se
 
   def getRowResultsIds(rowResults: Seq[ParsedRowResult]): Set[QualifiedId] = {
     rowResults.flatMap {
-      case ParsedRowResult(namespace, metric, shardId, attributes, _) =>
-        val metricId = QualifiedId(MetricKind, namespace, metric)
-        val shardQId = QualifiedId(ShardKind, namespace, shardId)
+      case ParsedRowResult(generationId, metric, shardId, attributes, _) =>
+        val metricId = QualifiedId(MetricKind, generationId, metric)
+        val shardQId = QualifiedId(ShardKind, generationId, shardId)
 
-        val attrNameIds = attributes.keys.map(id => QualifiedId(AttrNameKind, namespace, id)).toSeq
-        val attrValueIds = attributes.values.map(id => QualifiedId(AttrValueKind, namespace, id)).toSeq
+        val attrNameIds = attributes.keys.map(id => QualifiedId(AttrNameKind, generationId, id)).toSeq
+        val attrValueIds = attributes.values.map(id => QualifiedId(AttrValueKind, generationId, id)).toSeq
 
         metricId +: shardQId +: (attrNameIds ++ attrValueIds)
     }.toSet
@@ -229,7 +229,7 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping, shardAttributeNames: Se
       attributesLength >= 0 && attributesLength % attributeWidth == 0,
       f"illegal row length: ${ row.length }, attributes length: $attributesLength, attr size: ${ attributeWidth }"
     )
-    val namespace = new BytesKey(copyOfRange(row, 0, UniqueIdNamespaceWidth))
+    val generationId = new BytesKey(copyOfRange(row, 0, UniqueIdGenerationWidth))
     val metricId = new BytesKey(copyOfRange(row, metricOffset, metricOffset + metricWidth))
     val shardId = new BytesKey(copyOfRange(row, shardIdOffset, shardIdOffset + attributeValueWidth))
     val baseTime = Bytes.toInt(row, timestampOffset, TIMESTAMP_BYTES)
@@ -241,7 +241,7 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping, shardAttributeNames: Se
         HBaseStorage.Point(baseTime + delta, value)
     }
     ParsedRowResult(
-      namespace,
+      generationId,
       metricId,
       shardId,
       createAttributesMap(attributesBytes),
@@ -285,17 +285,17 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping, shardAttributeNames: Se
                    timeRange: (Int, Int),
                    attributeValueFilters: Map[String, ValueNameFilterCondition]): Set[QualifiedName] = {
     val (startTime, stopTime) = timeRange
-    val namespaces = getTimeRanges(startTime, stopTime).map(_.id)
+    val generationId = getTimeRanges(startTime, stopTime).map(_.id)
     val shardNames = getShardNames(attributeValueFilters)
-    namespaces.flatMap {
-      namespace =>
-        val metricName = QualifiedName(MetricKind, namespace, metric)
-        val shardQNames = shardNames.map(name => QualifiedName(ShardKind, namespace, name))
-        val attrNames = attributeValueFilters.keys.map(name => QualifiedName(AttrNameKind, namespace, name)).toSeq
+    generationId.flatMap {
+      generationId =>
+        val metricName = QualifiedName(MetricKind, generationId, metric)
+        val shardQNames = shardNames.map(name => QualifiedName(ShardKind, generationId, name))
+        val attrNames = attributeValueFilters.keys.map(name => QualifiedName(AttrNameKind, generationId, name)).toSeq
         val attrValues = attributeValueFilters.values.collect {
           case SingleValueName(name) => Seq(name)
           case MultipleValueNames(names) => names
-        }.flatten.map(name => QualifiedName(AttrValueKind, namespace, name)).toSeq
+        }.flatten.map(name => QualifiedName(AttrValueKind, generationId, name)).toSeq
         metricName +: (shardQNames ++ attrNames ++ attrValues)
     }.toSet
   }
@@ -325,14 +325,14 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping, shardAttributeNames: Se
     val shardNames = getShardNames(attributeValueFilters)
     ranges.map {
       range =>
-        val namespace = range.id
-        val shardQNames = shardNames.map(name => QualifiedName(ShardKind, namespace, name))
+        val generationId = range.id
+        val shardQNames = shardNames.map(name => QualifiedName(ShardKind, generationId, name))
         for {
-         metricId <- idMap.get(QualifiedName(MetricKind, namespace, metric))
+         metricId <- idMap.get(QualifiedName(MetricKind, generationId, metric))
          shardIds <- convertNamesSeq(shardQNames, idMap)
-         attrIdFilters <- covertAttrNamesToIds(namespace, attributeValueFilters, idMap)
+         attrIdFilters <- covertAttrNamesToIds(generationId, attributeValueFilters, idMap)
        } yield {
-          getShardScans(namespace, metricId, shardIds, (range.start, range.stop), attrIdFilters)
+          getShardScans(generationId, metricId, shardIds, (range.start, range.stop), attrIdFilters)
        }
     }.collect { case Some(scans) => scans }.flatten
   }
@@ -354,29 +354,29 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping, shardAttributeNames: Se
     }
   }
 
-  private def covertAttrNamesToIds(namespace: BytesKey,
+  private def covertAttrNamesToIds(generationId: BytesKey,
                                    attributes: Map[String, ValueNameFilterCondition],
                                    idMap: Map[QualifiedName, BytesKey]
                                     ): Option[Map[BytesKey, ValueIdFilterCondition]] = {
     val attrIdFilters = attributes.toSeq.map {
       case (attrName, valueFilter) =>
-        val valueIdFilter = convertAttrValuesToIds(namespace, valueFilter, idMap).getOrElse(return None)
-        val nameId = idMap.get(QualifiedName(AttrNameKind, namespace, attrName)).getOrElse(return None)
+        val valueIdFilter = convertAttrValuesToIds(generationId, valueFilter, idMap).getOrElse(return None)
+        val nameId = idMap.get(QualifiedName(AttrNameKind, generationId, attrName)).getOrElse(return None)
         (nameId, valueIdFilter)
     }.toMap
     Some(attrIdFilters)
   }
 
-  private def convertAttrValuesToIds(namespace: BytesKey,
+  private def convertAttrValuesToIds(generationId: BytesKey,
                                      value: ValueNameFilterCondition,
                                      idMap: Map[QualifiedName, BytesKey]): Option[ValueIdFilterCondition] = {
     value match {
       case SingleValueName(name) =>
-        idMap.get(QualifiedName(AttrValueKind, namespace, name)).map {
+        idMap.get(QualifiedName(AttrValueKind, generationId, name)).map {
           id => SingleValueId(id)
         }
       case MultipleValueNames(names) =>
-        val qNames = names.map(name => QualifiedName(AttrValueKind, namespace, name))
+        val qNames = names.map(name => QualifiedName(AttrValueKind, generationId, name))
         val idsOption = convertNamesSeq(qNames, idMap)
         idsOption.map(ids => MultipleValueIds(ids))
       case AllValueNames => Some(AllValueIds)
@@ -393,14 +393,14 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping, shardAttributeNames: Se
     }
   }
 
-  private def getShardScans(namespace: BytesKey,
+  private def getShardScans(generationId: BytesKey,
                             metricId: BytesKey,
                             shardIds: Seq[BytesKey],
                             timeRange: (Int, Int),
                             attributePredicates: Map[BytesKey, ValueIdFilterCondition]): Seq[Scan] = {
     val (startTime, endTime) = timeRange
     val baseStartTime = startTime - (startTime % MAX_TIMESPAN)
-    val rowPrefix = namespace.bytes ++ metricId.bytes
+    val rowPrefix = generationId.bytes ++ metricId.bytes
     val startTimeBytes = Bytes.toBytes(baseStartTime)
     val stopTimeBytes = Bytes.toBytes(endTime)
     for (shardId <- shardIds) yield {
@@ -437,8 +437,8 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping, shardAttributeNames: Se
     val baseTime = getBaseTime(point.getTimestamp.toInt)
     val id = timeRangeIdMapping.getRangeId(baseTime)
     require(
-      id.length == UniqueIdNamespaceWidth,
-      f"TsdbFormat depends on namespace width: ${id.length} not equal to ${UniqueIdNamespaceWidth}"
+      id.length == UniqueIdGenerationWidth,
+      f"TsdbFormat depends on generation id width: ${id.length} not equal to ${UniqueIdGenerationWidth}"
     )
     id
   }
