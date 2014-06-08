@@ -50,8 +50,7 @@ public class PopeyePointsKafkaTopicRecordReader extends RecordReader<NullWritabl
     hbaseConf.set(HConstants.ZOOKEEPER_QUORUM, hbaseQuorum);
     hbaseConf.setInt(HConstants.ZOOKEEPER_CLIENT_PORT, hbaseQuorumPort);
     hTablePool = new HTablePool(hbaseConf, 1);
-    TimeRangeIdMapping timeRangeIdMapping = new FixedTimeRangeID(new BytesKey(new byte[]{0, 0}));
-    TsdbFormat tsdbFormat = new TsdbFormat(timeRangeIdMapping);
+    TsdbFormat tsdbFormat = new TsdbFormat(null, null);
     keyValueIterator = TsdbKeyValueIterator.create(
       pointsIterator,
       tsdbFormat,

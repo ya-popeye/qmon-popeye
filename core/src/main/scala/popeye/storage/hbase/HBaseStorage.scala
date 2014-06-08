@@ -37,11 +37,13 @@ object HBaseStorage {
   final val MetricKind: String = "metric"
   final val AttrNameKind: String = "tagk"
   final val AttrValueKind: String = "tagv"
+  final val ShardKind: String = "shard"
 
   final val UniqueIdMapping = Map[String, Short](
     MetricKind -> 3.toShort,
     AttrNameKind -> 3.toShort,
-    AttrValueKind -> 3.toShort
+    AttrValueKind -> 3.toShort,
+    ShardKind -> 3.toShort
   )
 
   final val UniqueIdNamespaceWidth = 2
@@ -457,6 +459,8 @@ class HBaseStorageConfig(val config: Config,
                           val metricRegistry: MetricRegistry,
                           val storageName: String = "hbase")
                          (implicit val eCtx: ExecutionContext){
+
+  import scala.collection.JavaConverters._
   val uidsTableName = config.getString("table.uids")
   val pointsTableName = config.getString("table.points")
   val poolSize = config.getInt("pool.max")
@@ -468,6 +472,7 @@ class HBaseStorageConfig(val config: Config,
     val idRotationPeriodInHours = config.getInt("uids.rotation-period-hours")
     new PeriodicTimeRangeId(idRotationPeriodInHours)
   }
+  val shardAttributeNames = config.getStringList("shard-attributes").asScala.toSet
 }
 
 /**
@@ -495,7 +500,7 @@ class HBaseStorageConfigured(config: HBaseStorageConfig) {
       config.uidsConfig.getInt("cache.max-capacity"),
       config.resolveTimeout
     )
-    val tsdbFormat = new TsdbFormat(config.timeRangeIdMapping)
+    val tsdbFormat = new TsdbFormat(config.timeRangeIdMapping, config.shardAttributeNames)
     new HBaseStorage(
       config.pointsTableName,
       hbase.hTablePool,
