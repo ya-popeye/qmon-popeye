@@ -1,18 +1,21 @@
 package popeye.pipeline.kafka
 
+import _root_.kafka.consumer.{ConsumerConfig, Consumer}
 import akka.actor.ActorRef
 import com.typesafe.config.Config
 import popeye.pipeline._
 import popeye.proto.PackedPoints
 import scala.concurrent.Promise
 import akka.routing.FromConfig
+import com.codahale.metrics.MetricRegistry
 
 
 /**
  * @author Andrey Stepachev
  */
 class KafkaPipelineChannel(val config: KafkaPipelineChannelConfig,
-                           val context: PipelineContext)
+                           val context: PipelineContext,
+                           pointSourceFactory: PointsSourceFactory)
   extends PipelineChannel {
 
   var producer: Option[ActorRef] = None
@@ -45,10 +48,14 @@ class KafkaPipelineChannel(val config: KafkaPipelineChannelConfig,
     val topic = config.topic
     for (i <- 0 until nWorkers) {
       consumerId += 1
-      val name = s"kafka-consumer-$group-$topic-$consumerId"
+      val consumerName = s"kafka-consumer-$group-$topic-$consumerId"
+      val consumerConfig: KafkaPointsConsumerConfig = config.pointsConsumerConfig
+      val pointsSource = pointSourceFactory.make(group, consumerName)
       val props = KafkaPointsConsumer.props(
-        config.consumerConfigFactory(group),
+        consumerName,
+        consumerConfig,
         context.metrics,
+        pointsSource,
         mainSink,
         dropSink,
         packedPoints => SendAndDrop(pointsToSend = packedPoints),
@@ -56,7 +63,7 @@ class KafkaPipelineChannel(val config: KafkaPipelineChannelConfig,
         context.ectx
       ).withDispatcher(config.consumerDispatcher)
 
-      actorSystem.actorOf(props, name)
+      actorSystem.actorOf(props, consumerName)
     }
   }
 }
@@ -65,7 +72,8 @@ object KafkaPipelineChannel {
 
   def apply(config: Config, context: PipelineContext): KafkaPipelineChannel = {
     val c = KafkaPipelineChannelConfig(config)
-    new KafkaPipelineChannel(c, context)
+    val pointSourceFactory = new KafkaPointsSourceFactory(c, context.metrics)
+    new KafkaPipelineChannel(c, context, pointSourceFactory)
   }
 
   def factory(): PipelineChannelFactory = {
@@ -77,3 +85,16 @@ object KafkaPipelineChannel {
   }
 }
 
+trait PointsSourceFactory {
+  def make(groupId: String, consumerId: String): PointsSource
+}
+
+class KafkaPointsSourceFactory(config: KafkaPipelineChannelConfig,
+                               metrics: MetricRegistry) extends PointsSourceFactory {
+  override def make(groupId: String, consumerId: String): PointsSource = {
+    val consumerConfig: ConsumerConfig = config.kafkaConsumerConfigFactory(groupId)
+    val consumerConnector = Consumer.create(consumerConfig)
+    val sourceMetrics = new KafkaPointsSourceImplMetrics(f"$consumerId.source", metrics)
+    new KafkaPointsSourceImpl(consumerConnector, config.topic, sourceMetrics)
+  }
+}
