@@ -132,31 +132,32 @@ case class ParsedRowResult(generationId: BytesKey,
 class PartiallyConvertedPoints(val unresolvedNames: Set[QualifiedName],
                                val points: Seq[Message.Point],
                                resolvedNames: Map[QualifiedName, BytesKey],
+                               currentTimeSeconds: Int,
                                tsdbFormat: TsdbFormat) {
   def convert(partialIdMap: Map[QualifiedName, BytesKey]) = {
     val idMap = resolvedNames.withDefault(partialIdMap)
-    points.map(point => tsdbFormat.convertToKeyValue(point, idMap))
+    points.map(point => tsdbFormat.convertToKeyValue(point, idMap, currentTimeSeconds))
   }
 }
 
-class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping, shardAttributeNames: Set[String]) extends Logging {
+class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: Set[String]) extends Logging {
 
   import TsdbFormat._
 
   def convertToKeyValues(points: Iterable[Message.Point],
-                         idCache: QualifiedName => Option[BytesKey]
-                          ): (PartiallyConvertedPoints, Seq[KeyValue]) = {
+                         idCache: QualifiedName => Option[BytesKey],
+                         currentTimeSeconds: Int): (PartiallyConvertedPoints, Seq[KeyValue]) = {
     val resolvedNames = mutable.HashMap[QualifiedName, BytesKey]()
     val unresolvedNames = mutable.HashSet[QualifiedName]()
     val unconvertedPoints = mutable.ArrayBuffer[Message.Point]()
     val convertedPoints = mutable.ArrayBuffer[KeyValue]()
     for (point <- points) {
-      val names = getAllQualifiedNames(point)
+      val names = getAllQualifiedNames(point, currentTimeSeconds)
       val nameAndIds = names.map(name => (name, idCache(name)))
       val cacheMisses = nameAndIds.collect {case (name, None) => name}
       if (cacheMisses.isEmpty) {
         val idsMap = nameAndIds.toMap.mapValues(_.get)
-        convertedPoints += convertToKeyValue(point, idsMap)
+        convertedPoints += convertToKeyValue(point, idsMap, currentTimeSeconds)
       } else {
         resolvedNames ++= nameAndIds.collect {case (name, Some(id)) => (name, id)}
         unresolvedNames ++= cacheMisses
@@ -167,28 +168,35 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping, shardAttributeNames: Se
     if(unresolvedNames.isEmpty) require(resolvedNames.isEmpty)
 
     val partiallyConvertedPoints =
-      new PartiallyConvertedPoints(unresolvedNames.toSet, unconvertedPoints.toSeq, resolvedNames.toMap, this)
+      new PartiallyConvertedPoints(
+        unresolvedNames.toSet,
+        unconvertedPoints.toSeq,
+        resolvedNames.toMap,
+        currentTimeSeconds,
+        this
+      )
     (partiallyConvertedPoints, convertedPoints.toSeq)
   }
 
   def convertToKeyValue(point: Message.Point,
-                        idMap: Map[QualifiedName, BytesKey]) = {
-    val timeRangeId = getRangeId(point)
-    val metricId = idMap(QualifiedName(MetricKind, timeRangeId, point.getMetric))
+                        idMap: Map[QualifiedName, BytesKey],
+                        currentTimeSeconds: Int) = {
+    val generationId = getGenerationId(point, currentTimeSeconds)
+    val metricId = idMap(QualifiedName(MetricKind, generationId, point.getMetric))
     val attributes = point.getAttributesList.asScala
 
     val shardName = getShardNameByPoint(point)
-    val shardId = idMap(QualifiedName(ShardKind, timeRangeId, shardName))
+    val shardId = idMap(QualifiedName(ShardKind, generationId, shardName))
 
     val attributeIds = attributes.map {
       attr =>
-        val nameId = idMap(QualifiedName(AttrNameKind, timeRangeId, attr.getName))
-        val valueId = idMap(QualifiedName(AttrValueKind, timeRangeId, attr.getValue))
+        val nameId = idMap(QualifiedName(AttrNameKind, generationId, attr.getName))
+        val valueId = idMap(QualifiedName(AttrValueKind, generationId, attr.getValue))
         (nameId, valueId)
     }
     val qualifiedValue = mkQualifiedValue(point)
     mkKeyValue(
-      timeRangeId,
+      generationId,
       metricId,
       shardId,
       point.getTimestamp,
@@ -267,8 +275,8 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping, shardAttributeNames: Se
     SortedMap[BytesKey, BytesKey](attributePairs: _*)
   }
 
-  def getAllQualifiedNames(point: Message.Point): Seq[QualifiedName] = {
-    val timeRangeId = getRangeId(point)
+  def getAllQualifiedNames(point: Message.Point, currentTimeInSeconds: Int): Seq[QualifiedName] = {
+    val timeRangeId = getGenerationId(point, currentTimeInSeconds)
     val attributes: mutable.Buffer[Attribute] = point.getAttributesList.asScala
     val buffer = attributes.flatMap {
       attr => Seq(
@@ -289,13 +297,14 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping, shardAttributeNames: Se
     val shardNames = getShardNames(attributeValueFilters)
     generationId.flatMap {
       generationId =>
-        val metricName = QualifiedName(MetricKind, generationId, metric)
-        val shardQNames = shardNames.map(name => QualifiedName(ShardKind, generationId, name))
-        val attrNames = attributeValueFilters.keys.map(name => QualifiedName(AttrNameKind, generationId, name)).toSeq
+        val genIdBytes = new BytesKey(Bytes.toBytes(generationId))
+        val metricName = QualifiedName(MetricKind, genIdBytes, metric)
+        val shardQNames = shardNames.map(name => QualifiedName(ShardKind, genIdBytes, name))
+        val attrNames = attributeValueFilters.keys.map(name => QualifiedName(AttrNameKind, genIdBytes, name)).toSeq
         val attrValues = attributeValueFilters.values.collect {
           case SingleValueName(name) => Seq(name)
           case MultipleValueNames(names) => names
-        }.flatten.map(name => QualifiedName(AttrValueKind, generationId, name)).toSeq
+        }.flatten.map(name => QualifiedName(AttrValueKind, genIdBytes, name)).toSeq
         metricName +: (shardQNames ++ attrNames ++ attrValues)
     }.toSet
   }
@@ -326,13 +335,14 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping, shardAttributeNames: Se
     ranges.map {
       range =>
         val generationId = range.id
-        val shardQNames = shardNames.map(name => QualifiedName(ShardKind, generationId, name))
+        val genIdBytes = new BytesKey(Bytes.toBytes(generationId))
+        val shardQNames = shardNames.map(name => QualifiedName(ShardKind, genIdBytes, name))
         for {
-         metricId <- idMap.get(QualifiedName(MetricKind, generationId, metric))
+          metricId <- idMap.get(QualifiedName(MetricKind, genIdBytes, metric))
          shardIds <- convertNamesSeq(shardQNames, idMap)
-         attrIdFilters <- covertAttrNamesToIds(generationId, attributeValueFilters, idMap)
+         attrIdFilters <- covertAttrNamesToIds(genIdBytes, attributeValueFilters, idMap)
        } yield {
-          getShardScans(generationId, metricId, shardIds, (range.start, range.stop), attrIdFilters)
+          getShardScans(genIdBytes, metricId, shardIds, (range.start, range.stop), attrIdFilters)
        }
     }.collect { case Some(scans) => scans }.flatten
   }
@@ -433,14 +443,16 @@ class TsdbFormat(timeRangeIdMapping: TimeRangeIdMapping, shardAttributeNames: Se
     }
   }
 
-  private def getRangeId(point: Message.Point): BytesKey = {
-    val baseTime = getBaseTime(point.getTimestamp.toInt)
-    val id = timeRangeIdMapping.getRangeId(baseTime)
+  private def getGenerationId(point: Message.Point, currentTimeSeconds: Int): BytesKey = {
+    val pointBaseTime = getBaseTime(point.getTimestamp.toInt)
+    val currentBaseTime = getBaseTime(currentTimeSeconds)
+    val id = timeRangeIdMapping.getGenerationId(pointBaseTime, currentBaseTime)
+    val idBytes = new BytesKey(Bytes.toBytes(id))
     require(
-      id.length == UniqueIdGenerationWidth,
-      f"TsdbFormat depends on generation id width: ${id.length} not equal to ${UniqueIdGenerationWidth}"
+      idBytes.bytes.length == UniqueIdGenerationWidth,
+      f"TsdbFormat depends on generation id width: ${ idBytes.bytes.length } not equal to ${ UniqueIdGenerationWidth }"
     )
-    id
+    idBytes
   }
 
   private def getBaseTime(timestamp: Int) = {

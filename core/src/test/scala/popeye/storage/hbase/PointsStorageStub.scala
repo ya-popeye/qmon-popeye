@@ -10,13 +10,10 @@ import com.codahale.metrics.MetricRegistry
 import scala.concurrent.ExecutionContext
 
 object PointsStorageStub {
-  val timeRangeIdMapping: FixedTimeRangeID = {
-    val generationId: BytesKey = new BytesKey(Array[Byte](0, 0))
-    new FixedTimeRangeID(generationId)
-  }
+  val timeRangeIdMapping: FixedGenerationId = new FixedGenerationId(0)
 }
 
-class PointsStorageStub(timeRangeIdMapping: TimeRangeIdMapping = PointsStorageStub.timeRangeIdMapping,
+class PointsStorageStub(timeRangeIdMapping: GenerationIdMapping = PointsStorageStub.timeRangeIdMapping,
                         shardAttrs: Set[String] = Set("host"))
                        (implicit val actorSystem: ActorSystem,
                         implicit val executionContext: ExecutionContext) {
