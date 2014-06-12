@@ -1,8 +1,9 @@
 package popeye.query
 
+import org.apache.hadoop.hbase.util.Bytes
 import popeye.storage.hbase.HBaseStorage.{PointsStream, ValueNameFilterCondition}
 import scala.concurrent.{ExecutionContext, Future}
-import popeye.storage.hbase.{TsdbFormat, TimeRangeIdMapping, UniqueIdStorage, HBaseStorage}
+import popeye.storage.hbase._
 import popeye.query.PointsStorage.NameType.NameType
 import scala.collection.immutable.SortedSet
 
@@ -27,7 +28,7 @@ object PointsStorage {
 
   def createPointsStorage(pointsStorage: HBaseStorage,
                           uniqueIdStorage: UniqueIdStorage,
-                          timeRangeIdMapping: TimeRangeIdMapping,
+                          timeRangeIdMapping: GenerationIdMapping,
                           executionContext: ExecutionContext) = new PointsStorage {
 
     def getPoints(metric: String,
@@ -50,7 +51,12 @@ object PointsStorage {
         .map(_.id)
         .toSeq
       val suggestions = generationIds.flatMap {
-        ns => uniqueIdStorage.getSuggestions(kind, ns, namePrefix, MaxNumberOfSuggestions)
+        genId => uniqueIdStorage.getSuggestions(
+          kind,
+          new BytesKey(Bytes.toBytes(genId)),
+          namePrefix,
+          MaxNumberOfSuggestions
+        )
       }
       SortedSet(suggestions: _*).toSeq
     }

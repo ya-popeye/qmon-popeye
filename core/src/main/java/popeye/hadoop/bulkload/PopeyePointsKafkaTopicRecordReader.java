@@ -13,9 +13,6 @@ import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import popeye.javaapi.hadoop.bulkload.TsdbKeyValueIterator;
 import popeye.javaapi.kafka.hadoop.KafkaInput;
 import popeye.kafka.KafkaSimpleConsumerFactory;
-import popeye.storage.hbase.BytesKey;
-import popeye.storage.hbase.FixedTimeRangeID;
-import popeye.storage.hbase.TimeRangeIdMapping;
 import popeye.storage.hbase.TsdbFormat;
 
 import static popeye.hadoop.bulkload.BulkLoadConstants.*;

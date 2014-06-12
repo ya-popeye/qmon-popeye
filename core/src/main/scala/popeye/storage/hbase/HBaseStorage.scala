@@ -1,22 +1,21 @@
 package popeye.storage.hbase
 
+import java.text.SimpleDateFormat
+
 import com.codahale.metrics.MetricRegistry
 import java.util
 import org.apache.hadoop.hbase.KeyValue
 import org.apache.hadoop.hbase.client._
-import org.apache.hadoop.hbase.util.Bytes
 import popeye.proto.{Message, PackedPoints}
 import popeye.{Instrumented, Logging}
 import scala.collection.JavaConversions._
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
 import com.typesafe.config.Config
-import akka.actor.{ActorRef, Props, ActorSystem}
+import akka.actor.{Props, ActorSystem}
 import java.util.concurrent.TimeUnit
 import popeye.util.hbase.{HBaseUtils, HBaseConfigured}
 import java.nio.charset.Charset
-import org.apache.hadoop.hbase.filter.{RegexStringComparator, CompareFilter, RowFilter}
-import java.nio.ByteBuffer
 import HBaseStorage._
 import scala.collection.immutable.SortedMap
 import popeye.util.hbase.HBaseUtils.ChunkedResults
@@ -359,8 +358,9 @@ class HBaseStorage(tableName: String,
                                 (implicit eCtx: ExecutionContext)
   : Future[(PartiallyConvertedPoints, Seq[KeyValue])] = Future {
     val idCache: QualifiedName => Option[BytesKey] = uniqueId.findIdByName
+    val currentTimeInSeconds = (System.currentTimeMillis() / 1000).toInt
     val result@(partiallyConvertedPoints, keyValues) =
-      tsdbFormat.convertToKeyValues(points, idCache = idCache)
+      tsdbFormat.convertToKeyValues(points, idCache, currentTimeInSeconds)
     metrics.resolvedPointsMeter.mark(keyValues.size)
     metrics.delayedPointsMeter.mark(partiallyConvertedPoints.points.size)
     result
@@ -469,8 +469,16 @@ class HBaseStorageConfig(val config: Config,
   val readChunkSize = config.getInt("read-chunk-size")
   val uidsConfig = config.getConfig("uids")
   val timeRangeIdMapping = {
-    val idRotationPeriodInHours = config.getInt("uids.rotation-period-hours")
-    new PeriodicTimeRangeId(idRotationPeriodInHours)
+    val dateFormatter = new SimpleDateFormat("dd/MM/yy")
+    val generationConfigs = config.getConfigList("generations").asScala.map {
+      genConfig =>
+        val periodInHours = genConfig.getInt("rotation-period-hours")
+        val startDate = dateFormatter.parse(genConfig.getString("start-date"))
+        val startTimeInSeconds = (startDate.getTime / 1000).toInt
+        (startTimeInSeconds, periodInHours)
+    }
+    val periodConfigs = PeriodicGenerationId.createPeriodConfigs(generationConfigs)
+    PeriodicGenerationId(periodConfigs)
   }
   val shardAttributeNames = config.getStringList("shard-attributes").asScala.toSet
 }
