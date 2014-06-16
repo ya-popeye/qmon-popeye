@@ -359,8 +359,9 @@ class HBaseStorage(tableName: String,
                                 (implicit eCtx: ExecutionContext)
   : Future[(PartiallyConvertedPoints, Seq[KeyValue])] = Future {
     val idCache: QualifiedName => Option[BytesKey] = uniqueId.findIdByName
+    val currentTimeInSeconds = (System.currentTimeMillis() / 1000).toInt
     val result@(partiallyConvertedPoints, keyValues) =
-      tsdbFormat.convertToKeyValues(points, idCache = idCache)
+      tsdbFormat.convertToKeyValues(points, idCache, currentTimeInSeconds)
     metrics.resolvedPointsMeter.mark(keyValues.size)
     metrics.delayedPointsMeter.mark(partiallyConvertedPoints.points.size)
     result
@@ -470,7 +471,7 @@ class HBaseStorageConfig(val config: Config,
   val uidsConfig = config.getConfig("uids")
   val timeRangeIdMapping = {
     val idRotationPeriodInHours = config.getInt("uids.rotation-period-hours")
-    new PeriodicTimeRangeId(idRotationPeriodInHours)
+    new PeriodicGenerationId(???)
   }
   val shardAttributeNames = config.getStringList("shard-attributes").asScala.toSet
 }
