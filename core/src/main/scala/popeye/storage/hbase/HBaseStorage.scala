@@ -454,19 +454,15 @@ class HBaseStorage(tableName: String,
 
 }
 
-class HBaseStorageConfig(val config: Config,
-                          val actorSystem: ActorSystem,
-                          val metricRegistry: MetricRegistry,
-                          val storageName: String = "hbase")
-                         (implicit val eCtx: ExecutionContext){
-
+class HBaseStorageConfig(val config: Config, val storageName: String = "hbase") {
   import scala.collection.JavaConverters._
+
   val uidsTableName = config.getString("table.uids")
   val pointsTableName = config.getString("table.points")
-  val poolSize = config.getInt("pool.max")
+  lazy val poolSize = config.getInt("pool.max")
   val zkQuorum = config.getString("zk.quorum")
   val resolveTimeout = new FiniteDuration(config.getMilliseconds(s"uids.resolve-timeout"), TimeUnit.MILLISECONDS)
-  val readChunkSize = config.getInt("read-chunk-size")
+  lazy val readChunkSize = config.getInt("read-chunk-size")
   val uidsConfig = config.getConfig("uids")
   val timeRangeIdMapping = {
     val dateFormatter = new SimpleDateFormat("dd/MM/yy")
@@ -487,21 +483,20 @@ class HBaseStorageConfig(val config: Config,
  * Encapsulates configured hbase client and points storage actors.
  * @param config provides necessary configuration parameters
  */
-class HBaseStorageConfigured(config: HBaseStorageConfig) {
+class HBaseStorageConfigured(config: HBaseStorageConfig, actorSystem: ActorSystem, metricRegistry: MetricRegistry)
+                            (implicit val eCtx: ExecutionContext) {
 
-  val hbase = new HBaseConfigured(
-    config.config, config.zkQuorum, config.poolSize)
+  val hbase = new HBaseConfigured(config.config, config.zkQuorum)
+  val hTablePool: HTablePool = hbase.getHTablePool(config.poolSize)
 
   CreateTsdbTables.createTables(hbase.hbaseConfiguration, config.pointsTableName, config.uidsTableName)
 
-  config.actorSystem.registerOnTermination(hbase.close())
+  actorSystem.registerOnTermination(hTablePool.close())
 
-  val uniqueIdStorage = new UniqueIdStorage(config.uidsTableName, hbase.hTablePool)
+  val uniqueIdStorage = new UniqueIdStorage(config.uidsTableName, hTablePool)
 
   val storage = {
-    implicit val eCtx = config.eCtx
-
-    val uniqIdResolver = config.actorSystem.actorOf(Props.apply(UniqueIdActor(uniqueIdStorage)))
+    val uniqIdResolver = actorSystem.actorOf(Props.apply(UniqueIdActor(uniqueIdStorage)))
     val uniqueId = new UniqueIdImpl(
       uniqIdResolver,
       config.uidsConfig.getInt("cache.initial-capacity"),
@@ -511,10 +506,10 @@ class HBaseStorageConfigured(config: HBaseStorageConfig) {
     val tsdbFormat = new TsdbFormat(config.timeRangeIdMapping, config.shardAttributeNames)
     new HBaseStorage(
       config.pointsTableName,
-      hbase.hTablePool,
+      hTablePool,
       uniqueId,
       tsdbFormat,
-      new HBaseStorageMetrics(config.storageName, config.metricRegistry),
+      new HBaseStorageMetrics(config.storageName, metricRegistry),
       config.resolveTimeout,
       config.readChunkSize)
   }

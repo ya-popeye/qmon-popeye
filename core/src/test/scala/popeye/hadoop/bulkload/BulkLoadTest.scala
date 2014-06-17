@@ -66,11 +66,8 @@ object BulkLoadTest {
   def loadPointsFromHBase(hbaseConfiguration: Configuration, storageConfig: Config) = {
 
     val actorSystem = ActorSystem()
-    val configuredStorage = new HBaseStorageConfigured(new HBaseStorageConfig(
-      storageConfig,
-      actorSystem,
-      new MetricRegistry()
-    ))
+    val baseStorageConfig: HBaseStorageConfig = new HBaseStorageConfig(storageConfig)
+    val configuredStorage = new HBaseStorageConfigured(baseStorageConfig, actorSystem, new MetricRegistry())
     val tsdbTable = new HTable(hbaseConfiguration, pointsTableName)
     //    val tColumn = CreateTsdbTables.tsdbTable.getFamilies.iterator().next()
     val results = asResultIterator(tsdbTable.getScanner(new Scan())).toList

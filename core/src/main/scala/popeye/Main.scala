@@ -6,6 +6,7 @@ import com.codahale.metrics.MetricRegistry
 import akka.actor.ActorSystem
 import popeye.pipeline.PipelineCommand
 import popeye.query.QueryCommand
+import popeye.storage.hbase.PrepareStorageCommand
 
 case class MainConfig(debug: Boolean = false,
                       configPath: Option[File] = None,
@@ -17,7 +18,7 @@ trait PopeyeCommand {
 }
 
 object Main extends App with MetricsConfiguration with Logging {
-  val commands = List[PopeyeCommand](new PipelineCommand, QueryCommand)
+  val commands = List[PopeyeCommand](new PipelineCommand, QueryCommand, PrepareStorageCommand)
 
   val commonParser = new scopt.OptionParser[MainConfig]("popeye") {
     head("popeye", "0.x")

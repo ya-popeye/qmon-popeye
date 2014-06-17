@@ -39,9 +39,8 @@ object CreateTsdbTables {
       } catch {
         case e: NamespaceExistException => // do nothing
       }
-      val splits = (Byte.MinValue to Byte.MaxValue).map(i => Array(i.toByte)).toArray
       try {
-        hBaseAdmin.createTable(tsdbTable, splits)
+        hBaseAdmin.createTable(tsdbTable)
       } catch {
         case e: TableExistsException => // do nothing
       }

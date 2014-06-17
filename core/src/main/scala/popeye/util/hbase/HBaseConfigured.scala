@@ -16,7 +16,7 @@ import popeye.Logging
 /**
  * @author Andrey Stepachev
  */
-class HBaseConfigured(config: Config, zkQuorum: String, poolSize: Int) extends Closeable with Logging {
+class HBaseConfigured(config: Config, zkQuorum: String) extends Logging {
   val hbaseConfiguration = makeHBaseConfig(config)
   log.info("using quorum: {}", zkQuorum)
   private val parts: Array[String] = zkQuorum.split("/")
@@ -27,12 +27,8 @@ class HBaseConfigured(config: Config, zkQuorum: String, poolSize: Int) extends C
     hbaseConfiguration.set(HConstants.ZOOKEEPER_ZNODE_PARENT, zkChroot)
     log.info("hbase chrooted to: {}", zkChroot)
   }
-  val hTablePool = new HTablePool(hbaseConfiguration, poolSize)
 
-
-  def close(): Unit = {
-    hTablePool.close()
-  }
+  def getHTablePool(size: Int) = new HTablePool(hbaseConfiguration, size)
 
   private def makeHBaseConfig(config: Config): Configuration = {
     val hbaseConfig = HBaseConfiguration.create
