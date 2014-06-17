@@ -100,7 +100,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
   }
 
   it should "perform time range queries" in {
-    val timeRanges = (0 to 3).map(id => (id * 3600, (id + 1) * 3600, bytesKey(0, id.toByte)))
+    val timeRanges = (0 to 3).map(id => (id * 3600, (id + 1) * 3600, id.toShort))
     val timeRangeIdMapping = createTimeRangeIdMapping(timeRanges: _*)
     val storageStub = new PointsStorageStub(timeRangeIdMapping)
     val points = (0 to 6).map {
@@ -124,7 +124,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
   }
 
   it should "not fail if id is not present in some of time ranges" in {
-    val timeRangeIdMapping = createTimeRangeIdMapping((0, 3600, bytesKey(0, 0)), (3600, 7200, bytesKey(0, 1)))
+    val timeRangeIdMapping = createTimeRangeIdMapping((0, 3600, 0), (3600, 7200, 1))
     val storageStub = new PointsStorageStub(timeRangeIdMapping)
     val point = messagePoint(
       metricName = "my.metric1",
