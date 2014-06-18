@@ -13,13 +13,11 @@ class HBasePipelineSinkFactory(storagesConfig: Config,
   extends PipelineSinkFactory {
   def startSink(sinkName: String, config: Config): PointsSink = {
     val storageName = config.getString("storage")
-    val hbaseStorage = new HBaseStorageConfigured(
-      new HBaseStorageConfig(
-        config.withFallback(storagesConfig.getConfig(storageName)),
-        actorSystem,
-        metrics,
-        sinkName
-      )(ectx))
+    val storageConfig: HBaseStorageConfig = new HBaseStorageConfig(
+      config.withFallback(storagesConfig.getConfig(storageName)),
+      sinkName
+    )
+    val hbaseStorage = new HBaseStorageConfigured(storageConfig, actorSystem, metrics)(ectx)
     hbaseStorage.storage.ping()
 
     new HBasePointsSink(hbaseStorage.storage)(ectx)
