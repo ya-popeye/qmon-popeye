@@ -18,14 +18,17 @@ class MemoryPipelineChannel(val context: PipelineContext)
       val batchId = context.idGenerator.nextId()
       debug(s"$batchId: writing points")
 
-      val allReaders: Future[Long] = Future.sequence(readers.map { r=>
+      val allWritesFuture: Future[Long] = Future.sequence(readers.map { r=>
         r.sendPacked(batchId, points)
       }).collect{ case x =>
         debug(s"$batchId write complete: ${x.mkString}}")
         batchId
       }
+      allWritesFuture.onFailure {
+        case e: Exception => error("write failed", e)
+      }
       if (promise.isDefined)
-        promise.get.completeWith(allReaders)
+        promise.get.completeWith(allWritesFuture)
     }
   }
 

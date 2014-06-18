@@ -17,9 +17,11 @@ case class TimeRangeAndId(start: Int, stop: Int, id: Short) {
   def contains(timestamp: Int) = start <= timestamp && timestamp < stop
 }
 
-// points are packed in rows by hours, so period must be hour-aligned
-case class PeriodConfig(startTime: Int, periodInHours: Int, firstPeriodId: Short) {
-  def periodInSeconds: Int = periodInHours * 3600
+// points are packed in rows by timespans, so period must be timespan-aligned
+case class PeriodConfig(startTime: Int, periodInTimespans: Int, firstPeriodId: Short) {
+  def periodInSeconds: Int = {
+    periodInTimespans * TsdbFormat.MAX_TIMESPAN
+  }
 
   def getPeriodId(timestamp: Int): Short = {
     require(startTime <= timestamp)
