@@ -1,3 +1,5 @@
+Documentation is obsolete, update is coming soon.
+
 qmon-popeye
 ===========
 
