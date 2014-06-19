@@ -19,7 +19,7 @@ import popeye.Logging
 class HBaseConfigured(config: Config, zkQuorum: String, poolSize: Int) extends Closeable with Logging {
   val hbaseConfiguration = makeHBaseConfig(config)
   log.info("using quorum: {}", zkQuorum)
-  private val parts: Array[String] = zkQuorum.split("/")
+  private val parts: Array[String] = zkQuorum.split("/", 2)
   hbaseConfiguration.set(HConstants.ZOOKEEPER_QUORUM, parts(0))
   updateZkPort(parts(0))
   if (parts.length > 1) {
