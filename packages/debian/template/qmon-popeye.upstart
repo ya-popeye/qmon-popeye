@@ -9,4 +9,4 @@ pre-start script
     stop ; exit 0
   fi
 end script
-exec /usr/share/qmon-popeye-@APP_NAME@/bin/popeye-pipeline -c $QMON_CONF/@APP_NAME@.conf
+exec /usr/share/qmon-popeye-@APP_NAME@/bin/popeye-start -c $QMON_CONF/@APP_NAME@.conf
