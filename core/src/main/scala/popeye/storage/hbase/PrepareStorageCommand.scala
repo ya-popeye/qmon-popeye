@@ -20,12 +20,13 @@ object PrepareStorageCommand extends PopeyeCommand with Logging {
   }
 
   override def run(actorSystem: ActorSystem, metrics: MetricRegistry, config: Config, mainConfig: MainConfig): Unit = {
+    val shardAttributeNames = config.getStringList("popeye.shard-attributes").asScala.toSet
     val prepareStorageConfig = config.getConfig("popeye.prepare-storage")
     val storagesConfig = config.getConfig("popeye.storages")
     val splits = prepareStorageConfig.getInt("db.splits")
     val storageName = prepareStorageConfig.getString("db.storage")
     val hBaseConfig = prepareStorageConfig.getConfig("db").withFallback(storagesConfig.getConfig(storageName))
-    val storageConfig = new HBaseStorageConfig(hBaseConfig)
+    val storageConfig = new HBaseStorageConfig(hBaseConfig, shardAttributeNames)
     val hBase = new HBaseConfigured(storageConfig.config, storageConfig.zkQuorum)
     val hBaseAdmin = new HBaseAdmin(hBase.hbaseConfiguration)
     val currentTimeInSeconds = (System.currentTimeMillis() / 1000).toInt

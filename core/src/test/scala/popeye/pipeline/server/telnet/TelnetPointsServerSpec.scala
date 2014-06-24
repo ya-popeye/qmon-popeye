@@ -10,12 +10,10 @@ import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.{ConfigFactory, Config}
 import java.io.ByteArrayOutputStream
 import java.util.Random
-import org.mockito.Matchers.{eq => the}
 import org.mockito.Mockito._
 import org.scalatest.mock.MockitoSugar
-import popeye.ConfigUtil
 import popeye.pipeline.DispatcherProtocol.Pending
-import popeye.test.PopeyeTestUtils
+import popeye.test.PopeyeTestUtils._
 import popeye.pipeline.test.AkkaTestKitSpec
 import scala.concurrent.duration._
 import scala.concurrent.Promise
@@ -48,19 +46,20 @@ class TelnetPointsServerSpec extends AkkaTestKitSpec("tsdb-server") with Mockito
 
     val kafka = TestProbe()
     val connection = TestProbe()
+    val shardAttributes = Set("host")
     val actor: TestActorRef[TelnetPointsHandler] = TestActorRef(
       Props.apply(new TelnetPointsHandler(connection.ref, new PipelineChannelWriter {
         def write(promise: Option[Promise[Long]], points: PackedPoints): Unit = {
           kafka.ref ! Pending(promise)(points)
         }
-      }, new TelnetPointsServerConfig(config), tsdbMetrics))
+      }, new TelnetPointsServerConfig(config, shardAttributes), tsdbMetrics))
         .withDeploy(Deploy.local))
     (connection, kafka, actor)
   }
 
 
-  val plainCmd = ByteString.fromString(PopeyeTestUtils.telnetCommand(
-    PopeyeTestUtils.mkEvent(List("metric.name"), List("localhost"))
+  val plainCmd = ByteString.fromString(telnetCommand(
+    mkEvent(List("metric.name"), List("localhost"))
   ) + "\r\n")
 
   val encodedCmd = encode(plainCmd, Deflate())
@@ -69,13 +68,15 @@ class TelnetPointsServerSpec extends AkkaTestKitSpec("tsdb-server") with Mockito
   val snappyCmd = ByteString.fromString(s"snappy ${snappedCmd.length}\r\n")
   val commitCmd = ByteString.fromString("commit 1\r\n")
 
+  val noMsgTimeout = 200 millis
+
   behavior of "TsdbTelnetHandler"
 
   it should "plain interaction" in {
     val (connection, kafka, actor) = initActors(2)
     actor ! Tcp.Received(plainCmd.take(10))
     actor ! Tcp.Received(plainCmd.drop(10))
-    expectNoMsg()
+    expectNoMsg(noMsgTimeout)
     actor ! Tcp.Received(commitCmd)
     validate(connection, kafka, actor)
   }
@@ -102,7 +103,7 @@ class TelnetPointsServerSpec extends AkkaTestKitSpec("tsdb-server") with Mockito
     actor ! Tcp.Received(deflateCmd)
     actor ! Tcp.Received(encodedCmd.take(10))
     actor ! Tcp.Received(encodedCmd.drop(10))
-    expectNoMsg()
+    expectNoMsg(noMsgTimeout)
     actor ! Tcp.Received(commitCmd)
     validate(connection, kafka, actor)
   }
@@ -113,7 +114,7 @@ class TelnetPointsServerSpec extends AkkaTestKitSpec("tsdb-server") with Mockito
     actor ! Tcp.Received(snappyCmd)
     actor ! Tcp.Received(snappedCmd.take(10))
     actor ! Tcp.Received(snappedCmd.drop(10))
-    expectNoMsg()
+    expectNoMsg(noMsgTimeout)
     actor ! Tcp.Received(commitCmd)
     validate(connection, kafka, actor)
   }
@@ -148,6 +149,19 @@ class TelnetPointsServerSpec extends AkkaTestKitSpec("tsdb-server") with Mockito
 
     actor ! Tcp.Received((snappyCmd ++ snappedCmd ++ commitCmd).compact)
     validate(connection, kafka, actor)
+  }
+
+  it should "silently fail if shard attribute is not present" in {
+    val (connection, kafka, actor) = initActors(2)
+
+    val cmd = telnetCommand(createPoint(
+      metric = "test",
+      timestamp = 1000,
+      attributes = Seq("non-shard" -> "value")
+    )) + "\r\n"
+    val byteCmd = ByteString.fromString(cmd)
+    actor ! Tcp.Received((byteCmd ++ byteCmd ++ commitCmd).compact)
+    kafka.expectNoMsg(noMsgTimeout)
   }
 
   def validate(connection: TestProbe, kafka: TestProbe, actor: TestActorRef[TelnetPointsHandler]) {

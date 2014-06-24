@@ -21,6 +21,7 @@ import akka.dispatch.ExecutionContexts
 import java.util.concurrent.Executors
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 import popeye.proto.Message.Point
+import scala.collection.JavaConverters._
 
 object PipelineCommand {
 
@@ -28,9 +29,6 @@ object PipelineCommand {
     "kafka" -> KafkaPipelineChannel.factory(),
     "memory" -> MemoryPipelineChannel.factory()
   )
-
-  val sources: Map[String, PipelineSourceFactory] = Map(
-    "telnet" -> TelnetPointsServer.sourceFactory())
 
   def channelsForType(channelType: String): PipelineChannelFactory = {
     channels.getOrElse(
@@ -44,11 +42,12 @@ object PipelineCommand {
                     actorSystem: ActorSystem,
                     storagesConfig: Config,
                     metrics: MetricRegistry,
-                    idGenerator: IdGenerator): Map[String, PipelineSinkFactory] = {
+                    idGenerator: IdGenerator,
+                    shardAttributes: Set[String]): Map[String, PipelineSinkFactory] = {
     val kafkaStarter = new KafkaSinkStarter(actorSystem, ectx, idGenerator, metrics)
     val bulkloadStarter = new BulkloadSinkStarter(kafkaStarter, actorSystem.scheduler, ectx, metrics)
     val sinks = Map(
-      "hbase-sink" -> new HBasePipelineSinkFactory(storagesConfig, actorSystem, ectx, metrics),
+      "hbase-sink" -> new HBasePipelineSinkFactory(storagesConfig, actorSystem, ectx, shardAttributes, metrics),
       "kafka-sink" -> new KafkaSinkFactory(kafkaStarter),
       "bulkload-sink" -> new BulkloadSinkFactory(bulkloadStarter, storagesConfig),
       "blackhole" -> new BlackHolePipelineSinkFactory(actorSystem, ectx),
@@ -71,11 +70,14 @@ object PipelineCommand {
     }
   }
 
-  def sourceForType(typeName: String): PipelineSourceFactory = {
-    sources.getOrElse(
-      typeName,
-      throw new IllegalArgumentException(f"No such source type: $typeName, " +
-        f"available types: ${sources.keys}")
+  def sourceFactories(shardAttributes: Set[String]): Map[String, PipelineSourceFactory] = {
+    val factories = Map(
+      "telnet" -> TelnetPointsServer.sourceFactory(shardAttributes)
+    )
+    factories.withDefault(
+      typeName =>
+        throw new IllegalArgumentException(f"No such source type: $typeName, " +
+          f"available types: ${ factories.keys }")
     )
   }
 }
@@ -101,22 +103,31 @@ class PipelineCommand extends PopeyeCommand {
     val channel = PipelineCommand.channelsForType(channelType)
       .make(typeConfig, context)
 
+    val shardAttributeNames = config.getStringList("popeye.shard-attributes").asScala.toSet
     val storageConfig = config.getConfig("popeye.storages")
-    val sinks = PipelineCommand.sinkFactories(ectx, actorSystem, storageConfig, metrics, idGenerator)
+    val sinkFactories = PipelineCommand.sinkFactories(
+      ectx,
+      actorSystem,
+      storageConfig,
+      metrics,
+      idGenerator,
+      shardAttributeNames
+    )
+    val sourceFactories = PipelineCommand.sourceFactories(shardAttributeNames)
     val readersConfig = ConfigUtil.asMap(pc.getConfig("channelReaders"))
 
     for ((readerName, readerConfig) <- readersConfig) {
       val mainSinkConfig = readerConfig.getConfig("mainSink")
-      val mainSink = sinks(mainSinkConfig.getString("type")).startSink(f"$readerName-mainSink", mainSinkConfig)
+      val mainSink = sinkFactories(mainSinkConfig.getString("type")).startSink(f"$readerName-mainSink", mainSinkConfig)
 
       val dropSinkConfig = readerConfig.getConfig("dropSink")
-      val dropSink = sinks(dropSinkConfig.getString("type")).startSink(f"$readerName-dropSink", dropSinkConfig)
+      val dropSink = sinkFactories(dropSinkConfig.getString("type")).startSink(f"$readerName-dropSink", dropSinkConfig)
 
       channel.startReader("popeye-" + readerName, mainSink, dropSink)
     }
     for ((sourceName, sourceConfig) <- ConfigUtil.asMap(pc.getConfig("sources"))) {
       val typeName = sourceConfig.getString("type")
-      PipelineCommand.sourceForType(typeName).startSource(sourceName, channel, sourceConfig, ectx)
+      sourceFactories(typeName).startSource(sourceName, channel, sourceConfig, ectx)
     }
 
     val monitoringAddress = config.getString("monitoring.address")
