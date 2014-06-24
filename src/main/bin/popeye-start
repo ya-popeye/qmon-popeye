@@ -1,0 +1,17 @@
+#!/bin/sh
+
+home=$(dirname $0)
+
+daemon_name=`for param in $@; do echo $param ; done | grep -Eo "(slicer|pump|query)\.conf" | cut -d "." -f 1`
+case $daemon_name in
+slicer|pump)
+  $home/popeye pipeline $@
+;;
+query)
+  $home/popeye query $@
+;;
+*)
+  echo "wrong config file name: $1 should be one of [slicer.conf, pump.conf, query.conf]"
+;;
+esac
+

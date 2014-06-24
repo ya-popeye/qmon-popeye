@@ -1,4 +1,0 @@
-#!/bin/sh
-
-home=$(dirname $0)
-$home/popeye pipeline $@
