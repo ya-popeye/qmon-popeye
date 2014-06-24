@@ -78,7 +78,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
 
   it should "create KeyValue rows" in {
     val tsdbFormat = createTsdbFormat()
-    val keyValue = tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap, 0)
+    val keyValue = tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap.get, 0).right.get
     val metricId = Array[Byte](1, 0, 1)
     val timestamp = samplePoint.getTimestamp.toInt
     val timestampBytes = Bytes.toBytes(timestamp - timestamp % TsdbFormat.MAX_TIMESPAN)
@@ -96,7 +96,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
 
   it should "convert point values" in {
     val tsdbFormat = createTsdbFormat()
-    val keyValue = tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap, 0)
+    val keyValue = tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap.get, 0).right.get
     val timestamp = samplePoint.getTimestamp.toInt
     val result = new Result(List(keyValue).asJava)
     tsdbFormat.parseRowResult(result).points.head should equal(HBaseStorage.Point(timestamp, samplePoint.getIntValue))
@@ -128,7 +128,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     for (_ <- 0 to 100) {
       val startTime = System.currentTimeMillis()
       for (point <- points) {
-        tsdbFormat.convertToKeyValue(point, idMap, 0)
+        tsdbFormat.convertToKeyValue(point, idMap.get, 0).right.get
       }
       println(f"time:${ System.currentTimeMillis() - startTime }")
     }
@@ -141,7 +141,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val (partiallyConvertedPoints, keyValues) = tsdbFormat.convertToKeyValues(Seq(samplePoint), sampleIdMap.get, 0)
     partiallyConvertedPoints.points.isEmpty should be(true)
     keyValues.size should equal(1)
-    keyValues.head should equal(tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap, 0))
+    keyValues.head should equal(tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap.get, 0).right.get)
     val point = HBaseStorage.Point(samplePoint.getTimestamp.toInt, samplePoint.getIntValue)
     tsdbFormat.parseRowResult(new Result(keyValues.asJava)).points.head should equal(point)
   }
@@ -155,7 +155,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     keyValues.isEmpty should be(true)
     partiallyConvertedPoints.unresolvedNames should equal(Set(notInCache))
     val delayedkeyValues = partiallyConvertedPoints.convert(Map(notInCache -> sampleIdMap(notInCache)))
-    delayedkeyValues.head should equal(tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap, 0))
+    delayedkeyValues.head should equal(tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap.get, 0).right.get)
     val point = HBaseStorage.Point(samplePoint.getTimestamp.toInt, samplePoint.getIntValue)
     tsdbFormat.parseRowResult(new Result(delayedkeyValues.asJava)).points.head should equal(point)
   }
@@ -179,7 +179,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
         )
     }
     val keyValues = points.map {
-      point => tsdbFormat.convertToKeyValue(point, sampleIdMap, 0)
+      point => tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0).right.get
     }
     require(keyValues.map(_.getRow.toBuffer).distinct.size == 1)
     val parsedRowResult = tsdbFormat.parseRowResult(new Result(keyValues.asJava))
