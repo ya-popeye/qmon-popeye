@@ -454,7 +454,7 @@ class HBaseStorage(tableName: String,
 
 }
 
-class HBaseStorageConfig(val config: Config, val storageName: String = "hbase") {
+class HBaseStorageConfig(val config: Config, val shardAttributeNames: Set[String], val storageName: String = "hbase") {
   import scala.collection.JavaConverters._
 
   val uidsTableName = config.getString("table.uids")
@@ -476,7 +476,6 @@ class HBaseStorageConfig(val config: Config, val storageName: String = "hbase") 
     val periodConfigs = PeriodicGenerationId.createPeriodConfigs(generationConfigs)
     PeriodicGenerationId(periodConfigs)
   }
-  val shardAttributeNames = config.getStringList("shard-attributes").asScala.toSet
 }
 
 /**

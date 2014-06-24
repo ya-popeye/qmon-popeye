@@ -28,9 +28,10 @@ class TelnetPointsMetrics(prefix: String, override val metricRegistry: MetricReg
     connections.get()
   }
   val tcpSuspend = metrics.meter(s"$prefix.tcp-suspend")
+  val preprocessingErrors = metrics.meter(s"$prefix.preprocessing-errors")
 }
 
-class TelnetPointsServerConfig(config: Config) {
+class TelnetPointsServerConfig(config: Config, val shardAttributes: Set[String]) {
   val hwPendingPoints: Int = config.getInt("high-watermark")
   val lwPendingPoints: Int = config.getInt("low-watermark")
   val batchSize: Int = config.getInt("batchSize")
@@ -62,28 +63,31 @@ class TelnetPointsHandler(connection: ActorRef,
   private var pendingCommits: Seq[CommitReq] = Vector()
   private val pendingCorrelations = mutable.TreeSet[PointId]()
 
-  private val commands = new TelnetCommands(metrics) {
+  private val commands = {
+    val commandListener = new CommandListener {
 
-    override def addPoint(point: Message.Point): Unit = {
-      bufferedPoints += point
-      if (bufferedPoints.pointsCount >= config.batchSize) {
+      override def addPoint(point: Message.Point): Unit = {
+        bufferedPoints += point
+        if (bufferedPoints.pointsCount >= config.batchSize) {
+          sendPack()
+        }
+      }
+
+      override def startExit(): Unit = {
+        pendingExit = true
+        debug(s"Triggered exit")
+      }
+
+      override def commit(correlationId: Option[Long]): Unit = {
         sendPack()
+        if (correlationId.isDefined) {
+          debug(s"Triggered commit for correlationId $correlationId and pointId $pointId")
+          pendingCommits = (pendingCommits :+ CommitReq(sender, pointId, correlationId.get,
+            metrics.commitTimer.timerContext())).sortBy(_.pointId)
+        }
       }
     }
-
-    override def startExit(): Unit = {
-      pendingExit = true
-      debug(s"Triggered exit")
-    }
-
-    override def commit(correlationId: Option[Long]): Unit = {
-      sendPack()
-      if (correlationId.isDefined) {
-        debug(s"Triggered commit for correlationId $correlationId and pointId $pointId")
-        pendingCommits = (pendingCommits :+ CommitReq(sender, pointId, correlationId.get,
-          metrics.commitTimer.timerContext())).sortBy(_.pointId)
-      }
-    }
+    new TelnetCommands(metrics, commandListener, config.shardAttributes)
   }
 
   @volatile
@@ -137,8 +141,15 @@ class TelnetPointsHandler(connection: ActorRef,
       context.stop(self)
   }
 
+  def dumpErrors(): Unit = {
+    val errors = commands.getErrorCounts()
+    warn(s"there was errors: $errors")
+    metrics.preprocessingErrors.mark(errors.values.sum)
+  }
+
   private def sendPack() {
     import context.dispatcher
+    dumpErrors()
     if (bufferedPoints.pointsCount > 0) {
       pointId += 1
       val p = Promise[Long]()
@@ -252,21 +263,24 @@ class TelnetPointsServer(config: TelnetPointsServerConfig,
 
 object TelnetPointsServer {
 
-  def sourceFactory(): PipelineSourceFactory = {
+  def sourceFactory(shardAttributes: Set[String]): PipelineSourceFactory = {
     new PipelineSourceFactory {
       def startSource(sinkName: String, channel: PipelineChannel,
                       config: Config, ect: ExecutionContext): Unit = {
-        channel.actorSystem.actorOf(props(sinkName, config, channel.newWriter(), channel.metrics))
+        channel.actorSystem.actorOf(props(sinkName, config, shardAttributes, channel.newWriter(), channel.metrics))
       }
     }
   }
 
-  def props(prefix: String, config: Config, channelWriter: PipelineChannelWriter,
+  def props(prefix: String,
+            config: Config,
+            shardAttributes: Set[String],
+            channelWriter: PipelineChannelWriter,
             metricRegistry: MetricRegistry): Props = {
     val host = config.getString("listen")
     val port = config.getInt("port")
     val addr = new InetSocketAddress(host, port)
-    val serverConf = new TelnetPointsServerConfig(config)
+    val serverConf = new TelnetPointsServerConfig(config, shardAttributes)
     Props.apply(new TelnetPointsServer(serverConf, addr, channelWriter,
       new TelnetPointsMetrics(prefix, metricRegistry)))
   }

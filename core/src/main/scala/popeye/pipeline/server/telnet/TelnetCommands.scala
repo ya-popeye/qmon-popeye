@@ -13,19 +13,35 @@ import scala.collection.mutable
 import java.util.zip.{Inflater, Deflater}
 
 // TODO: rewrite to FSM
-abstract class TelnetCommands(metrics: TelnetPointsMetrics) extends Closeable with Logging {
+trait CommandListener {
+  def addPoint(point: Message.Point): Unit
+
+  def commit(correlationId: Option[Long]): Unit
+
+  def startExit(): Unit
+}
+
+class TelnetCommands(metrics: TelnetPointsMetrics,
+                     commandListener: CommandListener,
+                     shardAttributes: Set[String]) extends Closeable with Logging {
 
   import TelnetCommands._
 
   private var deflater: Option[CompressionDecoder] = None
   private val lineDecoder = new LineDecoder()
   private var bufferedLine: Option[ByteString] = None
+  private var errorCounts = mutable.HashMap[String, Int]()
 
-  def addPoint(point: Message.Point): Unit
+  private def incrementErrorCount(errorType: String): Unit = {
+    val previousErrorCount = errorCounts.getOrElse(errorType, 0)
+    errorCounts(errorType) = previousErrorCount + 1
+  }
 
-  def commit(correlationId: Option[Long]): Unit
-
-  def startExit(): Unit
+  def getErrorCounts() = {
+    val counts = errorCounts
+    errorCounts = mutable.HashMap[String, Int]()
+    counts
+  }
 
   override def close() = {
     deflater foreach {
@@ -71,23 +87,31 @@ abstract class TelnetCommands(metrics: TelnetPointsMetrics) extends Closeable wi
           case "put" =>
             metrics.pointsRcvMeter.mark()
             try {
-              addPoint(parsePoint(strings))
+              import scala.collection.JavaConverters._
+              val point = parsePoint(strings)
+              if (point.getAttributesList.asScala.count(attr => shardAttributes.contains(attr.getName)) == 1) {
+                commandListener.addPoint(point)
+              } else {
+                incrementErrorCount(s"point have no or more than one shard attribute; " +
+                  s"shard attribute names: $shardAttributes")
+              }
             } catch {
               case iae@(_: IllegalArgumentException | _: IndexOutOfBoundsException) =>
+                incrementErrorCount(iae.getMessage)
                 debugThrowable(s"Illegal point: ${strings.mkString(",")}", iae)
               case x: Throwable =>
                 throw x
             }
 
           case "commit" =>
-            commit(Some(strings(1).toLong))
+            commandListener.commit(Some(strings(1).toLong))
 
           case "version" =>
-            commit(None)
+            commandListener.commit(None)
 
           case "exit" =>
-            commit(None)
-            startExit()
+            commandListener.commit(None)
+            commandListener.startExit()
 
           case c: String =>
             throw new IllegalArgumentException(s"Unknown command ${c.take(50)}")
