@@ -143,8 +143,10 @@ class TelnetPointsHandler(connection: ActorRef,
 
   def dumpErrors(): Unit = {
     val errors = commands.getErrorCounts()
-    warn(s"there was errors: $errors")
-    metrics.preprocessingErrors.mark(errors.values.sum)
+    if (errors.nonEmpty) {
+      warn(s"there was errors: $errors")
+      metrics.preprocessingErrors.mark(errors.values.sum)
+    }
   }
 
   private def sendPack() {
