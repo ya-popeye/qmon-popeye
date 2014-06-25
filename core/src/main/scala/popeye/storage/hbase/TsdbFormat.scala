@@ -17,6 +17,8 @@ import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.{AllValueNames
 import popeye.storage.hbase.HBaseStorage.ValueIdFilterCondition.{SingleValueId, MultipleValueIds, AllValueIds}
 import popeye.proto.Message.Attribute
 
+import scala.util.{Success, Failure, Try}
+
 object TsdbFormat {
 
   import HBaseStorage._
@@ -129,18 +131,35 @@ case class ParsedRowResult(generationId: BytesKey,
   }
 }
 
+trait PointConversionErrorHandler {
+  def handlePointConversionError(e: Exception): Unit
+}
+
+object NoOpPointConversionErrorHandler extends PointConversionErrorHandler {
+  override def handlePointConversionError(e: Exception): Unit = {}
+}
+
 class PartiallyConvertedPoints(val unresolvedNames: Set[QualifiedName],
                                val points: Seq[Message.Point],
                                resolvedNames: Map[QualifiedName, BytesKey],
                                currentTimeSeconds: Int,
-                               tsdbFormat: TsdbFormat) {
+                               tsdbFormat: TsdbFormat,
+                               errorHandler: PointConversionErrorHandler) {
   def convert(partialIdMap: Map[QualifiedName, BytesKey]) = {
     val idMap = resolvedNames.withDefault(partialIdMap)
-    points.map(point => tsdbFormat.convertToKeyValue(point, idMap, currentTimeSeconds))
+    // Map.WithDefault.get method doesn't use default behavior
+    val idCache: QualifiedName => Option[BytesKey] = name => Some(idMap(name))
+    val tries = points.map(point => Try(tsdbFormat.convertToKeyValue(point, idCache, currentTimeSeconds)))
+    for (Failure(e: Exception) <- tries) {
+      tsdbFormat.handlePointConversionError(e)
+    }
+    tries.collect { case Success(either) => either.right.get }
   }
 }
 
-class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: Set[String]) extends Logging {
+class TsdbFormat(timeRangeIdMapping: GenerationIdMapping,
+                 shardAttributeNames: Set[String],
+                 errorHandler: PointConversionErrorHandler = NoOpPointConversionErrorHandler) extends Logging {
 
   import TsdbFormat._
 
@@ -152,16 +171,20 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
     val unconvertedPoints = mutable.ArrayBuffer[Message.Point]()
     val convertedPoints = mutable.ArrayBuffer[KeyValue]()
     for (point <- points) {
-      val names = getAllQualifiedNames(point, currentTimeSeconds)
-      val nameAndIds = names.map(name => (name, idCache(name)))
-      val cacheMisses = nameAndIds.collect {case (name, None) => name}
-      if (cacheMisses.isEmpty) {
-        val idsMap = nameAndIds.toMap.mapValues(_.get)
-        convertedPoints += convertToKeyValue(point, idsMap, currentTimeSeconds)
-      } else {
-        resolvedNames ++= nameAndIds.collect {case (name, Some(id)) => (name, id)}
-        unresolvedNames ++= cacheMisses
-        unconvertedPoints += point
+      try {
+        val eitherNamesOrKeyValue =
+          convertToKeyValue(point, idCache, currentTimeSeconds)
+        eitherNamesOrKeyValue match {
+          case Right(keyValue) =>
+            convertedPoints += keyValue
+          case Left(nameAndIds) =>
+            resolvedNames ++= nameAndIds.collect { case (name, Some(id)) => (name, id) }
+            unresolvedNames ++= nameAndIds.collect { case (name, None) => name }
+            unconvertedPoints += point
+        }
+      } catch {
+        case e: Exception =>
+          handlePointConversionError(e)
       }
     }
     require(unresolvedNames.isEmpty == unconvertedPoints.isEmpty)
@@ -173,36 +196,53 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
         unconvertedPoints.toSeq,
         resolvedNames.toMap,
         currentTimeSeconds,
-        this
+        this,
+        errorHandler
       )
     (partiallyConvertedPoints, convertedPoints.toSeq)
   }
 
+  def handlePointConversionError(e: Exception) {
+    debugThrowable("Point -> KeyValue conversion failed", e)
+  }
+
   def convertToKeyValue(point: Message.Point,
-                        idMap: Map[QualifiedName, BytesKey],
-                        currentTimeSeconds: Int) = {
+                        idCache: QualifiedName => Option[BytesKey],
+                        currentTimeSeconds: Int): Either[Seq[(QualifiedName, Option[BytesKey])], KeyValue] = {
+    val namesBuffer = mutable.ArrayBuffer[(QualifiedName, Option[BytesKey])]()
+    def getValueOption(key: QualifiedName) = {
+      val value = idCache(key)
+      namesBuffer.append((key, value))
+      value
+    }
     val generationId = getGenerationId(point, currentTimeSeconds)
-    val metricId = idMap(QualifiedName(MetricKind, generationId, point.getMetric))
+    val metricId = getValueOption(QualifiedName(MetricKind, generationId, point.getMetric))
     val attributes = point.getAttributesList.asScala
 
     val shardName = getShardNameByPoint(point)
-    val shardId = idMap(QualifiedName(ShardKind, generationId, shardName))
+    val shardId = getValueOption(QualifiedName(ShardKind, generationId, shardName))
 
     val attributeIds = attributes.map {
       attr =>
-        val nameId = idMap(QualifiedName(AttrNameKind, generationId, attr.getName))
-        val valueId = idMap(QualifiedName(AttrValueKind, generationId, attr.getValue))
-        (nameId, valueId)
+        val name = getValueOption(QualifiedName(AttrNameKind, generationId, attr.getName))
+        val value = getValueOption(QualifiedName(AttrValueKind, generationId, attr.getValue))
+        (name, value)
     }
-    val qualifiedValue = mkQualifiedValue(point)
-    mkKeyValue(
-      generationId,
-      metricId,
-      shardId,
-      point.getTimestamp,
-      attributeIds,
-      qualifiedValue
-    )
+    def attributesAreDefined = attributeIds.forall { case (n, v) => n.isDefined && v.isDefined }
+    if (metricId.isDefined && shardId.isDefined && attributesAreDefined) {
+      val qualifiedValue = mkQualifiedValue(point)
+      val keyValue = mkKeyValue(
+        generationId,
+        metricId.get,
+        shardId.get,
+        point.getTimestamp,
+        attributeIds.map { case (n, v) => (n.get, v.get) },
+        qualifiedValue
+      )
+      Right(keyValue)
+    } else {
+      Left(namesBuffer)
+    }
   }
 
   private def getShardNameByPoint(point: Message.Point): String = {

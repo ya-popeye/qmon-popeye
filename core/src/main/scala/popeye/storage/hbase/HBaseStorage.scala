@@ -202,6 +202,7 @@ case class HBaseStorageMetrics(name: String, override val metricRegistry: Metric
   val readHBaseTime = metrics.timer(s"$name.storage.read.hbase.time")
   val resolvedPointsMeter = metrics.meter(s"$name.storage.resolved.points")
   val delayedPointsMeter = metrics.meter(s"$name.storage.delayed.points")
+  val failedPointConversions = metrics.meter(s"$name.storage.failed.point.conversions")
 }
 
 class HBaseStorage(tableName: String,
@@ -483,7 +484,7 @@ class HBaseStorageConfig(val config: Config, val shardAttributeNames: Set[String
  * @param config provides necessary configuration parameters
  */
 class HBaseStorageConfigured(config: HBaseStorageConfig, actorSystem: ActorSystem, metricRegistry: MetricRegistry)
-                            (implicit val eCtx: ExecutionContext) {
+                            (implicit val eCtx: ExecutionContext) extends Logging {
 
   val hbase = new HBaseConfigured(config.config, config.zkQuorum)
   val hTablePool: HTablePool = hbase.getHTablePool(config.poolSize)
@@ -502,13 +503,20 @@ class HBaseStorageConfigured(config: HBaseStorageConfig, actorSystem: ActorSyste
       config.uidsConfig.getInt("cache.max-capacity"),
       config.resolveTimeout
     )
-    val tsdbFormat = new TsdbFormat(config.timeRangeIdMapping, config.shardAttributeNames)
+    val metrics: HBaseStorageMetrics = new HBaseStorageMetrics(config.storageName, metricRegistry)
+    val conversionErrorHandler = new PointConversionErrorHandler {
+      override def handlePointConversionError(e: Exception): Unit = {
+        debugThrowable("Point -> KeyValue conversion failed", e)
+        metrics.failedPointConversions.mark()
+      }
+    }
+    val tsdbFormat = new TsdbFormat(config.timeRangeIdMapping, config.shardAttributeNames, conversionErrorHandler)
     new HBaseStorage(
       config.pointsTableName,
       hTablePool,
       uniqueId,
       tsdbFormat,
-      new HBaseStorageMetrics(config.storageName, metricRegistry),
+      metrics,
       config.resolveTimeout,
       config.readChunkSize)
   }
