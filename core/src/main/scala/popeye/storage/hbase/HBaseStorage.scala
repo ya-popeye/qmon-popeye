@@ -1,6 +1,7 @@
 package popeye.storage.hbase
 
 import java.text.SimpleDateFormat
+import java.util.TimeZone
 
 import com.codahale.metrics.MetricRegistry
 import java.util
@@ -467,6 +468,7 @@ class HBaseStorageConfig(val config: Config, val shardAttributeNames: Set[String
   val uidsConfig = config.getConfig("uids")
   val timeRangeIdMapping = {
     val dateFormatter = new SimpleDateFormat("dd/MM/yy")
+    dateFormatter.setTimeZone(TimeZone.getTimeZone("Etc/UTC"))
     val generationConfigs = config.getConfigList("generations").asScala.map {
       genConfig =>
         val periodInHours = genConfig.getInt("rotation-period-hours")
