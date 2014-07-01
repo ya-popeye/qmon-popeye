@@ -174,7 +174,7 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
         numberOfSenders.incrementAndGet()
         stay() using state.copy(
           startedSenders = state.startedSenders + 1,
-          batchIds = state.batchIds ++ points.batchIds,
+          batchIds = (state.batchIds ++ points.batchIds).distinct,
           sentPointsCount = state.sentPointsCount + points.pointsCount
         )
       } else if (state.completedDeliveries < state.startedSenders) {
@@ -250,7 +250,7 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
             pointsToDrop.consumeFrom(drop, drop.pointsCount)
             batches += batchId
           case None =>
-            return PointBatches(pointsToSend, pointsToDrop, batches.toList)
+            return PointBatches(pointsToSend, pointsToDrop, batches.toList.distinct)
         }
       } catch {
         case e: InvalidProtocolBufferException =>
@@ -258,7 +258,7 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
           metrics.decodeFailures.mark()
       }
     }
-    PointBatches(pointsToSend, pointsToDrop, batches.toList)
+    PointBatches(pointsToSend, pointsToDrop, batches.toList.distinct)
   }
 
   initialize()
