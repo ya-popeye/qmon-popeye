@@ -29,8 +29,9 @@ object MetricGenerator {
 
   val metrics = {
     val subNames = Seq(
-      Seq("proc", "stuff", "foo", "bar", "main"),
-      Seq("cpu", "mem", "disk", "pag", "swp"),
+      Seq("proc", "stuff", "foo", "bar"),
+      Seq("cpu", "mem", "disk", "pag"),
+      Seq("bytes", "ticks", "cycles", "flops"),
       Seq("10s", "30s", "1m", "5m")
     )
     generateMetricNames(subNames).toIndexedSeq
