@@ -57,8 +57,10 @@ object PrepareStorageCommand extends PopeyeCommand with Logging {
     val currentSplitPoints = generationRegions.map {
       regionInfo => new BytesKey(regionInfo.getStartKey)
     }.toSet
+    info(s"current splits: ${ prettyPrintByteKeys(currentSplitPoints.toList) }")
     val splits = createSplits(generationPrefix, nSplits)
     val splitsSet = splits.map(array => new BytesKey(array)).toSet
+    info(s"required splits: ${ prettyPrintByteKeys(splitsSet.toList) }")
     val isPreviousSplitOperationFailed =
       currentSplitPoints.forall(split => splitsSet.contains(split)) && currentSplitPoints.size != splitsSet.size
     if (isPreviousSplitOperationFailed || generationRegions.size < nSplits) {
@@ -66,11 +68,16 @@ object PrepareStorageCommand extends PopeyeCommand with Logging {
         split => currentSplitPoints.contains(new BytesKey(split))
       }
       for (split <- newSplits) {
+        info(s"splitting on ${ Bytes.toStringBinary(split) }")
         doAndRetryIfRegionIsNotServing {
           hBaseAdmin.split(pointsTableName.getName, split)
         }
       }
     }
+  }
+
+  def prettyPrintByteKeys(byteKeys: List[BytesKey]) = {
+    byteKeys.sorted.map(s => Bytes.toStringBinary(s.bytes)).mkString("\n", "\n", "\n")
   }
 
   def doAndRetryIfRegionIsNotServing(block: => Unit): Unit = {
