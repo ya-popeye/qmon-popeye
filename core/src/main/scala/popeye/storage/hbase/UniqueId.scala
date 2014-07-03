@@ -129,13 +129,14 @@ class UniqueIdImpl(resolver: ActorRef,
             info(s"Got $r, $retries retries left")
             nameCache.remove(qName)
             val idFuture = if (retries == 0) {
+              log.error(s"id resolution failed: Can't battle race creating $qName")
               Future.failed(new UniqueIdRaceException(s"Can't battle race creating $qName"))
             } else {
               resolveIdByName(qName, create = true, retries - 1)
             }
             promise.completeWith(idFuture)
           case f: ResolutionFailed =>
-            log.debug("id resolution failed: {}" , f)
+            log.error("id resolution failed: {}" , f)
             nameCache.remove(qName)
             promise.failure(f.t)
           case n: NotFoundName =>
@@ -144,7 +145,7 @@ class UniqueIdImpl(resolver: ActorRef,
         }
         promiseCompletionFuture.onFailure {
           case x: Throwable =>
-            log.debug("resolution failed", x)
+            log.error("resolution failed", x)
             nameCache.remove(qName)
             promise.failure(x)
         }
@@ -170,11 +171,13 @@ class UniqueIdImpl(resolver: ActorRef,
             addToCache(r)
             promise.success(r.name.name)
           case f: ResolutionFailed =>
+            log.error("name resolution failed", f.t)
             idCache.remove(qId)
             promise.failure(f.t)
         }
         promiseCompletionFuture.onFailure {
           case x: Throwable =>
+            log.error("name resolution failed", x)
             idCache.remove(qId)
             promise.failure(x)
         }
