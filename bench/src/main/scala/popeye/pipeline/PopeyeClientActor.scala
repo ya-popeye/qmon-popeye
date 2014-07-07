@@ -60,11 +60,10 @@ class PopeyeClientActor(remote: InetSocketAddress, hostIndex: Int, nBatches: Int
         val strings = for (metric <- MetricGenerator.metrics; _ <- 1 to nBatches) yield {
           MetricGenerator.pointString(metric, timestamp, random(), hostIndex, randomTags)
         }
-        val byteString: ByteString = ByteString(strings.mkString)
+        val byteString = ByteString(strings.mkString) ++ ByteString(f"commit $commitNumber\n")
         connection ! Write(byteString)
         PopeyeClientActor.bytesMetric.mark(byteString.size)
         commitContext = PopeyeClientActor.commitTimeMetric.time()
-        connection ! Write(ByteString(f"commit $commitNumber\n"))
       case Received(data) =>
         val string = data.utf8String
         if (string.startsWith("OK")) {
