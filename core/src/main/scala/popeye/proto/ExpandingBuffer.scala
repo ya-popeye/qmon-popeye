@@ -42,7 +42,7 @@ class ExpandingBuffer(extent: Int) extends OutputStream  {
   }
 
   def toByteArray: Array[Byte] = {
-    util.Arrays.copyOfRange(array.buffer, array.offset, array.length)
+    util.Arrays.copyOfRange(array.buffer, array.offset, array.offset + array.length)
   }
 
   def toCodedInputStream: CodedInputStream = {
