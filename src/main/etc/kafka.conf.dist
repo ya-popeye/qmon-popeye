@@ -62,9 +62,14 @@ popeye.pipeline {
 }
 
 popeye.prepare-storage = {
+  timeout = 300s
+  lock = {
+    zk.quorum = "localhost:2181"
+    path = /popeye/lock
+  }
   db = {
     zk.quorum = "localhost:2182"
-    splits = 10
+    splits = 100
     storage = hbaseStorage
   }
 }
