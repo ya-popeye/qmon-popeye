@@ -25,7 +25,7 @@ object Compiler {
     resolvers ++= Seq(
       "spray repo" at "http://repo.spray.io",
       "cdh" at "https://repository.cloudera.com/artifactory/cloudera-repos",
-      Resolver.url("octo47 repo", url("http://octo47.github.com/repo/"))({
+      Resolver.url("octo47 repo", url("http://octo47.github.io/repo/"))({
         val patt = Resolver.mavenStylePatterns.artifactPatterns
         new Patterns(patt, patt, true)
       })
@@ -198,6 +198,7 @@ object PopeyeBuild extends Build {
       "com.typesafe.akka" %% "akka-actor" % Version.Akka,
       "com.typesafe.akka" %% "akka-slf4j" % Version.Akka,
       "org.xerial.snappy" % "snappy-java" % Version.Snappy,
+      "com.github.bigtoast" %% "async-zk-client" % "0.2.3",
       "com.google.guava" % "guava" % Version.Guava % "test",
       "io.spray" % "spray-can" % Version.Spray,
       "io.spray" % "spray-io" % Version.Spray,
