@@ -194,6 +194,7 @@ object PopeyeBuild extends Build {
       "com.google.protobuf" % "protobuf-java" % "2.5.0",
       "org.apache.kafka" %% "kafka" % Version.Kafka,
       "nl.grons" %% "metrics-scala" % Version.Metrics,
+      "com.codahale.metrics" % "metrics-jvm" % "3.0.0",
       "org.codehaus.jackson" % "jackson-core-asl" % Version.Jackson,
       "com.typesafe.akka" %% "akka-actor" % Version.Akka,
       "com.typesafe.akka" %% "akka-slf4j" % Version.Akka,
