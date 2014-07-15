@@ -1,8 +1,6 @@
 package popeye
 
-import akka.actor.ActorSystem
-import akka.event.LogSource
-import akka.util.Timeout
+import com.codahale.metrics.jvm.{ThreadStatesGaugeSet, MemoryUsageGaugeSet, GarbageCollectorMetricSet}
 import com.codahale.metrics.{CsvReporter, JmxReporter, MetricRegistry}
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -13,6 +11,9 @@ trait MetricsConfiguration {
 
   def initMetrics(systemConfig: Config): MetricRegistry = {
     val metricRegistry = new MetricRegistry()
+    metricRegistry.registerAll(new GarbageCollectorMetricSet())
+    metricRegistry.registerAll(new MemoryUsageGaugeSet())
+    metricRegistry.registerAll(new ThreadStatesGaugeSet())
 
     val csvReporter = if (systemConfig.getBoolean("metrics.csv.enabled")) {
       val r = CsvReporter
