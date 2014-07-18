@@ -58,15 +58,22 @@ object PrepareStorageCommand extends PopeyeCommand with Logging {
         basePath = "/",
         eCtx
       )
-      val splitter = new Splitter(hBaseAdmin, pointsTableName, splits, retryInterval)
+      val utils = new PrepareCommandUtils(hBaseAdmin, pointsTableName, splits, retryInterval)
       try {
         val splitFuture = for {
           _ <- zk.createPath(lockPath)
           _ <- zk.create(s"$lockPath/lock", None, CreateMode.EPHEMERAL)
         } yield {
           info("acquired lock")
-          splitter.splitIfNecessary(currentGenerationPeriod.id)
-          splitter.splitIfNecessary(nextGenerationId)
+          val currGenSplits = utils.getNewSplits(currentGenerationPeriod.id)
+          val nextGenSplits = utils.getNewSplits(nextGenerationId)
+          val newSplits = currGenSplits ++ nextGenSplits
+          for (split <- newSplits) {
+            utils.doSplit(split)
+          }
+          if (newSplits.nonEmpty) {
+            utils.doBalance()
+          }
         }
         Await.result(splitFuture, timeout)
       } finally {
@@ -80,12 +87,12 @@ object PrepareStorageCommand extends PopeyeCommand with Logging {
   }
 }
 
-class Splitter(hBaseAdmin: HBaseAdmin,
-               pointsTableName: TableName,
-               nSplits: Int,
-               retryInterval: FiniteDuration) extends Logging {
+class PrepareCommandUtils(hBaseAdmin: HBaseAdmin,
+                          pointsTableName: TableName,
+                          nSplits: Int,
+                          retryInterval: FiniteDuration) extends Logging {
 
-  def splitIfNecessary(generationId: Short): Unit = {
+  def getNewSplits(generationId: Short): Seq[Array[Byte]] = {
     val generationPrefix = Bytes.toBytes(generationId)
     info("getting table regions")
     val regions = hBaseAdmin.getTableRegions(pointsTableName).asScala
@@ -105,18 +112,41 @@ class Splitter(hBaseAdmin: HBaseAdmin,
     val isPreviousSplitOperationFailed =
       currentSplitPoints.forall(split => splitsSet.contains(split)) && currentSplitPoints.size != splitsSet.size
     if (isPreviousSplitOperationFailed || generationRegions.size < nSplits) {
-      val newSplits = splits.filterNot {
+      splits.filterNot {
         split => currentSplitPoints.contains(new BytesKey(split))
       }
-      for (split <- newSplits) {
-        info(s"splitting on ${ Bytes.toStringBinary(split) }")
-        doAndRetryIfRegionIsNotServing {
-          hBaseAdmin.split(pointsTableName.getName, split)
-        }
-        info("waiting for region")
-        waitForRegion(split)
-        info("region is available")
+    } else {
+      Seq.empty
+    }
+  }
+
+  def doSplit(split: Array[Byte]): Unit = {
+    info(s"splitting on ${ Bytes.toStringBinary(split) }")
+    doAndRetryIfRegionIsNotServing {
+      hBaseAdmin.split(pointsTableName.getName, split)
+    }
+    info("waiting for region")
+    waitForRegion(split)
+    info("region is available")
+  }
+
+  def doBalance(retries: Int = 10): Unit = {
+    var trials = 0
+    hBaseAdmin.setBalancerRunning(true, true)
+    while(true) {
+      if (trials > retries) {
+        return
       }
+      info("calling balancer")
+      val success = hBaseAdmin.balancer()
+      trials += 1
+      if (success) {
+        info("balancer succeeded")
+        return
+      } else {
+        warn("balancer failed")
+      }
+      Thread.sleep(retryInterval.toMillis.toInt)
     }
   }
 
