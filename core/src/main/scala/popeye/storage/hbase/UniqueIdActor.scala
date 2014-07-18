@@ -90,12 +90,6 @@ class UniqueIdActor(storage: UniqueIdStorageTrait,
 
   def receive: Actor.Receive = {
 
-    case Terminated(watched) =>
-      context unwatch watched // Do we really need this?
-      idRequests = idRequests.transform { (k, v) => v.filter(_ != watched)}
-      lookupRequests = lookupRequests.transform { (k, v) => v.filter(_ != watched)}
-      createRequests = createRequests.transform { (k, v) => v.filter(_ != watched)}
-
     case r: FindId =>
       val list = idRequests.getOrElse(r.qid, List.empty)
       idRequests = idRequests.updated(r.qid, list ++ List(sender))
@@ -103,7 +97,6 @@ class UniqueIdActor(storage: UniqueIdStorageTrait,
       checkIds()
 
     case r: FindName =>
-      context watch sender
       @inline
       def addTo(map: Map[QualifiedName, List[ActorRef]]): Map[QualifiedName, List[ActorRef]] = {
         val list = map.getOrElse(r.qname, List.empty)
