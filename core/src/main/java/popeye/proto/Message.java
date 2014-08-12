@@ -723,6 +723,34 @@ public final class Message {
      * <code>optional float float_value = 5;</code>
      */
     float getFloatValue();
+
+    // repeated int64 int_list_value = 6;
+    /**
+     * <code>repeated int64 int_list_value = 6;</code>
+     */
+    java.util.List<java.lang.Long> getIntListValueList();
+    /**
+     * <code>repeated int64 int_list_value = 6;</code>
+     */
+    int getIntListValueCount();
+    /**
+     * <code>repeated int64 int_list_value = 6;</code>
+     */
+    long getIntListValue(int index);
+
+    // repeated float float_list_value = 7;
+    /**
+     * <code>repeated float float_list_value = 7;</code>
+     */
+    java.util.List<java.lang.Float> getFloatListValueList();
+    /**
+     * <code>repeated float float_list_value = 7;</code>
+     */
+    int getFloatListValueCount();
+    /**
+     * <code>repeated float float_list_value = 7;</code>
+     */
+    float getFloatListValue(int index);
   }
   /**
    * Protobuf type {@code popeye.proto.Point}
@@ -803,6 +831,48 @@ public final class Message {
               floatValue_ = input.readFloat();
               break;
             }
+            case 48: {
+              if (!((mutable_bitField0_ & 0x00000020) == 0x00000020)) {
+                intListValue_ = new java.util.ArrayList<java.lang.Long>();
+                mutable_bitField0_ |= 0x00000020;
+              }
+              intListValue_.add(input.readInt64());
+              break;
+            }
+            case 50: {
+              int length = input.readRawVarint32();
+              int limit = input.pushLimit(length);
+              if (!((mutable_bitField0_ & 0x00000020) == 0x00000020) && input.getBytesUntilLimit() > 0) {
+                intListValue_ = new java.util.ArrayList<java.lang.Long>();
+                mutable_bitField0_ |= 0x00000020;
+              }
+              while (input.getBytesUntilLimit() > 0) {
+                intListValue_.add(input.readInt64());
+              }
+              input.popLimit(limit);
+              break;
+            }
+            case 61: {
+              if (!((mutable_bitField0_ & 0x00000040) == 0x00000040)) {
+                floatListValue_ = new java.util.ArrayList<java.lang.Float>();
+                mutable_bitField0_ |= 0x00000040;
+              }
+              floatListValue_.add(input.readFloat());
+              break;
+            }
+            case 58: {
+              int length = input.readRawVarint32();
+              int limit = input.pushLimit(length);
+              if (!((mutable_bitField0_ & 0x00000040) == 0x00000040) && input.getBytesUntilLimit() > 0) {
+                floatListValue_ = new java.util.ArrayList<java.lang.Float>();
+                mutable_bitField0_ |= 0x00000040;
+              }
+              while (input.getBytesUntilLimit() > 0) {
+                floatListValue_.add(input.readFloat());
+              }
+              input.popLimit(limit);
+              break;
+            }
           }
         }
       } catch (com.google.protobuf.InvalidProtocolBufferException e) {
@@ -813,6 +883,12 @@ public final class Message {
       } finally {
         if (((mutable_bitField0_ & 0x00000004) == 0x00000004)) {
           attributes_ = java.util.Collections.unmodifiableList(attributes_);
+        }
+        if (((mutable_bitField0_ & 0x00000020) == 0x00000020)) {
+          intListValue_ = java.util.Collections.unmodifiableList(intListValue_);
+        }
+        if (((mutable_bitField0_ & 0x00000040) == 0x00000040)) {
+          floatListValue_ = java.util.Collections.unmodifiableList(floatListValue_);
         }
         this.unknownFields = unknownFields.build();
         makeExtensionsImmutable();
@@ -973,12 +1049,60 @@ public final class Message {
       return floatValue_;
     }
 
+    // repeated int64 int_list_value = 6;
+    public static final int INT_LIST_VALUE_FIELD_NUMBER = 6;
+    private java.util.List<java.lang.Long> intListValue_;
+    /**
+     * <code>repeated int64 int_list_value = 6;</code>
+     */
+    public java.util.List<java.lang.Long>
+        getIntListValueList() {
+      return intListValue_;
+    }
+    /**
+     * <code>repeated int64 int_list_value = 6;</code>
+     */
+    public int getIntListValueCount() {
+      return intListValue_.size();
+    }
+    /**
+     * <code>repeated int64 int_list_value = 6;</code>
+     */
+    public long getIntListValue(int index) {
+      return intListValue_.get(index);
+    }
+
+    // repeated float float_list_value = 7;
+    public static final int FLOAT_LIST_VALUE_FIELD_NUMBER = 7;
+    private java.util.List<java.lang.Float> floatListValue_;
+    /**
+     * <code>repeated float float_list_value = 7;</code>
+     */
+    public java.util.List<java.lang.Float>
+        getFloatListValueList() {
+      return floatListValue_;
+    }
+    /**
+     * <code>repeated float float_list_value = 7;</code>
+     */
+    public int getFloatListValueCount() {
+      return floatListValue_.size();
+    }
+    /**
+     * <code>repeated float float_list_value = 7;</code>
+     */
+    public float getFloatListValue(int index) {
+      return floatListValue_.get(index);
+    }
+
     private void initFields() {
       metric_ = "";
       timestamp_ = 0L;
       attributes_ = java.util.Collections.emptyList();
       intValue_ = 0L;
       floatValue_ = 0F;
+      intListValue_ = java.util.Collections.emptyList();
+      floatListValue_ = java.util.Collections.emptyList();
     }
     private byte memoizedIsInitialized = -1;
     public final boolean isInitialized() {
@@ -1021,6 +1145,12 @@ public final class Message {
       if (((bitField0_ & 0x00000008) == 0x00000008)) {
         output.writeFloat(5, floatValue_);
       }
+      for (int i = 0; i < intListValue_.size(); i++) {
+        output.writeInt64(6, intListValue_.get(i));
+      }
+      for (int i = 0; i < floatListValue_.size(); i++) {
+        output.writeFloat(7, floatListValue_.get(i));
+      }
       getUnknownFields().writeTo(output);
     }
 
@@ -1049,6 +1179,21 @@ public final class Message {
       if (((bitField0_ & 0x00000008) == 0x00000008)) {
         size += com.google.protobuf.CodedOutputStream
           .computeFloatSize(5, floatValue_);
+      }
+      {
+        int dataSize = 0;
+        for (int i = 0; i < intListValue_.size(); i++) {
+          dataSize += com.google.protobuf.CodedOutputStream
+            .computeInt64SizeNoTag(intListValue_.get(i));
+        }
+        size += dataSize;
+        size += 1 * getIntListValueList().size();
+      }
+      {
+        int dataSize = 0;
+        dataSize = 4 * getFloatListValueList().size();
+        size += dataSize;
+        size += 1 * getFloatListValueList().size();
       }
       size += getUnknownFields().getSerializedSize();
       memoizedSerializedSize = size;
@@ -1181,6 +1326,10 @@ public final class Message {
         bitField0_ = (bitField0_ & ~0x00000008);
         floatValue_ = 0F;
         bitField0_ = (bitField0_ & ~0x00000010);
+        intListValue_ = java.util.Collections.emptyList();
+        bitField0_ = (bitField0_ & ~0x00000020);
+        floatListValue_ = java.util.Collections.emptyList();
+        bitField0_ = (bitField0_ & ~0x00000040);
         return this;
       }
 
@@ -1234,6 +1383,16 @@ public final class Message {
           to_bitField0_ |= 0x00000008;
         }
         result.floatValue_ = floatValue_;
+        if (((bitField0_ & 0x00000020) == 0x00000020)) {
+          intListValue_ = java.util.Collections.unmodifiableList(intListValue_);
+          bitField0_ = (bitField0_ & ~0x00000020);
+        }
+        result.intListValue_ = intListValue_;
+        if (((bitField0_ & 0x00000040) == 0x00000040)) {
+          floatListValue_ = java.util.Collections.unmodifiableList(floatListValue_);
+          bitField0_ = (bitField0_ & ~0x00000040);
+        }
+        result.floatListValue_ = floatListValue_;
         result.bitField0_ = to_bitField0_;
         onBuilt();
         return result;
@@ -1289,6 +1448,26 @@ public final class Message {
         }
         if (other.hasFloatValue()) {
           setFloatValue(other.getFloatValue());
+        }
+        if (!other.intListValue_.isEmpty()) {
+          if (intListValue_.isEmpty()) {
+            intListValue_ = other.intListValue_;
+            bitField0_ = (bitField0_ & ~0x00000020);
+          } else {
+            ensureIntListValueIsMutable();
+            intListValue_.addAll(other.intListValue_);
+          }
+          onChanged();
+        }
+        if (!other.floatListValue_.isEmpty()) {
+          if (floatListValue_.isEmpty()) {
+            floatListValue_ = other.floatListValue_;
+            bitField0_ = (bitField0_ & ~0x00000040);
+          } else {
+            ensureFloatListValueIsMutable();
+            floatListValue_.addAll(other.floatListValue_);
+          }
+          onChanged();
         }
         this.mergeUnknownFields(other.getUnknownFields());
         return this;
@@ -1740,6 +1919,138 @@ public final class Message {
       public Builder clearFloatValue() {
         bitField0_ = (bitField0_ & ~0x00000010);
         floatValue_ = 0F;
+        onChanged();
+        return this;
+      }
+
+      // repeated int64 int_list_value = 6;
+      private java.util.List<java.lang.Long> intListValue_ = java.util.Collections.emptyList();
+      private void ensureIntListValueIsMutable() {
+        if (!((bitField0_ & 0x00000020) == 0x00000020)) {
+          intListValue_ = new java.util.ArrayList<java.lang.Long>(intListValue_);
+          bitField0_ |= 0x00000020;
+         }
+      }
+      /**
+       * <code>repeated int64 int_list_value = 6;</code>
+       */
+      public java.util.List<java.lang.Long>
+          getIntListValueList() {
+        return java.util.Collections.unmodifiableList(intListValue_);
+      }
+      /**
+       * <code>repeated int64 int_list_value = 6;</code>
+       */
+      public int getIntListValueCount() {
+        return intListValue_.size();
+      }
+      /**
+       * <code>repeated int64 int_list_value = 6;</code>
+       */
+      public long getIntListValue(int index) {
+        return intListValue_.get(index);
+      }
+      /**
+       * <code>repeated int64 int_list_value = 6;</code>
+       */
+      public Builder setIntListValue(
+          int index, long value) {
+        ensureIntListValueIsMutable();
+        intListValue_.set(index, value);
+        onChanged();
+        return this;
+      }
+      /**
+       * <code>repeated int64 int_list_value = 6;</code>
+       */
+      public Builder addIntListValue(long value) {
+        ensureIntListValueIsMutable();
+        intListValue_.add(value);
+        onChanged();
+        return this;
+      }
+      /**
+       * <code>repeated int64 int_list_value = 6;</code>
+       */
+      public Builder addAllIntListValue(
+          java.lang.Iterable<? extends java.lang.Long> values) {
+        ensureIntListValueIsMutable();
+        super.addAll(values, intListValue_);
+        onChanged();
+        return this;
+      }
+      /**
+       * <code>repeated int64 int_list_value = 6;</code>
+       */
+      public Builder clearIntListValue() {
+        intListValue_ = java.util.Collections.emptyList();
+        bitField0_ = (bitField0_ & ~0x00000020);
+        onChanged();
+        return this;
+      }
+
+      // repeated float float_list_value = 7;
+      private java.util.List<java.lang.Float> floatListValue_ = java.util.Collections.emptyList();
+      private void ensureFloatListValueIsMutable() {
+        if (!((bitField0_ & 0x00000040) == 0x00000040)) {
+          floatListValue_ = new java.util.ArrayList<java.lang.Float>(floatListValue_);
+          bitField0_ |= 0x00000040;
+         }
+      }
+      /**
+       * <code>repeated float float_list_value = 7;</code>
+       */
+      public java.util.List<java.lang.Float>
+          getFloatListValueList() {
+        return java.util.Collections.unmodifiableList(floatListValue_);
+      }
+      /**
+       * <code>repeated float float_list_value = 7;</code>
+       */
+      public int getFloatListValueCount() {
+        return floatListValue_.size();
+      }
+      /**
+       * <code>repeated float float_list_value = 7;</code>
+       */
+      public float getFloatListValue(int index) {
+        return floatListValue_.get(index);
+      }
+      /**
+       * <code>repeated float float_list_value = 7;</code>
+       */
+      public Builder setFloatListValue(
+          int index, float value) {
+        ensureFloatListValueIsMutable();
+        floatListValue_.set(index, value);
+        onChanged();
+        return this;
+      }
+      /**
+       * <code>repeated float float_list_value = 7;</code>
+       */
+      public Builder addFloatListValue(float value) {
+        ensureFloatListValueIsMutable();
+        floatListValue_.add(value);
+        onChanged();
+        return this;
+      }
+      /**
+       * <code>repeated float float_list_value = 7;</code>
+       */
+      public Builder addAllFloatListValue(
+          java.lang.Iterable<? extends java.lang.Float> values) {
+        ensureFloatListValueIsMutable();
+        super.addAll(values, floatListValue_);
+        onChanged();
+        return this;
+      }
+      /**
+       * <code>repeated float float_list_value = 7;</code>
+       */
+      public Builder clearFloatListValue() {
+        floatListValue_ = java.util.Collections.emptyList();
+        bitField0_ = (bitField0_ & ~0x00000040);
         onChanged();
         return this;
       }
@@ -3229,15 +3540,16 @@ public final class Message {
     java.lang.String[] descriptorData = {
       "\n\032popeye/proto/message.proto\022\014popeye.pro" +
       "to\"(\n\tAttribute\022\014\n\004name\030\001 \002(\t\022\r\n\005value\030\002" +
-      " \002(\t\"\177\n\005Point\022\016\n\006metric\030\001 \002(\t\022\021\n\ttimesta" +
-      "mp\030\002 \002(\003\022+\n\nattributes\030\003 \003(\0132\027.popeye.pr" +
-      "oto.Attribute\022\021\n\tint_value\030\004 \001(\003\022\023\n\013floa" +
-      "t_value\030\005 \001(\002\"@\n\005Batch\022\"\n\005point\030\001 \003(\0132\023." +
-      "popeye.proto.Point\022\023\n\013correlation\030\002 \001(\003\"" +
-      "\177\n\nBatchReply\022\023\n\013correlation\030\001 \002(\003\022\017\n\007ba" +
-      "tchId\030\002 \002(\003\022/\n\006status\030\003 \002(\0162\037.popeye.pro" +
-      "to.BatchReply.Status\"\032\n\006Status\022\006\n\002OK\020\001\022\010",
-      "\n\004FAIL\020\002"
+      " \002(\t\"\261\001\n\005Point\022\016\n\006metric\030\001 \002(\t\022\021\n\ttimest" +
+      "amp\030\002 \002(\003\022+\n\nattributes\030\003 \003(\0132\027.popeye.p" +
+      "roto.Attribute\022\021\n\tint_value\030\004 \001(\003\022\023\n\013flo" +
+      "at_value\030\005 \001(\002\022\026\n\016int_list_value\030\006 \003(\003\022\030" +
+      "\n\020float_list_value\030\007 \003(\002\"@\n\005Batch\022\"\n\005poi" +
+      "nt\030\001 \003(\0132\023.popeye.proto.Point\022\023\n\013correla" +
+      "tion\030\002 \001(\003\"\177\n\nBatchReply\022\023\n\013correlation\030" +
+      "\001 \002(\003\022\017\n\007batchId\030\002 \002(\003\022/\n\006status\030\003 \002(\0162\037",
+      ".popeye.proto.BatchReply.Status\"\032\n\006Statu" +
+      "s\022\006\n\002OK\020\001\022\010\n\004FAIL\020\002"
     };
     com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner assigner =
       new com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner() {
@@ -3255,7 +3567,7 @@ public final class Message {
           internal_static_popeye_proto_Point_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_popeye_proto_Point_descriptor,
-              new java.lang.String[] { "Metric", "Timestamp", "Attributes", "IntValue", "FloatValue", });
+              new java.lang.String[] { "Metric", "Timestamp", "Attributes", "IntValue", "FloatValue", "IntListValue", "FloatListValue", });
           internal_static_popeye_proto_Batch_descriptor =
             getDescriptor().getMessageTypes().get(2);
           internal_static_popeye_proto_Batch_fieldAccessorTable = new

@@ -10,7 +10,9 @@ message Point {
 	required int64 timestamp     = 2;
 	repeated Attribute attributes = 3;
 	optional int64 int_value     = 4;
-	optional float float_value   = 5;
+    optional float float_value   = 5;
+    repeated int64 int_list_value = 6;
+    repeated float float_list_value = 7;
 };
 
 message Batch {
