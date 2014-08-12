@@ -10,6 +10,8 @@ import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
 import popeye.storage.hbase.{TimeRangeAndId, GenerationIdMapping, BytesKey}
 
+import scala.collection.JavaConverters._
+
 /**
  * @author Andrey Stepachev
  */
@@ -76,7 +78,40 @@ object PopeyeTestUtils {
                   timestamp: Long = 0,
                   attributes: Seq[(String, String)] = Seq("host" -> "localhost"),
                   value: Either[Long, Float] = Left(0)) = {
+    val builder = pointBuilder(metric, timestamp, attributes)
+    value.fold(
+      longVal => {
+        builder.setValueType(Message.Point.ValueType.INT)
+        builder.setIntValue(longVal)
+      },
+      floatVal => {
+        builder.setValueType(Message.Point.ValueType.FLOAT)
+        builder.setFloatValue(floatVal)
+      }
+    )
+    builder.build()
+  }
+
+  def createListPoint(metric: String = "metric",
+                      timestamp: Long = 0,
+                      attributes: Seq[(String, String)] = Seq("host" -> "localhost"),
+                      value: Either[Seq[Long], Seq[Float]] = Left(Seq())) = {
     import scala.collection.JavaConverters._
+    val builder = pointBuilder(metric, timestamp, attributes)
+    value.fold(
+      longsVal => {
+        builder.setValueType(Message.Point.ValueType.INT_LIST)
+        builder.addAllIntListValue(longsVal.map(l => java.lang.Long.valueOf(l)).asJava)
+      },
+      floatsVal => {
+        builder.setValueType(Message.Point.ValueType.FLOAT_LIST)
+        builder.addAllFloatListValue(floatsVal.map(f => java.lang.Float.valueOf(f)).asJava)
+      }
+    )
+    builder.build()
+  }
+
+  private def pointBuilder(metric: String, timestamp: Long, attributes: Seq[(String, String)]) = {
     val attrs = attributes.map {
       case (aName, aValue) => Message.Attribute.newBuilder().setName(aName).setValue(aValue).build()
     }.asJava
@@ -84,11 +119,7 @@ object PopeyeTestUtils {
       .setMetric(metric)
       .setTimestamp(timestamp)
       .addAllAttributes(attrs)
-    value.fold(
-      longVal => builder.setIntValue(longVal),
-      floatVal => builder.setFloatValue(floatVal)
-    )
-    builder.build()
+    builder
   }
 
   class MockAnswer[T](function: Any => T) extends Answer[T] {
@@ -116,5 +147,11 @@ object PopeyeTestUtils {
         }
       }
     }
+  }
+
+  def time[T](body: => Unit) = {
+    val startTime = System.currentTimeMillis()
+    body
+    System.currentTimeMillis() - startTime
   }
 }

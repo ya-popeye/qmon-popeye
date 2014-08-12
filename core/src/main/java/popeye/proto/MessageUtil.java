@@ -6,15 +6,7 @@ package popeye.proto;
 public class MessageUtil {
 
   public static void validatePoint(final Message.Point point) {
-    if (!point.hasIntValue() && !point.hasFloatValue())
-      throw new IllegalArgumentException("Point doesn't have neither int nor float value: " + point);
-    if (point.hasFloatValue()) {
-      final float value = point.getFloatValue();
-      if (Float.isNaN(value) || Float.isInfinite(value)) {
-        throw new IllegalArgumentException("value is NaN or Infinite: " + value
-                + " for " + point.toString());
-      }
-    }
+    validatePointValue(point);
     if ((point.getTimestamp() & 0xFFFFFFFF00000000L) != 0) {
       throw new IllegalArgumentException("Illegal timestamp " + point.getTimestamp());
     }
@@ -28,6 +20,28 @@ public class MessageUtil {
       validateString("attribute value", attr.getValue());
     }
     validateString("metric name", point.getMetric());
+  }
+
+  private static void validatePointValue(final Message.Point point) {
+    switch (point.getValueType()) {
+      case INT:
+        if (!point.hasIntValue()) {
+          throw new IllegalArgumentException("Point is expected to have int value but the value is not set");
+        }
+        break;
+      case FLOAT:
+        if (!point.hasFloatValue()) {
+          throw new IllegalArgumentException("Point is expected to have float value but the value is not set");
+        }
+        final float value = point.getFloatValue();
+        if (Float.isNaN(value) || Float.isInfinite(value)) {
+          throw new IllegalArgumentException("value is NaN or Infinite: " + value
+            + " for " + point.toString());
+        }
+        break;
+      default:
+        break;
+    }
   }
 
   public static void validateString(final String what, final String s) {

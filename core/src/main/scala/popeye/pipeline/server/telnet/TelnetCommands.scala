@@ -259,14 +259,58 @@ object TelnetCommands {
     if (value.length() <= 0) {
       throw new IllegalArgumentException("empty value");
     }
-    if (looksLikeInteger(value)) {
-      ev.setIntValue(parseLong(value));
+    // list value
+    if (value(0) == '[') {
+      if (value.last != ']') {
+        throw new IllegalArgumentException("bad list value: closing bracket")
+      }
+      val valueStrings = LineDecoder.split(value.substring(1, value.length - 1), ',', preserveAllTokens = true)
+      parseListValue(ev, valueStrings)
     } else {
-      // floating point value
-      ev.setFloatValue(java.lang.Float.parseFloat(value));
+      parseSingleValue(ev, value)
     }
     parseTags(ev, 4, words)
     ev.build
+  }
+
+  def parseSingleValue(builder: Point.Builder, valueString: String) = {
+    if (looksLikeInteger(valueString)) {
+      builder.setIntValue(parseLong(valueString))
+      builder.setValueType(Message.Point.ValueType.INT)
+    } else {
+      // floating point value
+      builder.setFloatValue(java.lang.Float.parseFloat(valueString))
+      builder.setValueType(Message.Point.ValueType.FLOAT)
+    }
+  }
+
+  def parseListValue(builder: Point.Builder, valueStrings: Iterable[String]) = {
+    import scala.collection.JavaConverters._
+    val iter = valueStrings.iterator
+    if (!iter.hasNext) {
+      throw new IllegalArgumentException("empty values list")
+    }
+    var isFloatList = false
+    for (str <- iter) {
+      if (!isFloatList && !looksLikeInteger(str)) {
+        isFloatList = true
+        val intValues = builder.getIntListValueList
+        for (intValue <- intValues.asScala) {
+          builder.addFloatListValue(intValue.floatValue())
+        }
+        builder.clearIntListValue()
+      }
+      if (isFloatList) {
+        builder.addFloatListValue(java.lang.Float.parseFloat(str))
+      } else {
+        builder.addIntListValue(parseLong(str))
+      }
+    }
+    if (isFloatList) {
+      builder.setValueType(Message.Point.ValueType.FLOAT_LIST)
+    } else {
+      builder.setValueType(Message.Point.ValueType.INT_LIST)
+    }
   }
 
   /**

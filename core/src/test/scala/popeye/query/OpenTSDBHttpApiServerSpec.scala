@@ -9,10 +9,10 @@ import org.scalatest.mock.MockitoSugar
 import org.mockito.Mockito._
 import org.mockito.Matchers._
 import scala.concurrent.{Await, Future}
-import popeye.storage.hbase.HBaseStorage.{Point, ValueNameFilterCondition, PointsGroups, PointsStream}
+import popeye.storage.hbase.HBaseStorage._
 import akka.testkit.TestActorRef
 import akka.actor.Props
-import spray.http.{HttpResponse, Uri, HttpRequest}
+import spray.http.{StatusCodes, HttpResponse, Uri, HttpRequest}
 import spray.http.HttpMethods._
 import popeye.query.OpenTSDBHttpApiServer.TimeSeriesQuery
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.SingleValueName
@@ -87,7 +87,7 @@ class OpenTSDBHttpApiServerSpec extends AkkaTestKitSpec("http-query") with Mocki
     )
 
     val storage = mock[PointsStorage]
-    stub(storage.getPoints(any(), any(), any())).toReturn(Future.successful(PointsStream(PointsGroups(groups))))
+    stub(storage.getPoints(any(), any(), any())).toReturn(Future.successful(FutureStream(PointsGroups(groups))))
     val serverRef = TestActorRef(Props.apply(new OpenTSDBHttpApiServer(storage, executionContext)))
     val future = serverRef ? HttpRequest(GET, Uri(uriString, Uri.ParsingMode.RelaxedWithRawQuery))
     val response = Await.result(future, 5 seconds).asInstanceOf[HttpResponse]
@@ -107,5 +107,42 @@ class OpenTSDBHttpApiServerSpec extends AkkaTestKitSpec("http-query") with Mocki
     )
     verify(storage).getPoints("metric", (0, 1), attrs)
 
+  }
+
+  it should "render list points" in {
+    val metricParam = "m=metric"
+    val tagsParam = "tags=single=foo,multiple=foo|bar,all=*"
+    val timeParams = "start=1970/01/01-00:00:00&end=1970/01/01-00:00:01"
+
+    val uriString = f"/qlist?$timeParams&$metricParam&$tagsParam"
+
+    val listPointSerieses = Seq(
+      ListPointTimeseries(SortedMap("groupByAttr" -> "foo"), Seq(ListPoint(1, Left(Seq(1, 2, 3))))),
+      ListPointTimeseries(SortedMap("groupByAttr" -> "foo"), Seq(ListPoint(2, Right(Seq(1, 2, 3)))))
+    )
+
+    val storage = mock[PointsStorage]
+    stub(storage.getListPoints(any(), any(), any())).toReturn(Future.successful(FutureStream(listPointSerieses)))
+    val serverRef = TestActorRef(Props.apply(new OpenTSDBHttpApiServer(storage, executionContext)))
+    val future = serverRef ? HttpRequest(GET, Uri(uriString, Uri.ParsingMode.RelaxedWithRawQuery))
+    val response = Await.result(future, 5 seconds).asInstanceOf[HttpResponse]
+    val responseString = response.entity.asString
+
+    responseString should equal("metric 1 [1,2,3] groupByAttr=foo\nmetric 2 [1.0,2.0,3.0] groupByAttr=foo")
+
+    import ValueNameFilterCondition._
+    val attrs = Map(
+      "single" -> SingleValueName("foo"),
+      "multiple" -> MultipleValueNames(Seq("foo", "bar")),
+      "all" -> AllValueNames
+    )
+    verify(storage).getListPoints("metric", (0, 1), attrs)
+  }
+
+  it should "respond to malformed request" in {
+    val storage = mock[PointsStorage]
+    val serverRef = TestActorRef(Props.apply(new OpenTSDBHttpApiServer(storage, executionContext)))
+    val future = serverRef ? HttpRequest(GET, Uri("/q", Uri.ParsingMode.RelaxedWithRawQuery))
+    Await.result(future, 1 seconds).asInstanceOf[HttpResponse].status should equal(StatusCodes.BadRequest)
   }
 }

@@ -9,7 +9,7 @@ import popeye.query.{PointsStorage, OpenTSDBHttpApiServer}
 import com.typesafe.config.ConfigFactory
 import scala.collection.mutable
 import popeye.query.PointsStorage.NameType
-import popeye.storage.hbase.HBaseStorage.{PointsStream, ValueNameFilterCondition}
+import popeye.storage.hbase.HBaseStorage.{ListPointsStream, PointsStream, ValueNameFilterCondition}
 import popeye.Logging
 
 class OpenTSDBHttpApiServerTest extends Logging {
@@ -51,6 +51,10 @@ class OpenTSDBHttpApiServerTest extends Logging {
         info(f"suggestions $suggestions")
         suggestions
       }
+
+      override def getListPoints(metric: String,
+                                 timeRange: (Int, Int),
+                                 attributes: Map[String, ValueNameFilterCondition]): Future[ListPointsStream] = ???
     }
     OpenTSDBHttpApiServer.runServer(serverConfig, pointsStorage, actorSystem, eCtx)
   }

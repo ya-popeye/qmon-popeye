@@ -32,6 +32,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       .setTimestamp(3610)
       .setIntValue(31)
       .addAllAttributes(attributes)
+      .setValueType(Message.Point.ValueType.INT)
       .build()
   }
 
@@ -80,6 +81,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val tsdbFormat = createTsdbFormat()
     val keyValue = tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap.get, 0).right.get
     val metricId = Array[Byte](1, 0, 1)
+    val valueTypeStructureId = Array[Byte](TsdbFormat.ValueTypes.SingleValueTypeStructureId)
     val timestamp = samplePoint.getTimestamp.toInt
     val timestampBytes = Bytes.toBytes(timestamp - timestamp % TsdbFormat.MAX_TIMESPAN)
 
@@ -90,7 +92,14 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
 
     val sortedAttributeIds = attr ++ anotherAttr
 
-    val row = defaultGenerationIdBytes.bytes ++ metricId ++ shardId ++ timestampBytes ++ sortedAttributeIds
+    val row = Seq(
+      defaultGenerationIdBytes.bytes,
+      metricId,
+      valueTypeStructureId,
+      shardId,
+      timestampBytes,
+      sortedAttributeIds
+    ).flatten.toArray
     keyValue.getRow should equal(row)
   }
 
@@ -99,7 +108,25 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val keyValue = tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap.get, 0).right.get
     val timestamp = samplePoint.getTimestamp.toInt
     val result = new Result(List(keyValue).asJava)
-    tsdbFormat.parseRowResult(result).points.head should equal(HBaseStorage.Point(timestamp, samplePoint.getIntValue))
+    tsdbFormat.parseSingleValueRowResult(result).points.head should equal(HBaseStorage.Point(timestamp, samplePoint.getIntValue))
+  }
+
+  it should "handle int list values" in {
+    val tsdbFormat = createTsdbFormat()
+    val point = createListPoint("test", 0, Seq(defaultShardAttributeName -> "value"), Left(Seq(1, 2, 3)))
+    val keyValue = tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0).right.get
+    val timestamp = point.getTimestamp.toInt
+    val result = new Result(List(keyValue).asJava)
+    tsdbFormat.parseListValueRowResult(result).lists.head should equal(HBaseStorage.ListPoint(timestamp, Left(Seq(1, 2, 3))))
+  }
+
+  it should "handle float list values" in {
+    val tsdbFormat = createTsdbFormat()
+    val point = createListPoint("test", 0, Seq(defaultShardAttributeName -> "value"), Right(Seq(1, 2, 3)))
+    val keyValue = tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0).right.get
+    val timestamp = point.getTimestamp.toInt
+    val result = new Result(List(keyValue).asJava)
+    tsdbFormat.parseListValueRowResult(result).lists.head should equal(HBaseStorage.ListPoint(timestamp, Right(Seq(1, 2, 3))))
   }
 
   ignore should "have good performance" in {
@@ -134,6 +161,22 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     }
   }
 
+  behavior of "IntListValueType longs serialization"
+
+  it should "serialize empty lists" in {
+    val point = createListPoint(value = Left(Seq()))
+    val (_, value: Array[Byte]) = IntListValueType.mkQualifiedValue(point)
+    IntListValueType.parseIntListValue(value).toSeq should be(empty)
+  }
+
+  behavior of "FloatListValueType longs serialization"
+
+  it should "serialize empty lists" in {
+    val point = createListPoint(value = Right(Seq()))
+    val (_, value: Array[Byte]) = FloatListValueType.mkQualifiedValue(point)
+    FloatListValueType.parseFloatListValue(value).toSeq should be(empty)
+  }
+
   behavior of "TsdbFormat.convertToKeyValues"
 
   it should "convert point if all names are in cache" in {
@@ -143,7 +186,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     keyValues.size should equal(1)
     keyValues.head should equal(tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap.get, 0).right.get)
     val point = HBaseStorage.Point(samplePoint.getTimestamp.toInt, samplePoint.getIntValue)
-    tsdbFormat.parseRowResult(new Result(keyValues.asJava)).points.head should equal(point)
+    tsdbFormat.parseSingleValueRowResult(new Result(keyValues.asJava)).points.head should equal(point)
   }
 
   it should "not convert point if not all names are in cache" in {
@@ -157,7 +200,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val delayedkeyValues = partiallyConvertedPoints.convert(Map(notInCache -> sampleIdMap(notInCache)))
     delayedkeyValues.head should equal(tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap.get, 0).right.get)
     val point = HBaseStorage.Point(samplePoint.getTimestamp.toInt, samplePoint.getIntValue)
-    tsdbFormat.parseRowResult(new Result(delayedkeyValues.asJava)).points.head should equal(point)
+    tsdbFormat.parseSingleValueRowResult(new Result(delayedkeyValues.asJava)).points.head should equal(point)
   }
 
   behavior of "TsdbFormat.parseRowResult"
@@ -182,7 +225,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       point => tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0).right.get
     }
     require(keyValues.map(_.getRow.toBuffer).distinct.size == 1)
-    val parsedRowResult = tsdbFormat.parseRowResult(new Result(keyValues.asJava))
+    val parsedRowResult = tsdbFormat.parseSingleValueRowResult(new Result(keyValues.asJava))
 
     val expectedAttributeIds = SortedMap(
       sampleIdMap(qualifiedName(AttrNameKind, "name")) -> sampleIdMap(qualifiedName(AttrValueKind, "value")),
@@ -190,10 +233,11 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     )
     val expectedPoints = timeAndValues.map { case (time, value) => HBaseStorage.Point(time.toInt, value) }
 
-    parsedRowResult.generationId should equal(defaultGenerationIdBytes)
-    parsedRowResult.metricId should equal(sampleIdMap(qualifiedName(MetricKind, "test")))
-    parsedRowResult.shardId should equal(bytesKey(4, 0, 1))
-    parsedRowResult.attributeIds should equal(expectedAttributeIds)
+    val timeseriesId = parsedRowResult.timeseriesId
+    timeseriesId.generationId should equal(defaultGenerationIdBytes)
+    timeseriesId.metricId should equal(sampleIdMap(qualifiedName(MetricKind, "test")))
+    timeseriesId.shardId should equal(bytesKey(4, 0, 1))
+    timeseriesId.attributeIds should equal(expectedAttributeIds)
     parsedRowResult.points should equal(expectedPoints)
 
   }
@@ -203,7 +247,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val row = Array[Byte](0)
     val keyValue = new KeyValue(row, HBaseStorage.PointsFamily, Array[Byte](0, 0, 0), Array[Byte](0, 0, 0))
     val ex = intercept[IllegalArgumentException] {
-      tsdbFormat.parseRowResult(new Result(Seq(keyValue).asJava))
+      tsdbFormat.parseSingleValueRowResult(new Result(Seq(keyValue).asJava))
     }
     ex.getMessage should (include("row") and include("size"))
   }
@@ -271,14 +315,16 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       metric = "test",
       timeRange = (0, 1),
       attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
-      idMap = sampleIdMap)
+      idMap = sampleIdMap,
+      TsdbFormat.ValueTypes.SingleValueTypeStructureId)
     scans.size should equal(1)
     val scan = scans(0)
     val metricId = Array[Byte](1, 0, 1)
+    val valueStructureTypeId = ValueTypes.SingleValueTypeStructureId
     val shardId = Array[Byte](4, 0, 1)
     val startTimestamp = Array[Byte](0, 0, 0, 0)
     val stopTimestamp = Array[Byte](0, 0, 0, 1)
-    val rowPrefix = defaultGenerationIdBytes.bytes ++ metricId ++ shardId
+    val rowPrefix = defaultGenerationIdBytes.bytes ++ metricId ++ Array(valueStructureTypeId) ++ shardId
     scan.getStartRow should equal(rowPrefix ++ startTimestamp)
     scan.getStopRow should equal(rowPrefix ++ stopTimestamp)
   }
@@ -296,7 +342,8 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       metric = "test",
       timeRange = (0, 4000),
       attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
-      idMap = idMap)
+      idMap = idMap,
+      TsdbFormat.ValueTypes.SingleValueTypeStructureId)
     scans.size should equal(2)
     scans(0).getStartRow.slice(0, UniqueIdGenerationWidth) should equal(Array[Byte](0, 0))
     scans(1).getStartRow.slice(0, UniqueIdGenerationWidth) should equal(Array[Byte](0, 1))
@@ -312,7 +359,8 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       metric = "test",
       timeRange = (0, 4000),
       attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
-      idMap = idMap)
+      idMap = idMap,
+      TsdbFormat.ValueTypes.SingleValueTypeStructureId)
     scans.size should equal(1)
     scans(0).getStartRow.slice(0, UniqueIdGenerationWidth) should equal(Array[Byte](0, 0))
   }
@@ -327,10 +375,24 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       metric = "test",
       timeRange = (0, 4000),
       attributeValueFilters = Map(defaultShardAttributeName -> MultipleValueNames(Seq("value", "anotherValue"))),
-      idMap = idMap)
+      idMap = idMap,
+      TsdbFormat.ValueTypes.SingleValueTypeStructureId)
     scans.size should equal(2)
     scans(0).getStartRow.slice(shardIdOffset, shardIdOffset + shardIdWidth) should equal(Array[Byte](4, 0, 1))
     scans(1).getStartRow.slice(shardIdOffset, shardIdOffset + shardIdWidth) should equal(Array[Byte](4, 0, 2))
+  }
+
+  it should "include value_type_structure_id byte flag" in {
+    val tsdbFormat = createTsdbFormat()
+    val scans = tsdbFormat.getScans(
+      metric = "test",
+      timeRange = (0, 1),
+      attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
+      idMap = sampleIdMap,
+      TsdbFormat.ValueTypes.ListValueTypeStructureId
+    )
+    scans.size should equal(1)
+    scans(0).getStartRow()(valueTypeIdOffset) should equal(ValueTypes.ListValueTypeStructureId)
   }
 
   behavior of "TsdbFormat.createRowRegexp"
