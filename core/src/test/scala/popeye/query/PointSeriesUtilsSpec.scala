@@ -2,6 +2,7 @@ package popeye.query
 
 import org.scalatest.FlatSpec
 import popeye.query.PointSeriesUtils.{PlotPoint, Line}
+import popeye.test.PopeyeTestUtils.time
 import scala.util.Random
 import org.scalatest.Matchers
 
@@ -145,12 +146,6 @@ class PointSeriesUtilsSpec extends FlatSpec with Matchers {
     val div = PointSeriesUtils.differentiate(constPlot.iterator).toList
     div.map { case (x, y) => x} should equal(1 to 10)
     all(div.map { case (x, y) => y}) should be(1.0 +- 0.000001)
-  }
-
-  private def time[T](body: => Unit) = {
-    val startTime = System.currentTimeMillis()
-    body
-    System.currentTimeMillis() - startTime
   }
 
   private def slowDownsampling(source: Seq[PlotPoint],

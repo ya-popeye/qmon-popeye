@@ -117,4 +117,10 @@ object PopeyeTestUtils {
       }
     }
   }
+
+  def time[T](body: => Unit) = {
+    val startTime = System.currentTimeMillis()
+    body
+    System.currentTimeMillis() - startTime
+  }
 }
