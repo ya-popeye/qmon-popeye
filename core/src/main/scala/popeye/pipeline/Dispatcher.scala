@@ -120,6 +120,7 @@ trait WorkerActor extends Actor with Logging {
           }
         }
         promises.foreach(_.trySuccess(p.batchId))
+        batcher.addWorker(self)
       } catch {
         case e: Exception =>
           sender ! Failure(new DispatcherException(s"batch $batchId failed", e))
@@ -138,7 +139,6 @@ trait WorkerActor extends Actor with Logging {
         val elapsed = p.started.stop.nano
         batcher.metrics.sendersTime.mark(sended.toMillis)
         log.debug(s"batch ${p.batchId} sent in ${sended.toMillis}ms at total ${elapsed.toMillis}ms")
-        batcher.addWorker(self)
         sender ! WorkDone(batchId)
       }
   }
