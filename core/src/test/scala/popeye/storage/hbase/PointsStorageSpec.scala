@@ -33,14 +33,9 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
     val attributes = attrNames.map {
       name =>
         val value = PopeyeTestUtils.hosts(random.nextInt(PopeyeTestUtils.hosts.size))
-        Message.Attribute.newBuilder().setName(name).setValue(value).build
-    }.asJava
-    val point = Message.Point.newBuilder()
-      .setMetric(metric)
-      .setTimestamp(0)
-      .addAllAttributes(attributes)
-      .setIntValue(0)
-      .build()
+        (name, value)
+    }
+    val point = messagePoint(metric, timestamp = 0, 0, attributes)
     Await.ready(storageStub.storage.writeMessagePoints(point), 5 seconds)
     val points = storageStub.hTable.getScanner(HBaseStorage.PointsFamily).map(_.raw).flatMap {
       kv =>
@@ -242,14 +237,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
   }
 
   def messagePoint(metricName: String, timestamp: Long, value: Long, attrs: Seq[(String, String)]) = {
-    val builder = Message.Point.newBuilder()
-      .setMetric(metricName)
-      .setTimestamp(timestamp)
-      .setIntValue(value)
-    for ((name, value) <- attrs) {
-      builder.addAttributes(attribute(name, value))
-    }
-    builder.build()
+    PopeyeTestUtils.createPoint(metricName, timestamp, attrs, Left(value))
   }
 
   def attribute(name: String, value: String) =

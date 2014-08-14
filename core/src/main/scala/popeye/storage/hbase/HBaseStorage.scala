@@ -253,7 +253,7 @@ class HBaseStorage(tableName: String,
 
     def toPointsStream(chunkedResults: ChunkedResults): Future[PointsStream] = {
       val (results, nextResults) = chunkedResults.getRows()
-      val rowResults = results.map(tsdbFormat.parseRowResult)
+      val rowResults = results.map(tsdbFormat.parseSingleValueRowResult)
       val ids = tsdbFormat.getRowResultsIds(rowResults)
       val idNamePairsFuture = Future.traverse(ids) {
         case qId =>
@@ -273,11 +273,11 @@ class HBaseStorage(tableName: String,
     toPointsStream(chunkedResults)
   }
 
-  private def toPointSequencesMap(rows: Array[ParsedRowResult],
+  private def toPointSequencesMap(rows: Array[ParsedSingleValueRowResult],
                                   timeRange: (Int, Int),
                                   idMap: Map[QualifiedId, String]): Map[PointAttributes, Seq[Point]] = {
     val (startTime, endTime) = timeRange
-    rows.groupBy(row => row.getAttributes(idMap)).mapValues {
+    rows.groupBy(row => row.timeseriesId.getAttributes(idMap)).mapValues {
       rowsArray =>
         val pointsArray = rowsArray.map(_.points)
         val firstRow = pointsArray(0)
@@ -420,7 +420,7 @@ class HBaseStorage(tableName: String,
    */
   private def mkPointFuture(kv: KeyValue)(implicit eCtx: ExecutionContext): Future[Message.Point] = {
     import scala.collection.JavaConverters._
-    val rowResult = tsdbFormat.parseRowResult(new Result(Seq(kv).asJava))
+    val rowResult = tsdbFormat.parseSingleValueRowResult(new Result(Seq(kv).asJava))
     val rowIds = tsdbFormat.getRowResultsIds(Seq(rowResult))
     val idNamePairsFuture = Future.traverse(rowIds) {
       case qId =>
@@ -429,17 +429,20 @@ class HBaseStorage(tableName: String,
         }
     }
     val valuePoint = rowResult.points.head
+    val timeseriesId = rowResult.timeseriesId
     idNamePairsFuture.map {
       idNamePairs =>
-        val metricName = rowResult.getMetricName(idNamePairs.toMap)
-        val attrs = rowResult.getAttributes(idNamePairs.toMap)
+        val metricName = timeseriesId.getMetricName(idNamePairs.toMap)
+        val attrs = timeseriesId.getAttributes(idNamePairs.toMap)
         val builder = Message.Point.newBuilder()
         builder.setTimestamp(valuePoint.timestamp)
         builder.setMetric(metricName)
         if (valuePoint.isFloat) {
           builder.setFloatValue(valuePoint.getFloatValue)
+          builder.setValueType(Message.Point.ValueType.FLOAT)
         } else {
           builder.setIntValue(valuePoint.getLongValue)
+          builder.setValueType(Message.Point.ValueType.INT)
         }
         for ((name, value) <- attrs) {
           builder.addAttributesBuilder()

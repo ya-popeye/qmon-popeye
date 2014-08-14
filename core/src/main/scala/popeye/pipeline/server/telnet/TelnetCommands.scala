@@ -266,14 +266,22 @@ object TelnetCommands {
       }
       val valueStrings = LineDecoder.split(value.substring(1, value.length - 1), ',', preserveAllTokens = true)
       parseListValue(ev, valueStrings)
-    } else if (looksLikeInteger(value)) {
-      ev.setIntValue(parseLong(value));
     } else {
-      // floating point value
-      ev.setFloatValue(java.lang.Float.parseFloat(value));
+      parseSingleValue(ev, value)
     }
     parseTags(ev, 4, words)
     ev.build
+  }
+
+  def parseSingleValue(builder: Point.Builder, valueString: String) = {
+    if (looksLikeInteger(valueString)) {
+      builder.setIntValue(parseLong(valueString))
+      builder.setValueType(Message.Point.ValueType.INT)
+    } else {
+      // floating point value
+      builder.setFloatValue(java.lang.Float.parseFloat(valueString))
+      builder.setValueType(Message.Point.ValueType.FLOAT)
+    }
   }
 
   def parseListValue(builder: Point.Builder, valueStrings: Iterable[String]) = {
@@ -297,6 +305,11 @@ object TelnetCommands {
       } else {
         builder.addIntListValue(parseLong(str))
       }
+    }
+    if (isFloatList) {
+      builder.setValueType(Message.Point.ValueType.FLOAT_LIST)
+    } else {
+      builder.setValueType(Message.Point.ValueType.INT_LIST)
     }
   }
 

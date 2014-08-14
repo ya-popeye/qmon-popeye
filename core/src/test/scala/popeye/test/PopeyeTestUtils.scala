@@ -85,8 +85,14 @@ object PopeyeTestUtils {
       .setTimestamp(timestamp)
       .addAllAttributes(attrs)
     value.fold(
-      longVal => builder.setIntValue(longVal),
-      floatVal => builder.setFloatValue(floatVal)
+      longVal => {
+        builder.setValueType(Message.Point.ValueType.INT)
+        builder.setIntValue(longVal)
+      },
+      floatVal => {
+        builder.setValueType(Message.Point.ValueType.FLOAT)
+        builder.setFloatValue(floatVal)
+      }
     )
     builder.build()
   }

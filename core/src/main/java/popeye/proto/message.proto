@@ -6,13 +6,20 @@ message Attribute {
 };
 
 message Point {
-	required string metric       = 1;
-	required int64 timestamp     = 2;
-	repeated Attribute attributes = 3;
-	optional int64 int_value     = 4;
-    optional float float_value   = 5;
-    repeated int64 int_list_value = 6;
-    repeated float float_list_value = 7;
+    enum ValueType {
+        INT = 0;
+        FLOAT = 1;
+        FLOAT_LIST = 2;
+        INT_LIST = 3;
+    }
+    required string metric       = 1;
+    required int64 timestamp     = 2;
+    repeated Attribute attributes = 3;
+    required ValueType value_type = 4;
+    optional int64 int_value = 5;
+    optional float float_value = 6;
+    repeated int64 int_list_value = 7;
+    repeated float float_list_value = 8;
 };
 
 message Batch {

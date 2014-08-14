@@ -1,6 +1,7 @@
 package popeye.pipeline.server.telnet
 
 import org.scalatest.{Matchers, FlatSpec}
+import popeye.proto.Message
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -30,23 +31,27 @@ class TelnetCommandsSpec extends FlatSpec with Matchers {
     val point = TelnetCommands.parsePoint("put proc.loadavg.5m 1288947942 [1.62] host=bar cluster=popeye".split(" "))
     point.getFloatListValueCount should equal(1)
     point.getFloatListValue(0) should equal(1.62f)
+    point.getValueType should equal(Message.Point.ValueType.FLOAT_LIST)
   }
 
   it should "parse single-element long list value" in {
     val point = TelnetCommands.parsePoint("put proc.loadavg.5m 1288947942 [1] host=bar cluster=popeye".split(" "))
     point.getIntListValueCount should equal(1)
     point.getIntListValue(0) should equal(1l)
+    point.getValueType should equal(Message.Point.ValueType.INT_LIST)
   }
 
   it should "parse list value" in {
     val point = TelnetCommands.parsePoint("put proc.loadavg.5m 1288947942 [1,2,3,4,5] host=bar cluster=popeye".split(" "))
     point.getIntListValueList should equal(Seq(1, 2, 3, 4, 5).map(_.toLong).asJava)
+    point.getValueType should equal(Message.Point.ValueType.INT_LIST)
   }
 
   it should "parse mixed list value" in {
     val point = TelnetCommands.parsePoint("put proc.loadavg.5m 1288947942 [1,2,3.0,4,5] host=bar cluster=popeye".split(" "))
     point.getIntListValueCount should equal(0)
     point.getFloatListValueList should equal(Seq(1, 2, 3, 4, 5).map(_.toFloat).asJava)
+    point.getValueType should equal(Message.Point.ValueType.FLOAT_LIST)
   }
 
   it should "throw exception on non ']' end symbol in list value" in {

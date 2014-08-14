@@ -1,6 +1,6 @@
 package popeye.storage.hbase
 
-import popeye.proto.{PackedPoints, Message}
+import popeye.proto.Message
 import popeye.storage.hbase.HBaseStorage._
 import org.apache.hadoop.hbase.KeyValue
 import org.apache.hadoop.hbase.util.Bytes
@@ -52,6 +52,76 @@ object TsdbFormat {
 
   val ROW_REGEX_FILTER_ENCODING = Charset.forName("ISO-8859-1")
 
+  trait ValueType {
+    def mkQualifiedValue(point: Message.Point): (Array[Byte], Array[Byte])
+  }
+
+  object ValueTypes {
+    def renderQualifier(timestamp: Long, isFloat: Boolean): Array[Byte] = {
+      val delta: Short = (timestamp % MAX_TIMESPAN).toShort
+      val ndelta = delta << FLAG_BITS
+      if (isFloat) {
+        Bytes.toBytes(((0xffff & (FLAG_FLOAT | 0x3)) | ndelta).toShort)
+      } else {
+        Bytes.toBytes((0xffff & ndelta).toShort)
+      }
+    }
+
+    def getType(valueType: Message.Point.ValueType): ValueType = {
+      import Message.Point.ValueType._
+      valueType match {
+        case INT => IntValueType
+        case FLOAT => FloatValueType
+        case INT_LIST => IntListValueType
+        case FLOAT_LIST => FloatListValueType
+      }
+    }
+  }
+
+
+  case object IntValueType extends ValueType {
+    override def mkQualifiedValue(point: Message.Point): (Array[Byte], Array[Byte]) = {
+      (ValueTypes.renderQualifier(point.getTimestamp, isFloat = false), Bytes.toBytes(point.getIntValue))
+    }
+  }
+
+  case object FloatValueType extends ValueType {
+    override def mkQualifiedValue(point: Message.Point): (Array[Byte], Array[Byte]) = {
+      (ValueTypes.renderQualifier(point.getTimestamp, isFloat = true), Bytes.toBytes(point.getFloatValue))
+    }
+  }
+
+  case object IntListValueType extends ValueType {
+    override def mkQualifiedValue(point: Message.Point): (Array[Byte], Array[Byte]) = {
+      val qualifier = ValueTypes.renderQualifier(point.getTimestamp, isFloat = false)
+      val value = longsToBytes(point.getIntListValueList.asScala)
+      (qualifier, value)
+    }
+
+    private def longsToBytes(longs: Seq[java.lang.Long]) = {
+      val buffer = ByteBuffer.allocate(longs.size * 8)
+      for (l <- longs) {
+        buffer.putLong(l.longValue())
+      }
+      buffer.array()
+    }
+  }
+
+  case object FloatListValueType extends ValueType {
+    override def mkQualifiedValue(point: Message.Point): (Array[Byte], Array[Byte]) = {
+      val qualifier = ValueTypes.renderQualifier(point.getTimestamp, isFloat = true)
+      val value = floatsToBytes(point.getFloatListValueList.asScala)
+      (qualifier, value)
+    }
+
+    private def floatsToBytes(floats: Seq[java.lang.Float]) = {
+      val buffer = ByteBuffer.allocate(floats.size * 4)
+      for (f <- floats) {
+        buffer.putFloat(f.floatValue())
+      }
+      buffer.array()
+    }
+  }
 
   def createRowRegexp(offset: Int,
                       attrNameLength: Int,
@@ -114,11 +184,10 @@ object TsdbFormat {
 
 }
 
-case class ParsedRowResult(generationId: BytesKey,
-                           metricId: BytesKey,
-                           shardId: BytesKey,
-                           attributeIds: SortedMap[BytesKey, BytesKey],
-                           points: Seq[HBaseStorage.Point]) {
+case class TimeseriesId(generationId: BytesKey,
+                        metricId: BytesKey,
+                        shardId: BytesKey,
+                        attributeIds: SortedMap[BytesKey, BytesKey]) {
   def getMetricName(idMap: Map[QualifiedId, String]) = idMap(QualifiedId(MetricKind, generationId, metricId))
 
   def getAttributes(idMap: Map[QualifiedId, String]) = {
@@ -130,6 +199,8 @@ case class ParsedRowResult(generationId: BytesKey,
     }
   }
 }
+
+case class ParsedSingleValueRowResult(timeseriesId: TimeseriesId, points: Seq[HBaseStorage.Point])
 
 trait PointConversionErrorHandler {
   def handlePointConversionError(e: Exception): Unit
@@ -228,9 +299,10 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping,
         val value = getValueOption(QualifiedName(AttrValueKind, generationId, attr.getValue))
         (name, value)
     }
+    val valueType = ValueTypes.getType(point.getValueType)
     def attributesAreDefined = attributeIds.forall { case (n, v) => n.isDefined && v.isDefined }
     if (metricId.isDefined && shardId.isDefined && attributesAreDefined) {
-      val qualifiedValue = mkQualifiedValue(point)
+      val qualifiedValue = valueType.mkQualifiedValue(point)
       val keyValue = mkKeyValue(
         generationId,
         metricId.get,
@@ -257,20 +329,21 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping,
     shardAttributeToShardName(shardAttribute.getName, shardAttribute.getValue)
   }
 
-  def getRowResultsIds(rowResults: Seq[ParsedRowResult]): Set[QualifiedId] = {
+  def getRowResultsIds(rowResults: Seq[ParsedSingleValueRowResult]): Set[QualifiedId] = {
     rowResults.flatMap {
-      case ParsedRowResult(generationId, metric, shardId, attributes, _) =>
-        val metricId = QualifiedId(MetricKind, generationId, metric)
+      case ParsedSingleValueRowResult(timeseriesId, _) =>
+        val TimeseriesId(generationId, metricId, shardId, attributeIds) = timeseriesId
+        val metricQId = QualifiedId(MetricKind, generationId, metricId)
         val shardQId = QualifiedId(ShardKind, generationId, shardId)
 
-        val attrNameIds = attributes.keys.map(id => QualifiedId(AttrNameKind, generationId, id)).toSeq
-        val attrValueIds = attributes.values.map(id => QualifiedId(AttrValueKind, generationId, id)).toSeq
+        val attrNameQIds = attributeIds.keys.map(id => QualifiedId(AttrNameKind, generationId, id)).toSeq
+        val attrValueQIds = attributeIds.values.map(id => QualifiedId(AttrValueKind, generationId, id)).toSeq
 
-        metricId +: shardQId +: (attrNameIds ++ attrValueIds)
+        metricQId +: shardQId +: (attrNameQIds ++ attrValueQIds)
     }.toSet
   }
 
-  def parseRowResult(result: Result): ParsedRowResult = {
+  def parseSingleValueRowResult(result: Result): ParsedSingleValueRowResult = {
     val row = result.getRow
     val attributesLength = row.length - attributesOffset
     require(
@@ -288,14 +361,13 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping,
         val (delta, value) = parseValue(qualifierBytes, valueBytes)
         HBaseStorage.Point(baseTime + delta, value)
     }
-    ParsedRowResult(
-      generationId,
-      metricId,
-      shardId,
-      createAttributesMap(attributesBytes),
-      points
-    )
+    val timeseriedId = TimeseriesId(generationId, metricId, shardId, createAttributesMap(attributesBytes))
+    ParsedSingleValueRowResult(timeseriedId, points)
   }
+
+  def parseListValueRowResult(result: Result) = ???
+
+
 
   private def createAttributesMap(attributes: Array[Byte]): SortedMap[BytesKey, BytesKey] = {
     val attributeWidth = attributeNameWidth + attributeValueWidth
