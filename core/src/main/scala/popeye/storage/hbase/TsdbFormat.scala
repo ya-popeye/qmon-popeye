@@ -394,18 +394,13 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping,
     shardAttributeToShardName(shardAttribute.getName, shardAttribute.getValue)
   }
 
-  def getRowResultsIds(rowResults: Seq[ParsedSingleValueRowResult]): Set[QualifiedId] = {
-    rowResults.flatMap {
-      case ParsedSingleValueRowResult(timeseriesId, _) =>
-        val TimeseriesId(generationId, metricId, shardId, attributeIds) = timeseriesId
-        val metricQId = QualifiedId(MetricKind, generationId, metricId)
-        val shardQId = QualifiedId(ShardKind, generationId, shardId)
-
-        val attrNameQIds = attributeIds.keys.map(id => QualifiedId(AttrNameKind, generationId, id)).toSeq
-        val attrValueQIds = attributeIds.values.map(id => QualifiedId(AttrValueKind, generationId, id)).toSeq
-
-        metricQId +: shardQId +: (attrNameQIds ++ attrValueQIds)
-    }.toSet
+  def getUniqueIds(timeseriesId: TimeseriesId): Seq[QualifiedId] = {
+    val TimeseriesId(generationId, metricId, shardId, attributeIds) = timeseriesId
+    val metricQId = QualifiedId(MetricKind, generationId, metricId)
+    val shardQId = QualifiedId(ShardKind, generationId, shardId)
+    val attrNameQIds = attributeIds.keys.map(id => QualifiedId(AttrNameKind, generationId, id)).toSeq
+    val attrValueQIds = attributeIds.values.map(id => QualifiedId(AttrValueKind, generationId, id)).toSeq
+    metricQId +: shardQId +: (attrNameQIds ++ attrValueQIds)
   }
 
   def parseSingleValueRowResult(result: Result): ParsedSingleValueRowResult = {

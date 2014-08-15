@@ -270,7 +270,7 @@ class HBaseStorage(tableName: String,
     def toPointsStream(chunkedResults: ChunkedResults): Future[PointsStream] = {
       val (results, nextResults) = chunkedResults.getRows()
       val rowResults = results.map(tsdbFormat.parseSingleValueRowResult)
-      val ids = tsdbFormat.getRowResultsIds(rowResults)
+      val ids = rowResults.flatMap(rr => tsdbFormat.getUniqueIds(rr.timeseriesId)).toSet
       val idNamePairsFuture = Future.traverse(ids) {
         case qId =>
           uniqueId.resolveNameById(qId)(resolveTimeout).map(name => (qId, name))
@@ -437,7 +437,7 @@ class HBaseStorage(tableName: String,
   private def mkPointFuture(kv: KeyValue)(implicit eCtx: ExecutionContext): Future[Message.Point] = {
     import scala.collection.JavaConverters._
     val rowResult = tsdbFormat.parseSingleValueRowResult(new Result(Seq(kv).asJava))
-    val rowIds = tsdbFormat.getRowResultsIds(Seq(rowResult))
+    val rowIds = tsdbFormat.getUniqueIds(rowResult.timeseriesId)
     val idNamePairsFuture = Future.traverse(rowIds) {
       case qId =>
         uniqueId.resolveNameById(qId)(resolveTimeout).map {
