@@ -1,6 +1,8 @@
 package popeye.pipeline
 
-import akka.actor.{Props, ActorRef}
+import java.util.concurrent.atomic.AtomicInteger
+
+import akka.actor.{Actor, Props, ActorRef}
 import akka.testkit.TestActorRef
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.{ConfigValueFactory, ConfigFactory, Config}
@@ -20,9 +22,11 @@ class DispatcherActorSpec extends AkkaTestKitSpec("DispatcherActor") {
   implicit val sch = system.scheduler
   implicit val ectx = system.dispatcher
 
-  "Dispatcher" should "buffer" in {
+  behavior of "Dispatcher"
+
+  it should "buffer" in {
     val metrics = new DispatcherMetrics("test", registry)
-    val dconf = new DispatcherConfig(config().withValue("tick", ConfigValueFactory.fromAnyRef(10000)))
+    val dconf = new DispatcherConfig(config(tick = 10000))
     val actor: TestActorRef[MyDispatcherActor] = TestActorRef(
       Props.apply(new MyDispatcherActor(dconf, metrics, { dispatcher =>
         new MyDispatcherWorker(dispatcher)
@@ -34,20 +38,61 @@ class DispatcherActorSpec extends AkkaTestKitSpec("DispatcherActor") {
     }
     // and now, we push enough data to overcome low-watermark
     Await.result(DispatcherActor.sendBatch(actor, 1, Seq("uu", "uu", "uu"), 1 seconds), 2 seconds)
-
   }
 
-  def config(): Config = ConfigFactory.parseString(
+  it should "tolerate worker failures" in {
+    val metrics = new DispatcherMetrics("test", registry)
+    val dconf = new DispatcherConfig(config(tick = 10, highWatermark = 1, lowWatermark = 0))
+    val numberOfFails = 10
+    val failsCounter = new AtomicInteger(numberOfFails)
+    val actor: TestActorRef[MyDispatcherActor] = TestActorRef(
+      Props.apply(new MyDispatcherActor(dconf, metrics, { dispatcher =>
+        new FailWorker(dispatcher, failsCounter)
+      })))
+    for (_ <- 0 until numberOfFails) {
+      Await.ready(DispatcherActor.sendBatch(actor, 1, Seq("uu"), 1 seconds), 5 seconds)
+    }
+    Await.result(DispatcherActor.sendBatch(actor, 1, Seq("uu"), 1 seconds), 5 seconds)
+  }
+
+  it should "not duplicate actor refs in work queue on worker failure" in {
+    val metrics = new DispatcherMetrics("test", registry)
+    val dconf = new DispatcherConfig(config())
+    val numberOfFails = new AtomicInteger(10000)
+    val actor: TestActorRef[MyDispatcherActor] = TestActorRef(
+      Props.apply(new MyDispatcherActor(dconf, metrics, { dispatcher =>
+        new FailWorker(dispatcher, numberOfFails)
+      })))
+    for (_ <- 0 to 1000) {
+      DispatcherActor.sendBatch(actor, 1, Seq("uu", "uu", "uu"), 1 seconds)
+    }
+    actor.underlyingActor.workQueue.size should (equal(0) or equal(1))
+  }
+
+  def config(tick: Int = 100,
+             highWatermark: Int = 100,
+             lowWatermark: Int = 5): Config = ConfigFactory.parseString(
     s"""
-    | tick = 100ms
+    | tick = ${ tick }ms
     | max-queued=1000
     | workers = 1
-    | high-watermark = 100
-    | low-watermark = 5
+    | high-watermark = $highWatermark
+    | low-watermark = $lowWatermark
       """.stripMargin)
     .withFallback(ConfigFactory.parseResources("reference.conf"))
     .resolve()
 
+}
+
+class FailWorker(val batcher: MyDispatcherActor, numberOfFails: AtomicInteger) extends WorkerActor {
+  type Batcher = MyDispatcherActor
+  type Batch = Seq[String]
+
+  override def processBatch(batchId: Long, pack: Batch): Unit = {
+    if (numberOfFails.decrementAndGet() >= 0) {
+      throw new RuntimeException("fail")
+    }
+  }
 }
 
 class MyDispatcherWorker(val batcher: MyDispatcherActor) extends WorkerActor {
@@ -63,7 +108,7 @@ class MyDispatcherWorker(val batcher: MyDispatcherActor) extends WorkerActor {
 
 class MyDispatcherActor(val config: DispatcherConfig,
                         val metrics: DispatcherMetrics,
-                        val workerFactory: (MyDispatcherActor) => MyDispatcherWorker)
+                        val workerFactory: (MyDispatcherActor) => Actor)
   extends DispatcherActor {
 
   type Config = DispatcherConfig
