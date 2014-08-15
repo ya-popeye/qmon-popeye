@@ -67,6 +67,38 @@ object TsdbFormat {
       }
     }
 
+    def parseQualifier(qualifierBytes: Array[Byte]) = {
+      require(
+        qualifierBytes.length == Bytes.SIZEOF_SHORT,
+        s"Expected qualifier length was ${ Bytes.SIZEOF_SHORT }, got ${ qualifierBytes.length }"
+      )
+      val qualifier = Bytes.toShort(qualifierBytes)
+      val deltaShort = ((qualifier & 0xFFFF) >>> FLAG_BITS).toShort
+      val floatFlag: Int = FLAG_FLOAT | 0x3.toShort
+      val isFloatValue = (qualifier & floatFlag) == floatFlag
+      val isIntValue = (qualifier & 0xf) == 0
+      if (!isFloatValue && !isIntValue) {
+        throw new IllegalArgumentException("Neither int nor float values set on point")
+      }
+      (deltaShort, isFloatValue)
+    }
+
+    def parseSingleValue(valueBytes: Array[Byte], isFloatValue: Boolean): Either[Long, Float] = {
+      if (isFloatValue) {
+        Right(Bytes.toFloat(valueBytes))
+      } else {
+        Left(Bytes.toLong(valueBytes))
+      }
+    }
+
+    def parseListValue(valueBytes: Array[Byte], isFloatValue: Boolean): Either[Seq[Long], Seq[Float]] = {
+      if (isFloatValue) {
+        Right(FloatListValueType.parseFloatListValue(valueBytes))
+      } else {
+        Left(IntListValueType.parseIntListValue(valueBytes))
+      }
+    }
+
     def getType(valueType: Message.Point.ValueType): ValueType = {
       import Message.Point.ValueType._
       valueType match {
@@ -98,6 +130,13 @@ object TsdbFormat {
       (qualifier, value)
     }
 
+    def parseIntListValue(value: Array[Byte]): Array[Long] = {
+      val longBuffer = ByteBuffer.wrap(value).asLongBuffer()
+      val array = Array.ofDim[Long](longBuffer.remaining())
+      longBuffer.get(array)
+      array
+    }
+
     private def longsToBytes(longs: Seq[java.lang.Long]) = {
       val buffer = ByteBuffer.allocate(longs.size * 8)
       for (l <- longs) {
@@ -112,6 +151,13 @@ object TsdbFormat {
       val qualifier = ValueTypes.renderQualifier(point.getTimestamp, isFloat = true)
       val value = floatsToBytes(point.getFloatListValueList.asScala)
       (qualifier, value)
+    }
+
+    def parseFloatListValue(value: Array[Byte]): Array[Float] = {
+      val floatBuffer = ByteBuffer.wrap(value).asFloatBuffer()
+      val array = Array.ofDim[Float](floatBuffer.remaining())
+      floatBuffer.get(array)
+      array
     }
 
     private def floatsToBytes(floats: Seq[java.lang.Float]) = {
@@ -201,6 +247,8 @@ case class TimeseriesId(generationId: BytesKey,
 }
 
 case class ParsedSingleValueRowResult(timeseriesId: TimeseriesId, points: Seq[HBaseStorage.Point])
+
+case class ParsedListValueRowResult(timeseriesId: TimeseriesId, lists: Seq[HBaseStorage.ListPoint])
 
 trait PointConversionErrorHandler {
   def handlePointConversionError(e: Exception): Unit
@@ -345,6 +393,31 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping,
 
   def parseSingleValueRowResult(result: Result): ParsedSingleValueRowResult = {
     val row = result.getRow
+    val (timeseriesId, baseTime) = parseTimeseriesIdAndBaseTime(row)
+    val columns = result.getFamilyMap(HBaseStorage.PointsFamily).asScala.toList
+    val points = columns.map {
+      case (qualifierBytes, valueBytes) =>
+        val (delta, isFloat) = ValueTypes.parseQualifier(qualifierBytes)
+        val value = ValueTypes.parseSingleValue(valueBytes, isFloat)
+        HBaseStorage.Point(baseTime + delta, value)
+    }
+    ParsedSingleValueRowResult(timeseriesId, points)
+  }
+
+  def parseListValueRowResult(result: Result): ParsedListValueRowResult = {
+    val row = result.getRow
+    val (timeseriesId, baseTime) = parseTimeseriesIdAndBaseTime(row)
+    val columns = result.getFamilyMap(HBaseStorage.PointsFamily).asScala.toList
+    val listPoints = columns.map {
+      case (qualifierBytes, valueBytes) =>
+        val (delta, isFloat) = ValueTypes.parseQualifier(qualifierBytes)
+        val value = ValueTypes.parseListValue(valueBytes, isFloat)
+        HBaseStorage.ListPoint(baseTime + delta, value)
+    }
+    ParsedListValueRowResult(timeseriesId, listPoints)
+  }
+
+  def parseTimeseriesIdAndBaseTime(row: Array[Byte]): (TimeseriesId, Int) = {
     val attributesLength = row.length - attributesOffset
     require(
       attributesLength >= 0 && attributesLength % attributeWidth == 0,
@@ -355,19 +428,9 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping,
     val shardId = new BytesKey(copyOfRange(row, shardIdOffset, shardIdOffset + attributeValueWidth))
     val baseTime = Bytes.toInt(row, timestampOffset, TIMESTAMP_BYTES)
     val attributesBytes = copyOfRange(row, attributesOffset, row.length)
-    val columns = result.getFamilyMap(HBaseStorage.PointsFamily).asScala.toList
-    val points = columns.map {
-      case (qualifierBytes, valueBytes) =>
-        val (delta, value) = parseValue(qualifierBytes, valueBytes)
-        HBaseStorage.Point(baseTime + delta, value)
-    }
     val timeseriedId = TimeseriesId(generationId, metricId, shardId, createAttributesMap(attributesBytes))
-    ParsedSingleValueRowResult(timeseriedId, points)
+    (timeseriedId, baseTime)
   }
-
-  def parseListValueRowResult(result: Result) = ???
-
-
 
   private def createAttributesMap(attributes: Array[Byte]): SortedMap[BytesKey, BytesKey] = {
     val attributeWidth = attributeNameWidth + attributeValueWidth
@@ -570,26 +633,6 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping,
   private def getBaseTime(timestamp: Int) = {
     timestamp - (timestamp % MAX_TIMESPAN)
   }
-
-  private def parseValue(qualifierBytes: Array[Byte], valueBytes: Array[Byte]): (Short, Either[Long, Float]) = {
-    require(
-      qualifierBytes.length == Bytes.SIZEOF_SHORT,
-      s"Expected qualifier length was ${ Bytes.SIZEOF_SHORT }, got ${ qualifierBytes.length }"
-    )
-    val qualifier = Bytes.toShort(qualifierBytes)
-    val deltaShort = ((qualifier & 0xFFFF) >>> FLAG_BITS).toShort
-    val floatFlag: Int = FLAG_FLOAT | 0x3.toShort
-    val isFloatValue = (qualifier & floatFlag) == floatFlag
-    val isIntValue = (qualifier & 0xf) == 0
-    if (isFloatValue) {
-      (deltaShort, Right(Bytes.toFloat(valueBytes)))
-    } else if (isIntValue) {
-      (deltaShort, Left(Bytes.toLong(valueBytes)))
-    } else {
-      throw new IllegalArgumentException("Neither int nor float values set on point")
-    }
-  }
-
 
   private def mkKeyValue(timeRangeId: BytesKey,
                          metric: BytesKey,

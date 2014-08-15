@@ -103,19 +103,22 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     tsdbFormat.parseSingleValueRowResult(result).points.head should equal(HBaseStorage.Point(timestamp, samplePoint.getIntValue))
   }
 
-  ignore should "handle list values" in {
+  it should "handle int list values" in {
     val tsdbFormat = createTsdbFormat()
-    val point = Message.Point.newBuilder()
-      .setMetric("test")
-      .setTimestamp(3610)
-      .addAllIntListValue(Seq(1, 2, 3).map(i => java.lang.Long.valueOf(i)).asJava)
-      .setValueType(Message.Point.ValueType.INT_LIST)
-      .addAllAttributes(samplePoint.getAttributesList)
-      .build()
+    val point = createListPoint("test", 0, Seq(defaultShardAttributeName -> "value"), Left(Seq(1, 2, 3)))
     val keyValue = tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0).right.get
     val timestamp = point.getTimestamp.toInt
     val result = new Result(List(keyValue).asJava)
-    //    tsdbFormat.parseListValueRowResult(result).points.head should equal(HBaseStorage.Point(timestamp, point.getIntValue))
+    tsdbFormat.parseListValueRowResult(result).lists.head should equal(HBaseStorage.ListPoint(timestamp, Left(Seq(1, 2, 3))))
+  }
+
+  it should "handle float list values" in {
+    val tsdbFormat = createTsdbFormat()
+    val point = createListPoint("test", 0, Seq(defaultShardAttributeName -> "value"), Right(Seq(1, 2, 3)))
+    val keyValue = tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0).right.get
+    val timestamp = point.getTimestamp.toInt
+    val result = new Result(List(keyValue).asJava)
+    tsdbFormat.parseListValueRowResult(result).lists.head should equal(HBaseStorage.ListPoint(timestamp, Right(Seq(1, 2, 3))))
   }
 
   ignore should "have good performance" in {
@@ -148,6 +151,22 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       }
       println(f"time:${ System.currentTimeMillis() - startTime }")
     }
+  }
+
+  behavior of "IntListValueType longs serialization"
+
+  it should "serialize empty lists" in {
+    val point = createListPoint(value = Left(Seq()))
+    val (_, value: Array[Byte]) = IntListValueType.mkQualifiedValue(point)
+    IntListValueType.parseIntListValue(value).toSeq should be(empty)
+  }
+
+  behavior of "FloatListValueType longs serialization"
+
+  it should "serialize empty lists" in {
+    val point = createListPoint(value = Right(Seq()))
+    val (_, value: Array[Byte]) = FloatListValueType.mkQualifiedValue(point)
+    FloatListValueType.parseFloatListValue(value).toSeq should be(empty)
   }
 
   behavior of "TsdbFormat.convertToKeyValues"

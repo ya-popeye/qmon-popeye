@@ -10,6 +10,8 @@ import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
 import popeye.storage.hbase.{TimeRangeAndId, GenerationIdMapping, BytesKey}
 
+import scala.collection.JavaConverters._
+
 /**
  * @author Andrey Stepachev
  */
@@ -76,14 +78,7 @@ object PopeyeTestUtils {
                   timestamp: Long = 0,
                   attributes: Seq[(String, String)] = Seq("host" -> "localhost"),
                   value: Either[Long, Float] = Left(0)) = {
-    import scala.collection.JavaConverters._
-    val attrs = attributes.map {
-      case (aName, aValue) => Message.Attribute.newBuilder().setName(aName).setValue(aValue).build()
-    }.asJava
-    val builder = Point.newBuilder()
-      .setMetric(metric)
-      .setTimestamp(timestamp)
-      .addAllAttributes(attrs)
+    val builder = pointBuilder(metric, timestamp, attributes)
     value.fold(
       longVal => {
         builder.setValueType(Message.Point.ValueType.INT)
@@ -95,6 +90,36 @@ object PopeyeTestUtils {
       }
     )
     builder.build()
+  }
+
+  def createListPoint(metric: String = "metric",
+                      timestamp: Long = 0,
+                      attributes: Seq[(String, String)] = Seq("host" -> "localhost"),
+                      value: Either[Seq[Long], Seq[Float]] = Left(Seq())) = {
+    import scala.collection.JavaConverters._
+    val builder = pointBuilder(metric, timestamp, attributes)
+    value.fold(
+      longsVal => {
+        builder.setValueType(Message.Point.ValueType.INT_LIST)
+        builder.addAllIntListValue(longsVal.map(l => java.lang.Long.valueOf(l)).asJava)
+      },
+      floatsVal => {
+        builder.setValueType(Message.Point.ValueType.FLOAT_LIST)
+        builder.addAllFloatListValue(floatsVal.map(f => java.lang.Float.valueOf(f)).asJava)
+      }
+    )
+    builder.build()
+  }
+
+  private def pointBuilder(metric: String, timestamp: Long, attributes: Seq[(String, String)]) = {
+    val attrs = attributes.map {
+      case (aName, aValue) => Message.Attribute.newBuilder().setName(aName).setValue(aValue).build()
+    }.asJava
+    val builder = Point.newBuilder()
+      .setMetric(metric)
+      .setTimestamp(timestamp)
+      .addAllAttributes(attrs)
+    builder
   }
 
   class MockAnswer[T](function: Any => T) extends Answer[T] {

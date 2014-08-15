@@ -98,6 +98,22 @@ object HBaseStorage {
     def apply(timestamp: Int, value: Long): Point = Point(timestamp, Left(value))
   }
 
+  case class ListPoint(timestamp: Int, value: Either[Seq[Long], Seq[Float]]) {
+    def isFloatList = value.isRight
+
+    def getFloalListValue = value match { case Right(f) => f }
+
+    def getLongListValue = value match { case Left(l) => l }
+
+    def doubleListValue = {
+      if (isFloatList) {
+        getFloalListValue.map(_.toDouble)
+      } else {
+        getLongListValue.map(_.toDouble)
+      }
+    }
+  }
+
   case class Point(timestamp: Int, value: Either[Long, Float]) {
     def isFloat = value.isRight
 
