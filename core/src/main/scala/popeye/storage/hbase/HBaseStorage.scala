@@ -250,7 +250,7 @@ class HBaseStorage(tableName: String,
         scanNameIdPairs <- scanNameIdPairsFuture
       } yield {
         val scanNameToIdMap = scanNameIdPairs.collect { case Some(x) => x }.toMap
-        val scans = tsdbFormat.getScans(metric, timeRange, attributes, scanNameToIdMap)
+        val scans = tsdbFormat.getPointScans(metric, timeRange, attributes, scanNameToIdMap)
         val chunkedResults = getChunkedResults(tableName, readChunkSize, scans)
         val groupByAttributeNames =
           attributes

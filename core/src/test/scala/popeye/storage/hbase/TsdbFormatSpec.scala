@@ -81,6 +81,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val tsdbFormat = createTsdbFormat()
     val keyValue = tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap.get, 0).right.get
     val metricId = Array[Byte](1, 0, 1)
+    val valueTypeStructureId = Array[Byte](TsdbFormat.ValueTypes.SingleValueTypeStructureId)
     val timestamp = samplePoint.getTimestamp.toInt
     val timestampBytes = Bytes.toBytes(timestamp - timestamp % TsdbFormat.MAX_TIMESPAN)
 
@@ -91,7 +92,14 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
 
     val sortedAttributeIds = attr ++ anotherAttr
 
-    val row = defaultGenerationIdBytes.bytes ++ metricId ++ shardId ++ timestampBytes ++ sortedAttributeIds
+    val row = Seq(
+      defaultGenerationIdBytes.bytes,
+      metricId,
+      valueTypeStructureId,
+      shardId,
+      timestampBytes,
+      sortedAttributeIds
+    ).flatten.toArray
     keyValue.getRow should equal(row)
   }
 
@@ -303,7 +311,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
 
   it should "create single scan" in {
     val tsdbFormat = createTsdbFormat()
-    val scans = tsdbFormat.getScans(
+    val scans = tsdbFormat.getPointScans(
       metric = "test",
       timeRange = (0, 1),
       attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
@@ -311,10 +319,11 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     scans.size should equal(1)
     val scan = scans(0)
     val metricId = Array[Byte](1, 0, 1)
+    val valueStructureTypeId = ValueTypes.SingleValueTypeStructureId
     val shardId = Array[Byte](4, 0, 1)
     val startTimestamp = Array[Byte](0, 0, 0, 0)
     val stopTimestamp = Array[Byte](0, 0, 0, 1)
-    val rowPrefix = defaultGenerationIdBytes.bytes ++ metricId ++ shardId
+    val rowPrefix = defaultGenerationIdBytes.bytes ++ metricId ++ Array(valueStructureTypeId) ++ shardId
     scan.getStartRow should equal(rowPrefix ++ startTimestamp)
     scan.getStopRow should equal(rowPrefix ++ stopTimestamp)
   }
@@ -328,7 +337,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
         QualifiedName(kind, bytesKey(0, 1), name) -> id
       )
     }.toMap
-    val scans = tsdbFormat.getScans(
+    val scans = tsdbFormat.getPointScans(
       metric = "test",
       timeRange = (0, 4000),
       attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
@@ -344,7 +353,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val idMap = sampleNamesToIdMapping.map {
       case ((kind, name), id) => QualifiedName(kind, bytesKey(0, 0), name) -> id
     }.toMap
-    val scans = tsdbFormat.getScans(
+    val scans = tsdbFormat.getPointScans(
       metric = "test",
       timeRange = (0, 4000),
       attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
@@ -359,7 +368,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       QualifiedName(ShardKind, defaultGenerationIdBytes, shardAttributeToShardName("name", "anotherValue")),
       bytesKey(4, 0, 2)
     )
-    val scans = tsdbFormat.getScans(
+    val scans = tsdbFormat.getPointScans(
       metric = "test",
       timeRange = (0, 4000),
       attributeValueFilters = Map(defaultShardAttributeName -> MultipleValueNames(Seq("value", "anotherValue"))),
@@ -367,6 +376,18 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     scans.size should equal(2)
     scans(0).getStartRow.slice(shardIdOffset, shardIdOffset + shardIdWidth) should equal(Array[Byte](4, 0, 1))
     scans(1).getStartRow.slice(shardIdOffset, shardIdOffset + shardIdWidth) should equal(Array[Byte](4, 0, 2))
+  }
+
+  it should "include value_type_structure_id byte flag" in {
+    val tsdbFormat = createTsdbFormat()
+    val scans = tsdbFormat.getListPointScans(
+      metric = "test",
+      timeRange = (0, 1),
+      attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
+      idMap = sampleIdMap
+    )
+    scans.size should equal(1)
+    scans(0).getStartRow()(valueTypeIdOffset) should equal(ValueTypes.ListValueTypeStructureId)
   }
 
   behavior of "TsdbFormat.createRowRegexp"

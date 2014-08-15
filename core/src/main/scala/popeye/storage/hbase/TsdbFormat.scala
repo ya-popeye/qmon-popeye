@@ -42,21 +42,29 @@ object TsdbFormat {
   val metricWidth: Int = UniqueIdMapping(MetricKind)
   val attributeNameWidth: Int = UniqueIdMapping(AttrNameKind)
   val attributeValueWidth: Int = UniqueIdMapping(AttrValueKind)
+  val attributeWidth = attributeNameWidth + attributeValueWidth
   val shardIdWidth: Int = UniqueIdMapping(ShardKind)
+  val valueTypeIdWidth: Int = 1
 
   val metricOffset = UniqueIdGenerationWidth
-  val shardIdOffset = metricOffset + TsdbFormat.metricWidth
-  val timestampOffset = shardIdOffset + TsdbFormat.attributeValueWidth
-  val attributesOffset = timestampOffset + TsdbFormat.TIMESTAMP_BYTES
-  val attributeWidth = attributeNameWidth + attributeValueWidth
+  val valueTypeIdOffset = metricOffset + metricWidth
+  val shardIdOffset = valueTypeIdOffset + valueTypeIdWidth
+  val timestampOffset = shardIdOffset + shardIdWidth
+  val attributesOffset = timestampOffset + TIMESTAMP_BYTES
 
   val ROW_REGEX_FILTER_ENCODING = Charset.forName("ISO-8859-1")
 
   trait ValueType {
     def mkQualifiedValue(point: Message.Point): (Array[Byte], Array[Byte])
+
+    def getValueTypeStructureId: Byte
   }
 
   object ValueTypes {
+
+    val SingleValueTypeStructureId: Byte = 0
+    val ListValueTypeStructureId: Byte = 1
+
     def renderQualifier(timestamp: Long, isFloat: Boolean): Array[Byte] = {
       val delta: Short = (timestamp % MAX_TIMESPAN).toShort
       val ndelta = delta << FLAG_BITS
@@ -115,12 +123,16 @@ object TsdbFormat {
     override def mkQualifiedValue(point: Message.Point): (Array[Byte], Array[Byte]) = {
       (ValueTypes.renderQualifier(point.getTimestamp, isFloat = false), Bytes.toBytes(point.getIntValue))
     }
+
+    override def getValueTypeStructureId: Byte = ValueTypes.SingleValueTypeStructureId
   }
 
   case object FloatValueType extends ValueType {
     override def mkQualifiedValue(point: Message.Point): (Array[Byte], Array[Byte]) = {
       (ValueTypes.renderQualifier(point.getTimestamp, isFloat = true), Bytes.toBytes(point.getFloatValue))
     }
+
+    override def getValueTypeStructureId: Byte = ValueTypes.SingleValueTypeStructureId
   }
 
   case object IntListValueType extends ValueType {
@@ -129,6 +141,8 @@ object TsdbFormat {
       val value = longsToBytes(point.getIntListValueList.asScala)
       (qualifier, value)
     }
+
+    override def getValueTypeStructureId: Byte = ValueTypes.ListValueTypeStructureId
 
     def parseIntListValue(value: Array[Byte]): Array[Long] = {
       val longBuffer = ByteBuffer.wrap(value).asLongBuffer()
@@ -152,6 +166,8 @@ object TsdbFormat {
       val value = floatsToBytes(point.getFloatListValueList.asScala)
       (qualifier, value)
     }
+
+    override def getValueTypeStructureId: Byte = ValueTypes.ListValueTypeStructureId
 
     def parseFloatListValue(value: Array[Byte]): Array[Float] = {
       val floatBuffer = ByteBuffer.wrap(value).asFloatBuffer()
@@ -354,6 +370,7 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping,
       val keyValue = mkKeyValue(
         generationId,
         metricId.get,
+        valueType.getValueTypeStructureId,
         shardId.get,
         point.getTimestamp,
         attributeIds.map { case (n, v) => (n.get, v.get) },
@@ -500,10 +517,25 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping,
     }
   }
 
-  def getScans(metric: String,
-               timeRange: (Int, Int),
-               attributeValueFilters: Map[String, ValueNameFilterCondition],
-               idMap: Map[QualifiedName, BytesKey]): Seq[Scan] = {
+  def getPointScans(metric: String,
+                    timeRange: (Int, Int),
+                    attributeValueFilters: Map[String, ValueNameFilterCondition],
+                    idMap: Map[QualifiedName, BytesKey]): Seq[Scan] = {
+    getScans(metric, timeRange, attributeValueFilters, idMap, ValueTypes.SingleValueTypeStructureId)
+  }
+
+  def getListPointScans(metric: String,
+                        timeRange: (Int, Int),
+                        attributeValueFilters: Map[String, ValueNameFilterCondition],
+                        idMap: Map[QualifiedName, BytesKey]): Seq[Scan] = {
+    getScans(metric, timeRange, attributeValueFilters, idMap, ValueTypes.ListValueTypeStructureId)
+  }
+
+  private def getScans(metric: String,
+                       timeRange: (Int, Int),
+                       attributeValueFilters: Map[String, ValueNameFilterCondition],
+                       idMap: Map[QualifiedName, BytesKey],
+                       valueTypeStructureId: Byte): Seq[Scan] = {
     val (startTime, stopTime) = timeRange
     val ranges = getTimeRanges(startTime, stopTime)
     val shardNames = getShardNames(attributeValueFilters)
@@ -514,11 +546,17 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping,
         val shardQNames = shardNames.map(name => QualifiedName(ShardKind, genIdBytes, name))
         for {
           metricId <- idMap.get(QualifiedName(MetricKind, genIdBytes, metric))
-         shardIds <- convertNamesSeq(shardQNames, idMap)
-         attrIdFilters <- covertAttrNamesToIds(genIdBytes, attributeValueFilters, idMap)
-       } yield {
-          getShardScans(genIdBytes, metricId, shardIds, (range.start, range.stop), attrIdFilters)
-       }
+          shardIds <- convertNamesSeq(shardQNames, idMap)
+          attrIdFilters <- covertAttrNamesToIds(genIdBytes, attributeValueFilters, idMap)
+        } yield {
+          getShardScans(
+            genIdBytes,
+            metricId,
+            shardIds,
+            (range.start, range.stop),
+            attrIdFilters,
+            valueTypeStructureId)
+        }
     }.collect { case Some(scans) => scans }.flatten
   }
 
@@ -582,10 +620,11 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping,
                             metricId: BytesKey,
                             shardIds: Seq[BytesKey],
                             timeRange: (Int, Int),
-                            attributePredicates: Map[BytesKey, ValueIdFilterCondition]): Seq[Scan] = {
+                            attributePredicates: Map[BytesKey, ValueIdFilterCondition],
+                            valueTypeStructureId: Byte): Seq[Scan] = {
     val (startTime, endTime) = timeRange
     val baseStartTime = startTime - (startTime % MAX_TIMESPAN)
-    val rowPrefix = generationId.bytes ++ metricId.bytes
+    val rowPrefix = generationId.bytes ++ metricId.bytes :+ valueTypeStructureId
     val startTimeBytes = Bytes.toBytes(baseStartTime)
     val stopTimeBytes = Bytes.toBytes(endTime)
     for (shardId <- shardIds) yield {
@@ -636,6 +675,7 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping,
 
   private def mkKeyValue(timeRangeId: BytesKey,
                          metric: BytesKey,
+                         valueTypeStructureId: Byte,
                          shardId: BytesKey,
                          timestamp: Long,
                          attributeIds: Seq[(BytesKey, BytesKey)],
@@ -646,6 +686,8 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping,
     var off = 0
     off = copyBytes(timeRangeId, row, off)
     off = copyBytes(metric, row, off)
+    row(off) = valueTypeStructureId
+    off += 1
     off = copyBytes(shardId, row, off)
     off = copyBytes(Bytes.toBytes(baseTime.toInt), row, off)
     val sortedAttributes = attributeIds.sortBy(_._1)
