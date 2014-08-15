@@ -164,14 +164,17 @@ object HealthCheckTool {
   }
 
   def getAllDistinctAttributeValues(pointsStream: PointsStream)(implicit ectx: ExecutionContext): Future[Set[String]] = {
-    val attrs = pointsStream.groups.groupsMap.keys
-    val attrNames = attrs.flatMap(_.keys)
-    require(attrNames.size == 1, f"should be exactly one \'group by\' attribute name, not ${attrNames.size}")
-    val attrValues = attrs.flatMap(_.values).toSet
-    val valuesFutureOption = pointsStream.next.map {
-      streamFuture => streamFuture().flatMap(getAllDistinctAttributeValues).map(_ ++ attrValues)
+    pointsStream.head.flatMap{
+      pointsGroup =>
+      val attrs = pointsGroup.groupsMap.keys
+      val attrNames = attrs.flatMap(_.keys)
+      require(attrNames.size == 1, f"should be exactly one \'group by\' attribute name, not ${attrNames.size}")
+      val attrValues = attrs.flatMap(_.values).toSet
+      val valuesFutureOption = pointsStream.tailOption.map {
+        streamFuture => streamFuture().flatMap(getAllDistinctAttributeValues).map(_ ++ attrValues)
+      }
+      valuesFutureOption.getOrElse(Future.successful(attrValues))
     }
-    valuesFutureOption.getOrElse(Future.successful(attrValues))
   }
 
   private def createNameValueConditions(fixedAttrs: Seq[(String, String)], countAttrName: String) = {

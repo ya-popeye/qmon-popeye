@@ -130,24 +130,49 @@ object HBaseStorage {
     }
   }
 
-  case class PointsStream(groups: PointsGroups, next: Option[() => Future[PointsStream]]) {
-    def toFuturePointsGroups(implicit eCtx: ExecutionContext): Future[PointsGroups] = {
-      val nextPointsFuture = next match {
-        case Some(nextFuture) => nextFuture().flatMap(_.toFuturePointsGroups)
-        case None => Future.successful(PointsGroups(Map()))
-      }
-      nextPointsFuture.map {
-        nextGroups => groups.concat(nextGroups)
+  object FutureStream {
+    def apply[A](items: A*): FutureStream[A] = {
+      val nextStreamOption =
+        if (items.tail.nonEmpty) {
+          Some(FutureStream(items.tail: _*))
+        } else {
+          None
+        }
+      FutureStream(Future.successful(items.head), nextStreamOption.map(s => () => Future.successful(s)))
+    }
+  }
+
+  case class FutureStream[A](head: Future[A], tailOption: Option[() => Future[FutureStream[A]]]) {
+    def reduce(op: (Future[A], Future[A]) => Future[A])(implicit eCtx: ExecutionContext): Future[A] = {
+      tailOption match {
+        case Some(nextFuture) =>
+          nextFuture().flatMap {
+            tail =>
+              tail.foldLeft(head)(op)
+          }
+        case None => head
       }
     }
 
+    def foldLeft[B](z: Future[B])
+                   (op: (Future[B], Future[A]) => Future[B])
+                   (implicit eCtx: ExecutionContext): Future[B] = {
+      tailOption match {
+        case Some(nextFuture) =>
+          nextFuture().flatMap {
+            tail =>
+              val nextZ = op(z, head)
+              tail.foldLeft(nextZ)(op)
+          }
+        case None => op(z, head)
+      }
+    }
   }
 
-  object PointsStream {
-    def apply(groups: PointsGroups): PointsStream = PointsStream(groups, None)
+  type PointsStream = FutureStream[PointsGroups]
 
-    def apply(groups: PointsGroups, nextStream: => Future[PointsStream]): PointsStream =
-      PointsStream(groups, Some(() => nextStream))
+  def collectAllGroups(groupsStream: PointsStream)(implicit eCtx: ExecutionContext) = {
+    groupsStream.reduce((one, another) => (one zip another).map { case (a, b) => a.concat(b) })
   }
 
   sealed trait ValueIdFilterCondition {
@@ -283,7 +308,7 @@ class HBaseStorage(tableName: String,
           val nextStream = nextResults.map {
             query => () => toPointsStream(query)
           }
-          PointsStream(PointsGroups(pointGroups), nextStream)
+          FutureStream[PointsGroups](Future.successful(PointsGroups(pointGroups)), nextStream)
       }
     }
     toPointsStream(chunkedResults)

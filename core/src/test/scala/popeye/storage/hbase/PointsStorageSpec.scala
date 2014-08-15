@@ -229,7 +229,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
   }
 
   def toGroupsMap(future: Future[PointsStream]): Map[PointAttributes, PointsGroup] = {
-    Await.result(future.flatMap(_.toFuturePointsGroups), 5 seconds).groupsMap
+    Await.result(future.flatMap(HBaseStorage.collectAllGroups), 5 seconds).groupsMap
   }
 
   def writePoints(state: PointsStorageStub, points: Seq[Message.Point]) {

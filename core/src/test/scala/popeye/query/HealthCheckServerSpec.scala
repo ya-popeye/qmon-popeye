@@ -4,7 +4,7 @@ import org.scalatest.mock.MockitoSugar
 import org.mockito.Mockito._
 import scala.concurrent.{ExecutionContext, Await, Future}
 import scala.collection.immutable.SortedMap
-import popeye.storage.hbase.{PointsStreamTestUtils, HBaseStorage}
+import popeye.storage.hbase.HBaseStorage
 import scala.concurrent.duration._
 import java.util.concurrent.Executors
 import popeye.pipeline.test.AkkaTestKitSpec
@@ -13,7 +13,7 @@ import akka.actor.Props
 import akka.pattern.ask
 import spray.http.{StatusCodes, HttpResponse, Uri, HttpRequest}
 import spray.http.HttpMethods._
-import popeye.storage.hbase.HBaseStorage.PointsGroups
+import popeye.storage.hbase.HBaseStorage.{FutureStream, PointsGroups}
 import org.mockito.Matchers._
 import akka.util.Timeout
 import org.scalatest.matchers.Matcher
@@ -77,7 +77,7 @@ class HealthCheckServerSpec extends AkkaTestKitSpec("http-query") with MockitoSu
         val groupKeyAttrs = values.map(v => Seq(countAttrName -> v))
         createPointsGroup(groupKeyAttrs)
     }
-    PointsStreamTestUtils.createStream(groups)
+    FutureStream(groups: _*)
   }
 
   def createPointsGroup(groupKeyAttributes: Seq[Seq[(String, String)]]) = {

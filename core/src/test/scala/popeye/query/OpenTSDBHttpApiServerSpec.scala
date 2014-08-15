@@ -9,7 +9,7 @@ import org.scalatest.mock.MockitoSugar
 import org.mockito.Mockito._
 import org.mockito.Matchers._
 import scala.concurrent.{Await, Future}
-import popeye.storage.hbase.HBaseStorage.{Point, ValueNameFilterCondition, PointsGroups, PointsStream}
+import popeye.storage.hbase.HBaseStorage._
 import akka.testkit.TestActorRef
 import akka.actor.Props
 import spray.http.{HttpResponse, Uri, HttpRequest}
@@ -87,7 +87,7 @@ class OpenTSDBHttpApiServerSpec extends AkkaTestKitSpec("http-query") with Mocki
     )
 
     val storage = mock[PointsStorage]
-    stub(storage.getPoints(any(), any(), any())).toReturn(Future.successful(PointsStream(PointsGroups(groups))))
+    stub(storage.getPoints(any(), any(), any())).toReturn(Future.successful(FutureStream(PointsGroups(groups))))
     val serverRef = TestActorRef(Props.apply(new OpenTSDBHttpApiServer(storage, executionContext)))
     val future = serverRef ? HttpRequest(GET, Uri(uriString, Uri.ParsingMode.RelaxedWithRawQuery))
     val response = Await.result(future, 5 seconds).asInstanceOf[HttpResponse]

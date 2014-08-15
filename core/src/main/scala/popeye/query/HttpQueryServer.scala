@@ -2,6 +2,7 @@ package popeye.query
 
 import akka.actor.{ActorRef, ActorSystem, Props, Actor}
 import popeye.Logging
+import popeye.storage.hbase.HBaseStorage
 import spray.http._
 import spray.http.HttpMethods._
 import akka.pattern.ask
@@ -46,7 +47,7 @@ class HttpQueryServer(storage: PointsStorage, executionContext: ExecutionContext
         val pointStreamFuture = storage.getPoints(metricName, (startTime.toInt, endTime.toInt), attributes)
         val aggregatedPointsFuture =
           pointStreamFuture
-            .flatMap(_.toFuturePointsGroups)
+            .flatMap(HBaseStorage.collectAllGroups)
             .map(groups => aggregationsToString(aggregatePoints(groups, aggregation, downsampling)))
         aggregatedPointsFuture.onComplete {
           tryString =>

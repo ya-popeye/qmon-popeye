@@ -5,6 +5,7 @@ import popeye.Logging
 import akka.pattern.ask
 import java.net.InetSocketAddress
 import akka.io.IO
+import popeye.storage.hbase.HBaseStorage
 import spray.can.Http
 import com.typesafe.config.Config
 import akka.util.Timeout
@@ -51,7 +52,7 @@ class OpenTSDBHttpApiServer(storage: PointsStorage, executionContext: ExecutionC
           val startTime = parseTime(startDate)
           val endTime = parseTime(endDate)
           storage.getPoints(timeSeriesQuery.metricName, (startTime, endTime), timeSeriesQuery.tags)
-            .flatMap(_.toFuturePointsGroups)
+            .flatMap(groupsStream => HBaseStorage.collectAllGroups(groupsStream))
             .map(pointsGroups => aggregatePoints(pointsGroups, aggregator, timeSeriesQuery.isRate))
             .map(seriesMap => pointsToString(timeSeriesQuery.metricName, seriesMap))
         }
