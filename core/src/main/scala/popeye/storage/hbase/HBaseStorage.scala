@@ -138,41 +138,70 @@ object HBaseStorage {
         } else {
           None
         }
-      FutureStream(Future.successful(items.head), nextStreamOption.map(s => () => Future.successful(s)))
+      FutureStream(Future.successful(items.head), () => Future.successful(nextStreamOption))
     }
   }
 
-  case class FutureStream[A](head: Future[A], tailOption: Option[() => Future[FutureStream[A]]]) {
+  case class FutureStream[A](head: Future[A], tailFuture: () => Future[Option[FutureStream[A]]]) {
     def reduce(op: (Future[A], Future[A]) => Future[A])(implicit eCtx: ExecutionContext): Future[A] = {
-      tailOption match {
-        case Some(nextFuture) =>
-          nextFuture().flatMap {
-            tail =>
-              tail.foldLeft(head)(op)
-          }
+      tailFuture().flatMap {
+        case Some(tail) =>
+          tail.foldLeft(head)(op)
         case None => head
       }
+    }
+
+    def reduceElements(op: (A, A) => A)(implicit eCtx: ExecutionContext): Future[A] = {
+      reduce((left, right) => (left zip right).map { case (a, b) => op(a, b) })
     }
 
     def foldLeft[B](z: Future[B])
                    (op: (Future[B], Future[A]) => Future[B])
                    (implicit eCtx: ExecutionContext): Future[B] = {
-      tailOption match {
-        case Some(nextFuture) =>
-          nextFuture().flatMap {
-            tail =>
-              val nextZ = op(z, head)
-              tail.foldLeft(nextZ)(op)
-          }
+      tailFuture().flatMap {
+        case Some(tail) =>
+          val nextZ = op(z, head)
+          tail.foldLeft(nextZ)(op)
         case None => op(z, head)
       }
+    }
+
+    def map[B](f: Future[A] => Future[B])(implicit eCtx: ExecutionContext): FutureStream[B] = {
+      val newHead = f(head)
+      val newTail = () => tailFuture().map {
+        tailOption => tailOption.map(tail => tail.map(f))
+      }
+      FutureStream(newHead, newTail)
+    }
+
+    def flatMapElements[B](f: A => Future[B])(implicit eCtx: ExecutionContext): FutureStream[B] = {
+      val newHead = head.flatMap(f)
+      val newTail = () => tailFuture().map {
+        tailOption => tailOption.map(tail => tail.flatMapElements(f))
+      }
+      FutureStream(newHead, newTail)
+    }
+
+    def mapElements[B](f: A => B)(implicit eCtx: ExecutionContext): FutureStream[B] = {
+      val newHead = head.map(f)
+      val newTail = () => tailFuture().map {
+        tailOption => tailOption.map(tail => tail.mapElements(f))
+      }
+      FutureStream(newHead, newTail)
     }
   }
 
   type PointsStream = FutureStream[PointsGroups]
 
   def collectAllGroups(groupsStream: PointsStream)(implicit eCtx: ExecutionContext) = {
-    groupsStream.reduce((one, another) => (one zip another).map { case (a, b) => a.concat(b) })
+    groupsStream.reduceElements((a, b) => a.concat(b))
+  }
+
+  def chunksToFutureStream(chunks: ChunkedResults)(implicit eCtx: ExecutionContext): FutureStream[Array[Result]] = {
+    val chunksFuture = Future { chunks.getRows() }
+    val head = chunksFuture.map { case (results, _) => results }
+    val tail = () => chunksFuture.map { case (_, nextResultsOption) => nextResultsOption.map(chunksToFutureStream) }
+    FutureStream(head, tail)
   }
 
   sealed trait ValueIdFilterCondition {
@@ -270,30 +299,27 @@ class HBaseStorage(tableName: String,
           .map(id => Some(qName, id))
           .recover { case e: NoSuchElementException => None }
     }
-    val futurePointsStream =
-      for {
-        scanNameIdPairs <- scanNameIdPairsFuture
-      } yield {
-        val scanNameToIdMap = scanNameIdPairs.collect { case Some(x) => x }.toMap
-        val scans = tsdbFormat.getPointScans(metric, timeRange, attributes, scanNameToIdMap)
-        val chunkedResults = getChunkedResults(tableName, readChunkSize, scans)
-        val groupByAttributeNames =
-          attributes
-            .toList
-            .filter { case (attrName, valueFilter) => valueFilter.isGroupByAttribute}
-            .map(_._1)
-        createPointsStream(chunkedResults, timeRange, groupByAttributeNames)
-      }
-    futurePointsStream.flatMap(future => future)
+    for {
+      scanNameIdPairs <- scanNameIdPairsFuture
+    } yield {
+      val scanNameToIdMap = scanNameIdPairs.collect { case Some(x) => x }.toMap
+      val scans = tsdbFormat.getPointScans(metric, timeRange, attributes, scanNameToIdMap)
+      val chunkedResults = getChunkedResults(tableName, readChunkSize, scans)
+      val groupByAttributeNames =
+        attributes
+          .toList
+          .filter { case (attrName, valueFilter) => valueFilter.isGroupByAttribute }
+          .map(_._1)
+      createPointsStream(chunkedResults, timeRange, groupByAttributeNames)
+    }
   }
 
   def createPointsStream(chunkedResults: ChunkedResults,
                          timeRange: (Int, Int),
                          groupByAttributeNameIds: Seq[String])
-                        (implicit eCtx: ExecutionContext): Future[PointsStream] = {
+                        (implicit eCtx: ExecutionContext): PointsStream = {
 
-    def toPointsStream(chunkedResults: ChunkedResults): Future[PointsStream] = {
-      val (results, nextResults) = chunkedResults.getRows()
+    def resultsToPointsGroups(results: Array[Result]): Future[PointsGroups] = {
       val rowResults = results.map(tsdbFormat.parseSingleValueRowResult)
       val ids = rowResults.flatMap(rr => tsdbFormat.getUniqueIds(rr.timeseriesId)).toSet
       val idNamePairsFuture = Future.traverse(ids) {
@@ -305,13 +331,11 @@ class HBaseStorage(tableName: String,
           val idMap = idNamePairs.toMap
           val pointSequences: Map[PointAttributes, Seq[Point]] = toPointSequencesMap(rowResults, timeRange, idMap)
           val pointGroups: Map[PointAttributes, PointsGroup] = groupPoints(groupByAttributeNameIds, pointSequences)
-          val nextStream = nextResults.map {
-            query => () => toPointsStream(query)
-          }
-          FutureStream[PointsGroups](Future.successful(PointsGroups(pointGroups)), nextStream)
+          PointsGroups(pointGroups)
       }
     }
-    toPointsStream(chunkedResults)
+    val resultsStream = chunksToFutureStream(chunkedResults)
+    resultsStream.flatMapElements(resultsToPointsGroups)
   }
 
   private def toPointSequencesMap(rows: Array[ParsedSingleValueRowResult],
