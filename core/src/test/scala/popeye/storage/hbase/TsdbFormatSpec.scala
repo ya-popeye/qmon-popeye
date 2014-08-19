@@ -311,11 +311,12 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
 
   it should "create single scan" in {
     val tsdbFormat = createTsdbFormat()
-    val scans = tsdbFormat.getPointScans(
+    val scans = tsdbFormat.getScans(
       metric = "test",
       timeRange = (0, 1),
       attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
-      idMap = sampleIdMap)
+      idMap = sampleIdMap,
+      TsdbFormat.ValueTypes.SingleValueTypeStructureId)
     scans.size should equal(1)
     val scan = scans(0)
     val metricId = Array[Byte](1, 0, 1)
@@ -337,11 +338,12 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
         QualifiedName(kind, bytesKey(0, 1), name) -> id
       )
     }.toMap
-    val scans = tsdbFormat.getPointScans(
+    val scans = tsdbFormat.getScans(
       metric = "test",
       timeRange = (0, 4000),
       attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
-      idMap = idMap)
+      idMap = idMap,
+      TsdbFormat.ValueTypes.SingleValueTypeStructureId)
     scans.size should equal(2)
     scans(0).getStartRow.slice(0, UniqueIdGenerationWidth) should equal(Array[Byte](0, 0))
     scans(1).getStartRow.slice(0, UniqueIdGenerationWidth) should equal(Array[Byte](0, 1))
@@ -353,11 +355,12 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val idMap = sampleNamesToIdMapping.map {
       case ((kind, name), id) => QualifiedName(kind, bytesKey(0, 0), name) -> id
     }.toMap
-    val scans = tsdbFormat.getPointScans(
+    val scans = tsdbFormat.getScans(
       metric = "test",
       timeRange = (0, 4000),
       attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
-      idMap = idMap)
+      idMap = idMap,
+      TsdbFormat.ValueTypes.SingleValueTypeStructureId)
     scans.size should equal(1)
     scans(0).getStartRow.slice(0, UniqueIdGenerationWidth) should equal(Array[Byte](0, 0))
   }
@@ -368,11 +371,12 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       QualifiedName(ShardKind, defaultGenerationIdBytes, shardAttributeToShardName("name", "anotherValue")),
       bytesKey(4, 0, 2)
     )
-    val scans = tsdbFormat.getPointScans(
+    val scans = tsdbFormat.getScans(
       metric = "test",
       timeRange = (0, 4000),
       attributeValueFilters = Map(defaultShardAttributeName -> MultipleValueNames(Seq("value", "anotherValue"))),
-      idMap = idMap)
+      idMap = idMap,
+      TsdbFormat.ValueTypes.SingleValueTypeStructureId)
     scans.size should equal(2)
     scans(0).getStartRow.slice(shardIdOffset, shardIdOffset + shardIdWidth) should equal(Array[Byte](4, 0, 1))
     scans(1).getStartRow.slice(shardIdOffset, shardIdOffset + shardIdWidth) should equal(Array[Byte](4, 0, 2))
@@ -380,11 +384,12 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
 
   it should "include value_type_structure_id byte flag" in {
     val tsdbFormat = createTsdbFormat()
-    val scans = tsdbFormat.getListPointScans(
+    val scans = tsdbFormat.getScans(
       metric = "test",
       timeRange = (0, 1),
       attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
-      idMap = sampleIdMap
+      idMap = sampleIdMap,
+      TsdbFormat.ValueTypes.ListValueTypeStructureId
     )
     scans.size should equal(1)
     scans(0).getStartRow()(valueTypeIdOffset) should equal(ValueTypes.ListValueTypeStructureId)

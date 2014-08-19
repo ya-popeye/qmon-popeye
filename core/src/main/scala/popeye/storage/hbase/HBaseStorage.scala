@@ -94,6 +94,8 @@ object HBaseStorage {
     }
   }
 
+  case class ListPointTimeseries(tags: SortedMap[String, String], lists: Seq[ListPoint])
+
   object Point {
     def apply(timestamp: Int, value: Long): Point = Point(timestamp, Left(value))
   }
@@ -101,13 +103,13 @@ object HBaseStorage {
   case class ListPoint(timestamp: Int, value: Either[Seq[Long], Seq[Float]]) {
     def isFloatList = value.isRight
 
-    def getFloalListValue = value match { case Right(f) => f }
+    def getFloatListValue = value match { case Right(f) => f }
 
     def getLongListValue = value match { case Left(l) => l }
 
     def doubleListValue = {
       if (isFloatList) {
-        getFloalListValue.map(_.toDouble)
+        getFloatListValue.map(_.toDouble)
       } else {
         getLongListValue.map(_.toDouble)
       }
@@ -195,6 +197,12 @@ object HBaseStorage {
 
   def collectAllGroups(groupsStream: PointsStream)(implicit eCtx: ExecutionContext) = {
     groupsStream.reduceElements((a, b) => a.concat(b))
+  }
+
+  type ListPointsStream = FutureStream[Seq[ListPointTimeseries]]
+
+  def collectAllListPoints(listPoints: ListPointsStream)(implicit eCtx: ExecutionContext) = {
+    listPoints.reduceElements(_ ++ _)
   }
 
   def chunksToFutureStream(chunks: ChunkedResults)(implicit eCtx: ExecutionContext): FutureStream[Array[Result]] = {
@@ -292,6 +300,28 @@ class HBaseStorage(tableName: String,
                 timeRange: (Int, Int),
                 attributes: Map[String, ValueNameFilterCondition])
                (implicit eCtx: ExecutionContext): Future[PointsStream] = {
+    val groupByAttributeNames =
+      attributes
+        .toList
+        .filter { case (attrName, valueFilter) => valueFilter.isGroupByAttribute }
+        .map(_._1)
+    val resultsFuture = resolveQuery(metric, timeRange, attributes, TsdbFormat.ValueTypes.SingleValueTypeStructureId)
+    resultsFuture.map(createPointsStream(_, timeRange, groupByAttributeNames))
+  }
+
+  def getListPoints(metric: String,
+                    timeRange: (Int, Int),
+                    attributes: Map[String, ValueNameFilterCondition])
+                   (implicit eCtx: ExecutionContext): Future[ListPointsStream] = {
+    val resultsFuture = resolveQuery(metric, timeRange, attributes, TsdbFormat.ValueTypes.ListValueTypeStructureId)
+    resultsFuture.map(createListPointsStream(_, timeRange))
+  }
+
+  private def resolveQuery(metric: String,
+                           timeRange: (Int, Int),
+                           attributes: Map[String, ValueNameFilterCondition],
+                           valueTypeStructureId: Byte)
+                          (implicit eCtx: ExecutionContext): Future[ChunkedResults] = {
     val scanNames = tsdbFormat.getScanNames(metric, timeRange, attributes)
     val scanNameIdPairsFuture = Future.traverse(scanNames) {
       qName =>
@@ -303,14 +333,14 @@ class HBaseStorage(tableName: String,
       scanNameIdPairs <- scanNameIdPairsFuture
     } yield {
       val scanNameToIdMap = scanNameIdPairs.collect { case Some(x) => x }.toMap
-      val scans = tsdbFormat.getPointScans(metric, timeRange, attributes, scanNameToIdMap)
-      val chunkedResults = getChunkedResults(tableName, readChunkSize, scans)
-      val groupByAttributeNames =
-        attributes
-          .toList
-          .filter { case (attrName, valueFilter) => valueFilter.isGroupByAttribute }
-          .map(_._1)
-      createPointsStream(chunkedResults, timeRange, groupByAttributeNames)
+      val scans = tsdbFormat.getScans(
+        metric,
+        timeRange,
+        attributes,
+        scanNameToIdMap,
+        valueTypeStructureId
+      )
+      getChunkedResults(tableName, readChunkSize, scans)
     }
   }
 
@@ -338,6 +368,27 @@ class HBaseStorage(tableName: String,
     resultsStream.flatMapElements(resultsToPointsGroups)
   }
 
+  def createListPointsStream(chunkedResults: ChunkedResults,
+                             timeRange: (Int, Int))
+                            (implicit eCtx: ExecutionContext): FutureStream[Seq[ListPointTimeseries]] = {
+
+    def resultsToListPointsTimeseries(results: Array[Result]): Future[Seq[ListPointTimeseries]] = {
+      val rowResults = results.map(tsdbFormat.parseListValueRowResult)
+      val ids = rowResults.flatMap(rr => tsdbFormat.getUniqueIds(rr.timeseriesId)).toSet
+      val idNamePairsFuture = Future.traverse(ids) {
+        case qId =>
+          uniqueId.resolveNameById(qId)(resolveTimeout).map(name => (qId, name))
+      }
+      idNamePairsFuture.map {
+        idNamePairs =>
+          val idMap = idNamePairs.toMap
+          toListPointSequences(rowResults, timeRange, idMap)
+      }
+    }
+    val resultsStream = chunksToFutureStream(chunkedResults)
+    resultsStream.flatMapElements(resultsToListPointsTimeseries)
+  }
+
   private def toPointSequencesMap(rows: Array[ParsedSingleValueRowResult],
                                   timeRange: (Int, Int),
                                   idMap: Map[QualifiedId, String]): Map[PointAttributes, Seq[Point]] = {
@@ -352,6 +403,27 @@ class HBaseStorage(tableName: String,
         pointsArray(lastIndex) = lastRow.filter(point => point.timestamp < endTime)
         pointsArray.toSeq.flatten
     }
+  }
+
+  private def toListPointSequences(rows: Array[ParsedListValueRowResult],
+                                   timeRange: (Int, Int),
+                                   idMap: Map[QualifiedId, String]): Seq[ListPointTimeseries] = {
+    val (startTime, endTime) = timeRange
+    val serieses = rows.groupBy(row => row.timeseriesId).mapValues {
+      rowsArray =>
+        val pointsArray = rowsArray.map(_.lists)
+        val firstRow = pointsArray(0)
+        pointsArray(0) = firstRow.filter(list => list.timestamp >= startTime)
+        val lastIndex = pointsArray.length - 1
+        val lastRow = pointsArray(lastIndex)
+        pointsArray(lastIndex) = lastRow.filter(point => point.timestamp < endTime)
+        pointsArray.toSeq.flatten
+    }
+    serieses.map {
+      case (timeseriesId, lists) =>
+        val tags = timeseriesId.getAttributes(idMap)
+        ListPointTimeseries(tags, lists)
+    }.toSeq
   }
 
   def groupPoints(groupByAttributeNames: Seq[String],

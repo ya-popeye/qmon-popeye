@@ -512,25 +512,11 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping,
     }
   }
 
-  def getPointScans(metric: String,
-                    timeRange: (Int, Int),
-                    attributeValueFilters: Map[String, ValueNameFilterCondition],
-                    idMap: Map[QualifiedName, BytesKey]): Seq[Scan] = {
-    getScans(metric, timeRange, attributeValueFilters, idMap, ValueTypes.SingleValueTypeStructureId)
-  }
-
-  def getListPointScans(metric: String,
-                        timeRange: (Int, Int),
-                        attributeValueFilters: Map[String, ValueNameFilterCondition],
-                        idMap: Map[QualifiedName, BytesKey]): Seq[Scan] = {
-    getScans(metric, timeRange, attributeValueFilters, idMap, ValueTypes.ListValueTypeStructureId)
-  }
-
-  private def getScans(metric: String,
-                       timeRange: (Int, Int),
-                       attributeValueFilters: Map[String, ValueNameFilterCondition],
-                       idMap: Map[QualifiedName, BytesKey],
-                       valueTypeStructureId: Byte): Seq[Scan] = {
+  def getScans(metric: String,
+               timeRange: (Int, Int),
+               attributeValueFilters: Map[String, ValueNameFilterCondition],
+               idMap: Map[QualifiedName, BytesKey],
+               valueTypeStructureId: Byte): Seq[Scan] = {
     val (startTime, stopTime) = timeRange
     val ranges = getTimeRanges(startTime, stopTime)
     val shardNames = getShardNames(attributeValueFilters)

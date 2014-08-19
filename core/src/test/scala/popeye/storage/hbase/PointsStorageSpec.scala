@@ -228,8 +228,39 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
     barGroup(SortedMap("type" -> "bar", "attr" -> "foo")) should (contain(Point(0, 2)) and (not contain Point(0, 3)))
   }
 
+  it should "perform list value queries" in {
+    val storageStub = new PointsStorageStub(shardAttrs = Set("shard"))
+    val listPoints = Seq[ListPoint](
+      ListPoint(10, Left(Seq(1, 2, 3))),
+      ListPoint(11, Left(Seq(4, 5, 6)))
+    )
+    val excludedPoints = Seq(ListPoint(9, Left(Seq(0))), ListPoint(13, Left(Seq(0))))
+    val points = (listPoints ++ excludedPoints).map {
+      case ListPoint(timestamp, listValue) =>
+        PopeyeTestUtils.createListPoint(
+          metric = "metric",
+          timestamp = timestamp,
+          attributes = Seq("shard" -> "foo"),
+          value = listValue
+        )
+    }
+    writePoints(storageStub, points)
+    val future = storageStub.storage.getListPoints(
+      "metric",
+      (10, 12),
+      Map("shard" -> SingleValueName("foo"))
+    )
+    val listPointSeries = toListPoints(future)
+    val expectedListPointSeries = ListPointTimeseries(SortedMap("shard" -> "foo"), listPoints)
+    listPointSeries should equal(Seq(expectedListPointSeries))
+  }
+
   def toGroupsMap(future: Future[PointsStream]): Map[PointAttributes, PointsGroup] = {
     Await.result(future.flatMap(HBaseStorage.collectAllGroups), 5 seconds).groupsMap
+  }
+
+  def toListPoints(future: Future[ListPointsStream]): Seq[ListPointTimeseries] = {
+    Await.result(future.flatMap(HBaseStorage.collectAllListPoints), 5 seconds)
   }
 
   def writePoints(state: PointsStorageStub, points: Seq[Message.Point]) {

@@ -1,7 +1,7 @@
 package popeye.query
 
 import org.apache.hadoop.hbase.util.Bytes
-import popeye.storage.hbase.HBaseStorage.{PointsStream, ValueNameFilterCondition}
+import popeye.storage.hbase.HBaseStorage.{ListPointsStream, PointsStream, ValueNameFilterCondition}
 import scala.concurrent.{ExecutionContext, Future}
 import popeye.storage.hbase._
 import popeye.query.PointsStorage.NameType.NameType
@@ -11,6 +11,10 @@ trait PointsStorage {
   def getPoints(metric: String,
                 timeRange: (Int, Int),
                 attributes: Map[String, ValueNameFilterCondition]): Future[PointsStream]
+
+  def getListPoints(metric: String,
+                    timeRange: (Int, Int),
+                    attributes: Map[String, ValueNameFilterCondition]): Future[ListPointsStream]
 
   def getSuggestions(namePrefix: String, nameType: NameType): Seq[String]
 }
@@ -35,6 +39,11 @@ object PointsStorage {
                   timeRange: (Int, Int),
                   attributes: Map[String, ValueNameFilterCondition]) =
       pointsStorage.getPoints(metric, timeRange, attributes)(executionContext)
+
+    def getListPoints(metric: String,
+                      timeRange: (Int, Int),
+                      attributes: Map[String, ValueNameFilterCondition]) =
+      pointsStorage.getListPoints(metric, timeRange, attributes)(executionContext)
 
     def getSuggestions(namePrefix: String, nameType: NameType): Seq[String] = {
 
