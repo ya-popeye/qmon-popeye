@@ -4,5 +4,7 @@ put proc.loadavg.1m 1288946942 0.43 host=foo  cluster=popeye
 put proc.loadavg.5m 1288946942 0.62 host=foo  cluster=popeye
 put proc.loadavg.5m 1288946942 1.62 host=bar  cluster=popeye
 put proc.loadavg.5m 1288947942 1.62 host=bar  cluster=popeye
+put proc.loadavg.5m 1408543186 [1.62,2.1] host=bar  cluster=popeye
+put proc.loadavg.5m 1408543196 [1.62,4.9] host=bar  cluster=popeye
 commit 1
 
