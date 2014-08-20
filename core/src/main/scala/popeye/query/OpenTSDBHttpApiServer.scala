@@ -105,6 +105,41 @@ class OpenTSDBHttpApiServer(storage: PointsStorage, executionContext: ExecutionC
         savedClient ! HttpResponse(status = StatusCodes.BadRequest, entity = HttpEntity(errMessage))
       }
 
+    case request@HttpRequest(GET, path@Uri.Path("/qlist"), _, _, _) =>
+      val savedClient = sender
+      val parameters = queryStringToMap(path.query.value)
+      def parameter(name: String, errorMsg: => String) = parameters.get(name).toRight(errorMsg)
+
+      val resultFutureOrErrMessage =
+        for {
+          startDate <- parameter("start", "start is not set").right
+          endDate <- parameter("end", "end is not set").right
+          metricName <- parameter("m", "metric is not set").right
+          tagsString <- parameter("tags", "tags is not set").right
+          tags <- parseTags(tagsString).right
+        } yield {
+          val startTime = parseTime(startDate)
+          val endTime = parseTime(endDate)
+          println(metricName, startDate, endDate, tags)
+          storage.getListPoints(metricName, (startTime, endTime), tags)
+            .flatMap(HBaseStorage.collectAllListPoints)
+            .map(listPointTimeseries => listPointsToString(metricName, listPointTimeseries))
+        }
+
+      for (responseFuture <- resultFutureOrErrMessage.right) {
+        responseFuture
+          .map(result => savedClient ! HttpResponse(entity = HttpEntity(result)))
+          .onFailure {
+          case t: Throwable =>
+            savedClient ! HttpResponse(status = StatusCodes.InternalServerError)
+            info(f"points query failed", t)
+        }
+      }
+      for (errMessage <- resultFutureOrErrMessage.left) {
+        savedClient ! HttpResponse(status = StatusCodes.BadRequest, entity = HttpEntity(errMessage))
+        info(errMessage)
+      }
+
     case request: HttpRequest =>
       info(f"bad request: $request)")
       sender ! HttpResponse(status = StatusCodes.BadRequest)
@@ -198,19 +233,20 @@ object OpenTSDBHttpApiServer extends HttpServerFactory {
 
   private def tagsFromMetricString(metricString: String): Either[String, Map[String, ValueNameFilterCondition]] = {
     val tagsOption = metricTagsRegex.findPrefixMatchOf(metricString).map(_.group(1))
-    tagsOption.map {
-      tagsString =>
-        val tags = metricSingleTagRegex.findAllIn(tagsString).toList
-        val splittedTags = tags.map(_.split("="))
-        if (splittedTags.forall(_.length == 2)) {
-          val nameValuePairs = splittedTags.map {
-            array => (array(0), parseValueFilterCondition(array(1)))
-          }
-          Right(nameValuePairs.toMap)
-        } else {
-          Left("wrong tags format")
-        }
-    }.getOrElse(Right(Map()))
+    tagsOption.map { tagsString => parseTags(tagsString) }.getOrElse(Right(Map()))
+  }
+
+  private def parseTags(tagsString: String): Either[String, Map[String, ValueNameFilterCondition]] = {
+    val tags = metricSingleTagRegex.findAllIn(tagsString).toList
+    val splittedTags = tags.map(_.split("="))
+    if (splittedTags.forall(_.length == 2)) {
+      val nameValuePairs = splittedTags.map {
+        array => (array(0), parseValueFilterCondition(array(1)))
+      }
+      Right(nameValuePairs.toMap)
+    } else {
+      Left("wrong tags format")
+    }
   }
 
   private def parseValueFilterCondition(valueString: String) = {
@@ -250,6 +286,21 @@ object OpenTSDBHttpApiServer extends HttpServerFactory {
       attributesString = attributes.map { case (name, value) => f"$name=$value"}.mkString(" ")
       (timestamp, value) <- points
     } yield f"$metricName $timestamp $value $attributesString"
+    lines.mkString("\n")
+  }
+
+  private def listPointsToString(metricName: String, allSeries: Seq[ListPointTimeseries]) = {
+    val lines = for {
+      ListPointTimeseries(tags, listPoints) <- allSeries
+      attributesString = tags.map { case (name, value) => f"$name=$value" }.mkString(" ")
+      ListPoint(timestamp, list) <- listPoints
+    } yield {
+      val listString = list.fold(
+        longs => longs.mkString("[", ",", "]"),
+        floats => floats.mkString("[", ",", "]")
+      )
+      f"$metricName $timestamp $listString $attributesString"
+    }
     lines.mkString("\n")
   }
 }
