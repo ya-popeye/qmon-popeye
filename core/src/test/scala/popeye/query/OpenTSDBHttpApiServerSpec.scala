@@ -12,7 +12,7 @@ import scala.concurrent.{Await, Future}
 import popeye.storage.hbase.HBaseStorage._
 import akka.testkit.TestActorRef
 import akka.actor.Props
-import spray.http.{HttpResponse, Uri, HttpRequest}
+import spray.http.{StatusCodes, HttpResponse, Uri, HttpRequest}
 import spray.http.HttpMethods._
 import popeye.query.OpenTSDBHttpApiServer.TimeSeriesQuery
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.SingleValueName
@@ -137,5 +137,12 @@ class OpenTSDBHttpApiServerSpec extends AkkaTestKitSpec("http-query") with Mocki
       "all" -> AllValueNames
     )
     verify(storage).getListPoints("metric", (0, 1), attrs)
+  }
+
+  it should "respond to malformed request" in {
+    val storage = mock[PointsStorage]
+    val serverRef = TestActorRef(Props.apply(new OpenTSDBHttpApiServer(storage, executionContext)))
+    val future = serverRef ? HttpRequest(GET, Uri("/q", Uri.ParsingMode.RelaxedWithRawQuery))
+    Await.result(future, 1 seconds).asInstanceOf[HttpResponse].status should equal(StatusCodes.BadRequest)
   }
 }

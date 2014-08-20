@@ -37,7 +37,7 @@ class OpenTSDBHttpApiServer(storage: PointsStorage, executionContext: ExecutionC
     case x: Http.Connected => sender ! Http.Register(self)
     case request@HttpRequest(GET, path@Uri.Path("/q"), _, _, _) =>
       val savedClient = sender
-      val parameters = queryStringToMap(path.query.value)
+      val parameters = queryToParametersMap(path.query)
       def parameter(name: String, errorMsg: => String) = parameters.get(name).toRight(errorMsg)
 
       val resultFutureOrErrMessage =
@@ -74,7 +74,7 @@ class OpenTSDBHttpApiServer(storage: PointsStorage, executionContext: ExecutionC
 
     case request@HttpRequest(GET, path@Uri.Path("/suggest"), _, _, _) =>
       val savedClient = sender
-      val parameters = queryStringToMap(path.query.value)
+      val parameters = queryToParametersMap(path.query)
       def parameter(name: String, errorMsg: => String) = parameters.get(name).toRight(errorMsg)
       val suggestionsFutureOrErrorMsg =
         for {
@@ -107,7 +107,7 @@ class OpenTSDBHttpApiServer(storage: PointsStorage, executionContext: ExecutionC
 
     case request@HttpRequest(GET, path@Uri.Path("/qlist"), _, _, _) =>
       val savedClient = sender
-      val parameters = queryStringToMap(path.query.value)
+      val parameters = queryToParametersMap(path.query)
       def parameter(name: String, errorMsg: => String) = parameters.get(name).toRight(errorMsg)
 
       val resultFutureOrErrMessage =
@@ -191,7 +191,8 @@ object OpenTSDBHttpApiServer extends HttpServerFactory {
 
   private val paramRegex = "[^&]+".r
 
-  private[query] def queryStringToMap(queryString: String): Map[String, String] =
+  private[query] def queryToParametersMap(query: Uri.Query): Map[String, String] = {
+    val queryString = if(query.isEmpty) "" else query.value
     paramRegex.findAllIn(queryString).map {
       parameter =>
         val equalsIndex = parameter.indexOf('=')
@@ -201,6 +202,7 @@ object OpenTSDBHttpApiServer extends HttpServerFactory {
           (parameter, "")
         }
     }.toMap
+  }
 
   private[query] def parseTime(dateString: String) = (dateFormat.parse(dateString).getTime / 1000).toInt
 
