@@ -138,6 +138,7 @@ class TelnetPointsHandler(connection: ActorRef,
 
     case x: Tcp.ConnectionClosed =>
       debug(s"Connection closed $x")
+      metrics.connections.decrementAndGet()
       context.stop(self)
   }
 
