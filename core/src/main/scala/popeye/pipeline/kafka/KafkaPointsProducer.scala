@@ -40,6 +40,7 @@ class KafkaPointsProducerWorker(kafkaClient: PointsSinkFactory,
 
   def processBatch(batchId: Long, buffer: Seq[PackedPoints]): Unit = {
     producer.sendPacked(batchId, buffer: _*)
+    batcher.metrics.pointsMeter.mark(buffer.view.map(_.pointsCount).sum)
   }
 }
 
