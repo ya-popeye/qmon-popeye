@@ -2,6 +2,7 @@ package popeye.storage.hbase
 
 import akka.testkit.TestProbe
 import java.io.IOException
+import com.codahale.metrics.MetricRegistry
 import popeye.Logging
 import popeye.storage.hbase.UniqueIdProtocol._
 import popeye.pipeline.test.AkkaTestKitSpec
@@ -134,7 +135,13 @@ class UniqueIdSpec extends AkkaTestKitSpec("uniqueid") with Logging {
 
   def mkUniq(): (TestProbe, UniqueId) = {
     val resolverProbe = TestProbe()
-    val uniq = new UniqueIdImpl(resolverProbe.ref, 1, 10, 1 seconds)
+    val uniq = new UniqueIdImpl(
+      resolverProbe.ref,
+      new UniqueIdMetrics("uniqueid", new MetricRegistry),
+      initialCapacity = 1,
+      maxCapacity = 10,
+      timeout = 1 seconds
+    )
     (resolverProbe, uniq)
   }
 }

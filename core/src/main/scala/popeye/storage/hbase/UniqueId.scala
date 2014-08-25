@@ -3,16 +3,13 @@ package popeye.storage.hbase
 import akka.actor.ActorRef
 import akka.pattern.ask
 import akka.util.Timeout
+import com.codahale.metrics.MetricRegistry
 import com.googlecode.concurrentlinkedhashmap.ConcurrentLinkedHashMap
-import org.apache.hadoop.hbase.util.Bytes
-import popeye.Logging
-import popeye.storage.hbase.BytesKey._
+import popeye.{Instrumented, Logging}
 import popeye.storage.hbase.UniqueIdProtocol._
-import scala.Some
 import scala.concurrent._
 import scala.concurrent.duration._
 import scala.util.Success
-import java.util
 import HBaseStorage._
 
 trait UniqueId {
@@ -50,11 +47,19 @@ trait UniqueId {
 
 }
 
+class UniqueIdMetrics(prefix: String, override val metricRegistry: MetricRegistry) extends Instrumented {
+  val nameCacheMisses = metrics.meter(s"$prefix.name.cache.misses")
+  val idCacheMisses = metrics.meter(s"$prefix.id.cache.misses")
+  val creationFailRaces = metrics.meter(s"$prefix.creation.fail.races")
+  val resolutionFailures = metrics.meter(s"$prefix.resolution.failures")
+}
+
 /**
  * Shared cache for id resolution
  * @author Andrey Stepachev
  */
 class UniqueIdImpl(resolver: ActorRef,
+                   metrics: UniqueIdMetrics,
                    initialCapacity: Int = 1000,
                    maxCapacity: Int = 100000,
                    timeout: FiniteDuration = 30 seconds)
@@ -81,6 +86,7 @@ class UniqueIdImpl(resolver: ActorRef,
   def findIdByName(qName: QualifiedName): Option[BytesKey] = {
     nameCache.get(qName) match {
       case null =>
+        metrics.nameCacheMisses.mark()
         None
       case future =>
         future.value match {
@@ -98,6 +104,7 @@ class UniqueIdImpl(resolver: ActorRef,
   def findNameById(qId: QualifiedId): Option[String] = {
     idCache.get(qId) match {
       case null =>
+        metrics.idCacheMisses.mark()
         None
       case future =>
         future.value match {
@@ -130,6 +137,7 @@ class UniqueIdImpl(resolver: ActorRef,
             nameCache.remove(qName)
             val idFuture = if (retries == 0) {
               log.error(s"id resolution failed: Can't battle race creating $qName")
+              metrics.creationFailRaces.mark()
               Future.failed(new UniqueIdRaceException(s"Can't battle race creating $qName"))
             } else {
               resolveIdByName(qName, create = true, retries - 1)
@@ -138,6 +146,7 @@ class UniqueIdImpl(resolver: ActorRef,
           case f: ResolutionFailed =>
             log.error("id resolution failed: {}" , f)
             nameCache.remove(qName)
+            metrics.resolutionFailures.mark()
             promise.failure(f.t)
           case n: NotFoundName =>
             nameCache.remove(qName)

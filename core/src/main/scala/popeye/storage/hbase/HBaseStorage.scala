@@ -501,6 +501,7 @@ class HBaseStorageConfigured(config: HBaseStorageConfig, actorSystem: ActorSyste
     val uniqIdResolver = actorSystem.actorOf(Props.apply(UniqueIdActor(uniqueIdStorage)))
     val uniqueId = new UniqueIdImpl(
       uniqIdResolver,
+      new UniqueIdMetrics("uniqueid", metricRegistry),
       config.uidsConfig.getInt("cache.initial-capacity"),
       config.uidsConfig.getInt("cache.max-capacity"),
       config.resolveTimeout
