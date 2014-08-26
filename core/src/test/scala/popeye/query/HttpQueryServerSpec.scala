@@ -1,6 +1,7 @@
 package popeye.query
 
 import popeye.pipeline.test.AkkaTestKitSpec
+import popeye.util.FutureStream
 import scala.concurrent.{Await, Future}
 import spray.http._
 import spray.http.HttpMethods._
@@ -8,7 +9,7 @@ import akka.testkit.TestActorRef
 import akka.actor.Props
 import akka.pattern.ask
 import spray.http.HttpRequest
-import popeye.storage.hbase.HBaseStorage.{FutureStream, PointsGroups, PointsStream, ValueNameFilterCondition}
+import popeye.storage.hbase.HBaseStorage.{PointsGroups, ValueNameFilterCondition}
 import spray.http.HttpResponse
 import akka.util.Timeout
 import scala.concurrent.duration._
@@ -25,7 +26,7 @@ class HttpQueryServerSpec extends AkkaTestKitSpec("http-query") with MockitoSuga
 
   it should "parse query string" in {
     val storage = mock[PointsStorage]
-    stub(storage.getPoints(any(), any(), any())).toReturn(Future.successful(FutureStream(PointsGroups(Map.empty))))
+    stub(storage.getPoints(any(), any(), any())).toReturn(Future.successful(FutureStream.fromItems(PointsGroups(Map.empty))))
     val serverRef = TestActorRef(Props.apply(new HttpQueryServer(storage, executionContext)))
     val attributesParams = "attrs=" +
       "single->foo;" +

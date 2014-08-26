@@ -8,6 +8,7 @@ import java.util
 import org.apache.hadoop.hbase.KeyValue
 import org.apache.hadoop.hbase.client._
 import popeye.proto.{Message, PackedPoints}
+import popeye.util.FutureStream
 import popeye.{Instrumented, Logging}
 import scala.collection.JavaConversions._
 import scala.concurrent.duration._
@@ -129,67 +130,6 @@ object HBaseStorage {
       } else {
         getLongValue.toDouble
       }
-    }
-  }
-
-  object FutureStream {
-    def apply[A](items: A*): FutureStream[A] = {
-      val nextStreamOption =
-        if (items.tail.nonEmpty) {
-          Some(FutureStream(items.tail: _*))
-        } else {
-          None
-        }
-      FutureStream(Future.successful(items.head), () => Future.successful(nextStreamOption))
-    }
-  }
-
-  case class FutureStream[A](head: Future[A], tailFuture: () => Future[Option[FutureStream[A]]]) {
-    def reduce(op: (Future[A], Future[A]) => Future[A])(implicit eCtx: ExecutionContext): Future[A] = {
-      tailFuture().flatMap {
-        case Some(tail) =>
-          tail.foldLeft(head)(op)
-        case None => head
-      }
-    }
-
-    def reduceElements(op: (A, A) => A)(implicit eCtx: ExecutionContext): Future[A] = {
-      reduce((left, right) => (left zip right).map { case (a, b) => op(a, b) })
-    }
-
-    def foldLeft[B](z: Future[B])
-                   (op: (Future[B], Future[A]) => Future[B])
-                   (implicit eCtx: ExecutionContext): Future[B] = {
-      tailFuture().flatMap {
-        case Some(tail) =>
-          val nextZ = op(z, head)
-          tail.foldLeft(nextZ)(op)
-        case None => op(z, head)
-      }
-    }
-
-    def map[B](f: Future[A] => Future[B])(implicit eCtx: ExecutionContext): FutureStream[B] = {
-      val newHead = f(head)
-      val newTail = () => tailFuture().map {
-        tailOption => tailOption.map(tail => tail.map(f))
-      }
-      FutureStream(newHead, newTail)
-    }
-
-    def flatMapElements[B](f: A => Future[B])(implicit eCtx: ExecutionContext): FutureStream[B] = {
-      val newHead = head.flatMap(f)
-      val newTail = () => tailFuture().map {
-        tailOption => tailOption.map(tail => tail.flatMapElements(f))
-      }
-      FutureStream(newHead, newTail)
-    }
-
-    def mapElements[B](f: A => B)(implicit eCtx: ExecutionContext): FutureStream[B] = {
-      val newHead = head.map(f)
-      val newTail = () => tailFuture().map {
-        tailOption => tailOption.map(tail => tail.mapElements(f))
-      }
-      FutureStream(newHead, newTail)
     }
   }
 
