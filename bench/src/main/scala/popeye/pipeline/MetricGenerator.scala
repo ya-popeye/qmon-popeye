@@ -10,21 +10,12 @@ object MetricGenerator {
     f"${rndInt}=${rndInt}"
   }
 
-  def pointString(metric: String, timestamp: Int, pointValue: Int, hostId: Int, randomTags: Int = 0) = {
-    val builder = StringBuilder.newBuilder
+  def pointStringWithoutTags(metric: String, timestamp: Int, pointValue: Int) = {
+    StringBuilder.newBuilder
       .append("put").append(' ')
       .append(metric).append(' ')
       .append(timestamp).append(' ')
-      .append(pointValue).append(' ')
-      .append("dc=dc_").append(hostId % 10).append(' ')
-      .append("cluster=hadoop_").append(hostId % 20).append(' ')
-      .append("host=host_").append(hostId)
-    for (i <- 0 until randomTags) {
-      builder.append(randomTag)
-    }
-    builder
-      .append('\n')
-      .toString()
+      .append(pointValue)
   }
 
   val metrics = {
