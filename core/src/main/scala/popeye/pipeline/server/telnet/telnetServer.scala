@@ -19,15 +19,16 @@ import scala.concurrent.{ExecutionContext, Promise}
 import scala.util.{Success, Failure}
 
 class TelnetPointsMetrics(prefix: String, override val metricRegistry: MetricRegistry) extends Instrumented {
-  val requestTimer = metrics.timer(s"$prefix.request-time")
-  val commitTimer = metrics.timer(s"$prefix.commit-time")
-  val pointsRcvMeter = metrics.meter(s"$prefix.points-received")
-  val batchesCommitMeter = metrics.meter(s"$prefix.batches-commited")
+  val requestTimer = metrics.timer(s"$prefix.request.time")
+  val commitTimer = metrics.timer(s"$prefix.commit.time")
+  val pointsRcvMeter = metrics.meter(s"$prefix.points.received")
+  val batchesCommitMeter = metrics.meter(s"$prefix.batches.commited")
+  val batchSizes = metrics.histogram(s"$prefix.batches.size")
+  val serverReadingSuspensions = metrics.meter(s"$prefix.server.reading.suspensions")
   val connections = new AtomicInteger(0)
   val connectionsGauge = metrics.gauge(s"$prefix.connections") {
     connections.get()
   }
-  val tcpSuspend = metrics.meter(s"$prefix.tcp-suspend")
   val preprocessingErrors = metrics.meter(s"$prefix.preprocessing-errors")
 }
 
@@ -156,6 +157,7 @@ class TelnetPointsHandler(connection: ActorRef,
     if (bufferedPoints.pointsCount > 0) {
       pointId += 1
       val p = Promise[Long]()
+      metrics.batchSizes.update(bufferedPoints.pointsCount)
       channelWriter.write(Some(p), bufferedPoints)
       bufferedPoints = PackedPoints(sizeHint = config.batchSize + 1)
       pendingCorrelations.add(pointId)
@@ -208,7 +210,7 @@ class TelnetPointsHandler(connection: ActorRef,
         debug(s"Pausing reads: $size > ${config.hwPendingPoints}")
         context.setReceiveTimeout(1 millisecond)
       }
-      metrics.tcpSuspend.mark()
+      metrics.serverReadingSuspensions.mark()
       connection ! Tcp.SuspendReading
     }
 

@@ -17,7 +17,8 @@ class PointsStorageStub(timeRangeIdMapping: GenerationIdMapping = PointsStorageS
                         shardAttrs: Set[String] = Set("host"))
                        (implicit val actorSystem: ActorSystem,
                         implicit val executionContext: ExecutionContext) {
-  val pointsStorageMetrics = new HBaseStorageMetrics("hbase", new MetricRegistry())
+  private val metricRegistry = new MetricRegistry()
+  val pointsStorageMetrics = new HBaseStorageMetrics("hbase", metricRegistry)
   val id = new AtomicInteger(1)
   val tableName = "tsdb"
   val hTable = new FakeHTable(tableName, desc = null)
@@ -29,7 +30,7 @@ class PointsStorageStub(timeRangeIdMapping: GenerationIdMapping = PointsStorageS
 
   val uniqActor: TestActorRef[InMemoryUniqueIdActor] = TestActorRef(Props.apply(new InMemoryUniqueIdActor()))
 
-  val uniqueId = new UniqueIdImpl(uniqActor)
+  val uniqueId = new UniqueIdImpl(uniqActor, new UniqueIdMetrics("uniqueid", metricRegistry))
   val tsdbFormat = new TsdbFormat(timeRangeIdMapping, shardAttrs)
   val storage = new HBaseStorage(
     tableName,
