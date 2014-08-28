@@ -71,10 +71,14 @@ class KafkaPointsConsumerMetrics(val prefix: String,
 
 object KafkaConsumer {
 
-  def consumerConfig(group: String, consumerTimeout: FiniteDuration, kafkaConfig: Config): ConsumerConfig = {
+  def consumerConfig(group: String,
+                     consumerTimeout: FiniteDuration,
+                     brokerList: String,
+                     zkConnect: String,
+                     kafkaConfig: Config): ConsumerConfig = {
     val consumerProps = ConfigUtil.mergeProperties(kafkaConfig, "consumer.config")
-    consumerProps.setProperty("zookeeper.connect", kafkaConfig.getString("zk.quorum"))
-    consumerProps.setProperty("metadata.broker.list", kafkaConfig.getString("broker.list"))
+    consumerProps.setProperty("zookeeper.connect", zkConnect)
+    consumerProps.setProperty("metadata.broker.list", brokerList)
     consumerProps.setProperty("group.id", group)
     consumerProps.setProperty("consumer.timeout.ms", consumerTimeout.toMillis.toString)
     new ConsumerConfig(consumerProps)

@@ -3,6 +3,7 @@ package popeye.pipeline.kafka
 import _root_.kafka.consumer.{ConsumerConfig, Consumer}
 import akka.actor.ActorRef
 import com.typesafe.config.Config
+import popeye.Instrumented
 import popeye.pipeline._
 import popeye.proto.PackedPoints
 import scala.concurrent.Promise
@@ -13,11 +14,10 @@ import com.codahale.metrics.MetricRegistry
 /**
  * @author Andrey Stepachev
  */
-class KafkaPipelineChannel(val config: KafkaPipelineChannelConfig,
-                           val context: PipelineContext,
-                           pointSourceFactory: PointsSourceFactory)
+class KafkaPipelineChannel(val config: KafkaPipelineChannelConfig, val context: PipelineContext)
   extends PipelineChannel {
 
+  val readerMetrics = new KafkaReaderMetrics(metrics)
   var producer: Option[ActorRef] = None
   var consumerId: Int = 0
 
@@ -44,13 +44,16 @@ class KafkaPipelineChannel(val config: KafkaPipelineChannelConfig,
   }
 
   def startReader(group: String, mainSink: PointsSink, dropSink: PointsSink): Unit = {
+    val queueSizeGauge = new KafkaQueueSizeGauge(config.zkConnect, config.brokersList, group, config.topic)
+    queueSizeGauge.start(config.queueSizePollInterval, actorSystem.scheduler)(context.ectx)
+    readerMetrics.registerQueueSizeGauge(queueSizeGauge, group)
     val nWorkers = config.consumerWorkers
     val topic = config.topic
     for (i <- 0 until nWorkers) {
       consumerId += 1
       val consumerName = s"kafka-consumer-$group-$topic-$consumerId"
       val consumerConfig: KafkaPointsConsumerConfig = config.pointsConsumerConfig
-      val pointsSource = pointSourceFactory.make(group, consumerName)
+      val pointsSource = getPointsSource(group, consumerName)
       val props = KafkaPointsConsumer.props(
         consumerName,
         consumerConfig,
@@ -66,14 +69,21 @@ class KafkaPipelineChannel(val config: KafkaPipelineChannelConfig,
       actorSystem.actorOf(props, consumerName)
     }
   }
+
+  def getPointsSource(groupId: String, consumerId: String): PointsSource = {
+    val consumerConfig: ConsumerConfig = config.createConsumerConfig(groupId)
+    val consumerConnector = Consumer.create(consumerConfig)
+    val sourceMetrics = new KafkaPointsSourceImplMetrics(f"$consumerId.source", metrics)
+    new KafkaPointsSourceImpl(consumerConnector, config.topic, sourceMetrics)
+  }
+
 }
 
 object KafkaPipelineChannel {
 
   def apply(config: Config, context: PipelineContext): KafkaPipelineChannel = {
     val c = KafkaPipelineChannelConfig(config)
-    val pointSourceFactory = new KafkaPointsSourceFactory(c, context.metrics)
-    new KafkaPipelineChannel(c, context, pointSourceFactory)
+    new KafkaPipelineChannel(c, context)
   }
 
   def factory(): PipelineChannelFactory = {
@@ -85,16 +95,14 @@ object KafkaPipelineChannel {
   }
 }
 
-trait PointsSourceFactory {
-  def make(groupId: String, consumerId: String): PointsSource
-}
-
-class KafkaPointsSourceFactory(config: KafkaPipelineChannelConfig,
-                               metrics: MetricRegistry) extends PointsSourceFactory {
-  override def make(groupId: String, consumerId: String): PointsSource = {
-    val consumerConfig: ConsumerConfig = config.kafkaConsumerConfigFactory(groupId)
-    val consumerConnector = Consumer.create(consumerConfig)
-    val sourceMetrics = new KafkaPointsSourceImplMetrics(f"$consumerId.source", metrics)
-    new KafkaPointsSourceImpl(consumerConnector, config.topic, sourceMetrics)
+class KafkaReaderMetrics(val metricRegistry: MetricRegistry) extends Instrumented {
+  def registerQueueSizeGauge(kafkaQueueSizeGauge: KafkaQueueSizeGauge, groupId: String): Unit = {
+    val prefix = f"kafka.$groupId.queue.size"
+    metrics.gauge(f"$prefix.total") {
+      kafkaQueueSizeGauge.getTotalQueueSizeOption.getOrElse(-1l)
+    }
+    metrics.gauge(f"$prefix.max") {
+      kafkaQueueSizeGauge.getMaxQueueSizeOption.getOrElse(-1l)
+    }
   }
 }
