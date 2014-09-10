@@ -11,7 +11,9 @@ import java.util.concurrent.TimeUnit
 import scala.concurrent.duration._
 import popeye.pipeline.PopeyeClientActor._
 
-class PopeyeClientActor(remote: InetSocketAddress, hostIndex: Int, nBatches: Int, randomTags: Int) extends Actor {
+import scala.util.Random
+
+class PopeyeClientActor(remote: InetSocketAddress, hostIndex: Int, pointGen: PointGen) extends Actor {
 
   import Tcp._
   import context.system
@@ -27,6 +29,7 @@ class PopeyeClientActor(remote: InetSocketAddress, hostIndex: Int, nBatches: Int
   }
 
   var commitNumber = random()
+  var currentBatchPoints = 0
   var commitContext: Timer.Context = null
 
   def receive = {
@@ -56,11 +59,9 @@ class PopeyeClientActor(remote: InetSocketAddress, hostIndex: Int, nBatches: Int
 
     {
       case SendNewPoints =>
-        val timestamp = (System.currentTimeMillis() / 1000).toInt
-        val strings = for (metric <- MetricGenerator.metrics; _ <- 1 to nBatches) yield {
-          MetricGenerator.pointString(metric, timestamp, random(), hostIndex, randomTags)
-        }
-        val byteString = ByteString(strings.mkString) ++ ByteString(f"commit $commitNumber\n")
+        val (pointsString, numberOfPoints) = pointGen.pointsString(hostIndex)
+        currentBatchPoints = numberOfPoints
+        val byteString = pointsString ++ ByteString(f"commit $commitNumber\n")
         connection ! Write(byteString)
         PopeyeClientActor.bytesMetric.mark(byteString.size)
         commitContext = PopeyeClientActor.commitTimeMetric.time()
@@ -75,7 +76,8 @@ class PopeyeClientActor(remote: InetSocketAddress, hostIndex: Int, nBatches: Int
           }
           commitNumber = random()
           self ! SendNewPoints
-          PopeyeClientActor.pointsMetric.mark(MetricGenerator.metrics.size * nBatches)
+          PopeyeClientActor.pointsMetric.mark(currentBatchPoints)
+          currentBatchPoints = 0
           PopeyeClientActor.successfulCommits.mark()
         } else if (string.startsWith("ERR")) {
           PopeyeClientActor.failedCommits.mark()
@@ -115,8 +117,8 @@ object PopeyeClientActor {
   val ioFails = metrics.counter("io-fails")
   val connections = metrics.counter("connections")
 
-  def props(remote: InetSocketAddress, id: Int, nBatches: Int, randomTags: Int) =
-    Props(classOf[PopeyeClientActor], remote, id, nBatches, randomTags)
+  def props(remote: InetSocketAddress, id: Int, pointsGen: PointGen) =
+    Props(new PopeyeClientActor(remote, id, pointsGen))
 
   def main(args: Array[String]) {
     implicit val timeout = Timeout(5 seconds)
@@ -129,9 +131,15 @@ object PopeyeClientActor {
     }
     val metricsDir = mandatoryParams(3)
     val isInteractive = optionalParams.contains("--interactive")
+    val isSingleMetric = optionalParams.contains("--one_metric")
+    val pointGen = if (isSingleMetric) {
+      new SingleMetricPointGen(nBatches * MetricGenerator.metrics.size)
+    } else {
+      new AllMetricsPointGen(nBatches)
+    }
     val system = ActorSystem()
-    val randomTags = optionalParams.find(_.contains("--random")).map(str => str.split("_")(1).toInt).getOrElse(0)
-    val actors = (1 to nHosts).map(i => system.actorOf(PopeyeClientActor.props(address, i, nBatches, randomTags)))
+    //    val randomTags = optionalParams.find(_.contains("--random")).map(str => str.split("_")(1).toInt).getOrElse(0)
+    val actors = (1 to nHosts).map(i => system.actorOf(PopeyeClientActor.props(address, i, pointGen)))
 
     val consoleReporter = ConsoleReporter
       .forRegistry(PopeyeClientActor.metrics)
@@ -168,12 +176,50 @@ object PopeyeClientActor {
       inReader.readLine()
       val oldHosts = hosts + 1
       hosts += 100
-      val actors = (oldHosts to hosts).map(i => system.actorOf(PopeyeClientActor.props(address, i, nBatches, randomTags)))
+      val actors = (oldHosts to hosts).map(i => system.actorOf(PopeyeClientActor.props(address, i, pointGen)))
       for (actor <- actors) {
         Thread.sleep(10)
         actor ! Start
       }
     }
 
+  }
+}
+
+trait PointGen {
+  def pointsString(hostIndex: Int): (ByteString, Int)
+}
+
+class AllMetricsPointGen(nBatches: Int) extends PointGen {
+  val random = new Random
+
+  override def pointsString(hostIndex: Int): (ByteString, Int) = {
+    val timestamp = (System.currentTimeMillis() / 1000).toInt
+    val strings = for (metric <- MetricGenerator.metrics; _ <- 1 to nBatches) yield {
+      MetricGenerator.pointStringWithoutTags(metric, timestamp, random.nextInt()).append(' ')
+        .append("dc=dc_").append(hostIndex % 10).append(' ')
+        .append("host=host_").append(hostIndex).append(' ')
+        .append("cluster=popeye_test")
+        .append('\n')
+        .toString()
+    }
+    (ByteString(strings.mkString), strings.size)
+  }
+}
+
+class SingleMetricPointGen(nPoints: Int) extends PointGen {
+  val random = new Random
+
+  override def pointsString(hostIndex: Int): (ByteString, Int) = {
+    val timestamp = (System.currentTimeMillis() / 1000).toInt
+    val strings = for (i <- 0 until nPoints) yield {
+      MetricGenerator.pointStringWithoutTags("the_metric", timestamp, random.nextInt()).append(' ')
+        .append("host=").append(hostIndex).append(' ')
+        .append("the_tag=").append(i).append(' ')
+        .append("cluster=popeye_test")
+        .append('\n')
+        .toString()
+    }
+    (ByteString(strings.mkString), strings.size)
   }
 }
