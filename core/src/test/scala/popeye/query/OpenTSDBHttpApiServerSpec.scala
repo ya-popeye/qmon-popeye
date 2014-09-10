@@ -8,6 +8,7 @@ import popeye.pipeline.test.AkkaTestKitSpec
 import org.scalatest.mock.MockitoSugar
 import org.mockito.Mockito._
 import org.mockito.Matchers._
+import popeye.util.{FutureStream, FutureStreamSpec}
 import scala.concurrent.{Await, Future}
 import popeye.storage.hbase.HBaseStorage._
 import akka.testkit.TestActorRef
@@ -87,7 +88,7 @@ class OpenTSDBHttpApiServerSpec extends AkkaTestKitSpec("http-query") with Mocki
     )
 
     val storage = mock[PointsStorage]
-    stub(storage.getPoints(any(), any(), any())).toReturn(Future.successful(FutureStream(PointsGroups(groups))))
+    stub(storage.getPoints(any(), any(), any())).toReturn(Future.successful(FutureStream.fromItems(PointsGroups(groups))))
     val serverRef = TestActorRef(Props.apply(new OpenTSDBHttpApiServer(storage, executionContext)))
     val future = serverRef ? HttpRequest(GET, Uri(uriString, Uri.ParsingMode.RelaxedWithRawQuery))
     val response = Await.result(future, 5 seconds).asInstanceOf[HttpResponse]
@@ -122,7 +123,7 @@ class OpenTSDBHttpApiServerSpec extends AkkaTestKitSpec("http-query") with Mocki
     )
 
     val storage = mock[PointsStorage]
-    stub(storage.getListPoints(any(), any(), any())).toReturn(Future.successful(FutureStream(listPointSerieses)))
+    stub(storage.getListPoints(any(), any(), any())).toReturn(Future.successful(FutureStream.fromItems(listPointSerieses)))
     val serverRef = TestActorRef(Props.apply(new OpenTSDBHttpApiServer(storage, executionContext)))
     val future = serverRef ? HttpRequest(GET, Uri(uriString, Uri.ParsingMode.RelaxedWithRawQuery))
     val response = Await.result(future, 5 seconds).asInstanceOf[HttpResponse]
