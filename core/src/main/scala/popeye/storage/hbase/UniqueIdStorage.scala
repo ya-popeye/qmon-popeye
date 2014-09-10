@@ -110,7 +110,10 @@ class UniqueIdStorage(tableName: String,
       debug(s"Stored reverse mapping for $qname: $id")
       if (!cas(hTable, nameRow, IdFamily, kindQual, idBytes)) {
         // ok, someone already assigned that name, reuse it
-        findByName(qname).getOrElse(throw new IllegalStateException("CAS failed but name not found, something very bad happened"))
+        val id = findByName(qname).getOrElse {
+          throw new IllegalStateException("CAS failed but name not found, something very bad happened")
+        }
+        return id
       }
       info(s"Registered $qname => $id")
       ResolvedName(qname, idBytes)

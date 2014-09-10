@@ -1,14 +1,18 @@
 package popeye.storage.hbase
 
+import java.util
 import java.util.Random
+import java.util.concurrent.Executors
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.hbase.client.{HTableInterfaceFactory, HTableInterface, HTablePool}
+import org.apache.hadoop.hbase.client._
+import org.apache.hadoop.hbase.util.Bytes
 import org.kiji.testing.fakehtable.FakeHTable
 import org.scalatest.{Matchers, FlatSpec}
 import popeye.test.MockitoStubs
 import popeye.storage.hbase.HBaseStorage._
 import org.scalatest.OptionValues._
 import popeye.test.PopeyeTestUtils.bytesKey
+import scala.concurrent.ExecutionContext
 
 /**
  * @author Andrey Stepachev
@@ -16,6 +20,7 @@ import popeye.test.PopeyeTestUtils.bytesKey
 class UniqueIdStorageSpec extends FlatSpec with Matchers with MockitoStubs {
 
   implicit val random = new Random(1234)
+  implicit val executionContex = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
   final val tableName = "my-table"
 
   def hTablePool = {
@@ -33,9 +38,9 @@ class UniqueIdStorageSpec extends FlatSpec with Matchers with MockitoStubs {
 
   it should "resolve id" in {
     val storage = createStorage(hTablePool)
-    val metric1Name = QualifiedName(MetricKind, defaultGenerationId, "metric.1")
+    val metric1Name = metricQName("metric.1", defaultGenerationId)
     val metric1 = storage.registerName(metric1Name)
-    val metric2Name = QualifiedName(MetricKind, defaultGenerationId, "metric.2")
+    val metric2Name = metricQName("metric.2", defaultGenerationId)
 
     val r1 = storage.findByName(Seq(
       metric1Name,
@@ -47,7 +52,7 @@ class UniqueIdStorageSpec extends FlatSpec with Matchers with MockitoStubs {
 
   it should "register names in generations" in {
     val storage = createStorage(hTablePool)
-    val metricName = QualifiedName(MetricKind, bytesKey(100), "metric")
+    val metricName = metricQName("metric", generationId = bytesKey(100))
     storage.registerName(metricName)
     val resolvedNames = storage.findByName(Seq(metricName))
     resolvedNames.size should equal(1)
@@ -56,7 +61,7 @@ class UniqueIdStorageSpec extends FlatSpec with Matchers with MockitoStubs {
 
   it should "find by name" in {
     val storage = createStorage(hTablePool)
-    val metricName = QualifiedName(MetricKind, bytesKey(1), "metric")
+    val metricName = metricQName("metric")
     val resolvedName = storage.registerName(metricName)
     val resolvedNameOption = storage.findByName(metricName)
     resolvedNameOption.value should equal(resolvedName)
@@ -65,18 +70,26 @@ class UniqueIdStorageSpec extends FlatSpec with Matchers with MockitoStubs {
   it should "not find name defined in a different generation" in {
     val storage = createStorage(hTablePool)
     val name: String = "metric"
-    val resolvedName = storage.registerName(QualifiedName(MetricKind, bytesKey(1), name))
-    val resolvedNameOption = storage.findByName(QualifiedName(MetricKind, bytesKey(0), name))
+    val resolvedName = storage.registerName(metricQName(name, generationId = bytesKey(1)))
+    val resolvedNameOption = storage.findByName(metricQName(name, generationId = bytesKey(0)))
     resolvedNameOption should be(None)
   }
 
   it should "find by id" in {
     val storage = createStorage(hTablePool)
-    val metricName = QualifiedName(MetricKind, bytesKey(1), "metric")
+    val metricName = metricQName("metric", generationId = bytesKey(1))
     val metricId = storage.registerName(metricName).toQualifiedId
     val resolvedNames = storage.findById(Seq(metricId, metricId.copy(generationId = bytesKey(0))))
     resolvedNames.size should equal(1)
     resolvedNames.head.toQualifiedName should equal(metricName)
+  }
+
+  it should "not create multiple ids for one name" in {
+    val storage = createStorage()
+    val metricName = metricQName("metric")
+    val first = storage.registerName(metricName)
+    val second = storage.registerName(metricName)
+    first.id should equal(second.id)
   }
 
   behavior of "UniqueIdStorage.getSuggestions"
@@ -137,6 +150,7 @@ class UniqueIdStorageSpec extends FlatSpec with Matchers with MockitoStubs {
     storage.getSuggestions(MetricKind, defaultGenerationId, "a", limit = 2) should equal(Seq("aaa", "aab"))
   }
 
-  def createStorage(htp: HTablePool) = new UniqueIdStorage(tableName, htp, generationIdWidth = 1)
+  def createStorage(htp: HTablePool = hTablePool) = new UniqueIdStorage(tableName, htp, generationIdWidth = 1)
 
+  def metricQName(name: String, generationId: BytesKey = bytesKey(1)) = QualifiedName(MetricKind, generationId, name)
 }
