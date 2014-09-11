@@ -1,18 +1,23 @@
 package popeye.query
 
+import akka.io.IO
+import com.typesafe.config.ConfigFactory
 import org.scalatest.matchers.ShouldMatchers
 import OpenTSDBHttpApiServer._
 import org.scalatest.EitherValues._
+import popeye.storage.hbase.HBaseStorage
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition._
 import popeye.pipeline.test.AkkaTestKitSpec
 import org.scalatest.mock.MockitoSugar
 import org.mockito.Mockito._
 import org.mockito.Matchers._
-import popeye.util.{FutureStream, FutureStreamSpec}
-import scala.concurrent.{Await, Future}
+import popeye.test.MockitoStubs
+import popeye.util.FutureStream
+import spray.can.Http
+import scala.concurrent.{Promise, Await, Future}
 import popeye.storage.hbase.HBaseStorage._
 import akka.testkit.TestActorRef
-import akka.actor.Props
+import akka.actor.{ActorSystem, Props}
 import spray.http.{StatusCodes, HttpResponse, Uri, HttpRequest}
 import spray.http.HttpMethods._
 import popeye.query.OpenTSDBHttpApiServer.TimeSeriesQuery
@@ -22,7 +27,7 @@ import akka.pattern.ask
 import akka.util.Timeout
 import scala.collection.immutable.SortedMap
 
-class OpenTSDBHttpApiServerSpec extends AkkaTestKitSpec("http-query") with MockitoSugar with ShouldMatchers {
+class OpenTSDBHttpApiServerSpec extends AkkaTestKitSpec("http-query") with MockitoSugar with MockitoStubs {
   val executionContext = system.dispatcher
 
   behavior of "OpenTSDBHttpApiServer.parseTimeSeriesQuery"
@@ -146,4 +151,34 @@ class OpenTSDBHttpApiServerSpec extends AkkaTestKitSpec("http-query") with Mocki
     val future = serverRef ? HttpRequest(GET, Uri("/q", Uri.ParsingMode.RelaxedWithRawQuery))
     Await.result(future, 1 seconds).asInstanceOf[HttpResponse].status should equal(StatusCodes.BadRequest)
   }
+
+  ignore should "cancel hbase requests" in {
+    implicit val timeout = Timeout(20 seconds)
+    implicit val system = ActorSystem("popeye")
+    println(system.settings.config.getConfig("spray.can.server").getMilliseconds("timeout-timeout"))
+    implicit val exct = system.dispatcher
+    val config = ConfigFactory.parseString(
+      """
+        |http {
+        |  listen = "localhost:8080"
+        |  backlog = 100
+        |}
+      """.stripMargin)
+    val pointsStorage = mock[PointsStorage]
+    val nextStreamPromise = Promise[Option[FutureStream[PointsGroups]]]()
+    val hangedStream = FutureStream[PointsGroups](Promise().future, () => nextStreamPromise.future)
+    val unresponsiveStorage = pointsStorage.getPoints(
+      any[String],
+      any[(Int, Int)],
+      any[Map[String, HBaseStorage.ValueNameFilterCondition]]
+    ) answers {
+      _ => Future.successful(hangedStream)
+    }
+    OpenTSDBHttpApiServer.runServer(config, pointsStorage, system, system.dispatcher)
+    val url = "http://localhost:8080/q?start=2014/09/05-14:23:59&end=2014/09/11-15:23:59&m=avg:nointerpolation:proc.net.bytes{cluster=yt}"
+    val response = (IO(Http) ? HttpRequest(GET, Uri(url, Uri.ParsingMode.RelaxedWithRawQuery))).mapTo[HttpResponse]
+    val responseString = Await.result(response, 20 second)
+    println(responseString)
+  }
+
 }

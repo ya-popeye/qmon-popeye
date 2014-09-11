@@ -10,7 +10,7 @@ import spray.can.Http
 import com.typesafe.config.Config
 import akka.util.Timeout
 import scala.concurrent.duration._
-import scala.concurrent.{Future, ExecutionContext}
+import scala.concurrent.{Promise, Future, ExecutionContext}
 import spray.http._
 import spray.http.HttpMethods._
 import spray.can.server.ServerSettings
@@ -33,6 +33,8 @@ class OpenTSDBHttpApiServer(storage: PointsStorage, executionContext: ExecutionC
 
   implicit val eCtx = executionContext
 
+  val storageRequestCancellation = Promise[Nothing]()
+
   def receive: Actor.Receive = {
     case x: Http.Connected => sender ! Http.Register(self)
     case request@HttpRequest(GET, path@Uri.Path("/q"), _, _, _) =>
@@ -52,6 +54,7 @@ class OpenTSDBHttpApiServer(storage: PointsStorage, executionContext: ExecutionC
           val startTime = parseTime(startDate)
           val endTime = parseTime(endDate)
           storage.getPoints(timeSeriesQuery.metricName, (startTime, endTime), timeSeriesQuery.tags)
+            .map(_.withCancellation(storageRequestCancellation.future))
             .flatMap(groupsStream => HBaseStorage.collectAllGroups(groupsStream))
             .map(pointsGroups => aggregatePoints(pointsGroups, aggregator, timeSeriesQuery.isRate))
             .map(seriesMap => pointsToString(timeSeriesQuery.metricName, seriesMap))
@@ -122,6 +125,7 @@ class OpenTSDBHttpApiServer(storage: PointsStorage, executionContext: ExecutionC
           val endTime = parseTime(endDate)
           println(metricName, startDate, endDate, tags)
           storage.getListPoints(metricName, (startTime, endTime), tags)
+            .map(_.withCancellation(storageRequestCancellation.future))
             .flatMap(HBaseStorage.collectAllListPoints)
             .map(listPointTimeseries => listPointsToString(metricName, listPointTimeseries))
         }
@@ -143,6 +147,11 @@ class OpenTSDBHttpApiServer(storage: PointsStorage, executionContext: ExecutionC
     case request: HttpRequest =>
       info(f"bad request: $request)")
       sender ! HttpResponse(status = StatusCodes.BadRequest)
+
+    case msg: Http.ConnectionClosed =>
+      storageRequestCancellation.tryFailure(
+        new RuntimeException("http connection was closed; storage request cancelled")
+      )
   }
 }
 

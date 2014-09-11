@@ -65,26 +65,18 @@ case class FutureStream[A](head: Future[A], tailFuture: () => Future[Option[Futu
     FutureStream(newHead, newTail)
   }
 
-  def withTimeout(scheduler: Scheduler, timeout: FiniteDuration)(implicit eCtx: ExecutionContext): FutureStream[A] = {
-    val promise = Promise[Nothing]()
-    scheduler.scheduleOnce(timeout) {
-      promise.failure(new RuntimeException("stream timeout"))
-    }
-    cancellableStream(promise.future)
-  }
-
-  private def cancellableStream(cFuture: Future[Nothing])
-                               (implicit eCtx: ExecutionContext): FutureStream[A] = {
+  def withCancellation(cancellationFuture: Future[Nothing])
+                      (implicit eCtx: ExecutionContext): FutureStream[A] = {
     def cancellableFuture[T](future: => Future[T]) = {
-      if (cFuture.isCompleted) {
-        cFuture
+      if (cancellationFuture.isCompleted) {
+        cancellationFuture
       } else {
-        Future.firstCompletedOf(Seq(future, cFuture))
+        Future.firstCompletedOf(Seq(future, cancellationFuture))
       }
     }
     val cancellableTail = () => {
       val future = tailFuture().map {
-        tailOption => tailOption.map(tail => tail.cancellableStream(cFuture))
+        tailOption => tailOption.map(tail => tail.withCancellation(cancellationFuture))
       }
       cancellableFuture(future)
     }

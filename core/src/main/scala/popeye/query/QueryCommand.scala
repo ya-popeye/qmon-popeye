@@ -9,7 +9,6 @@ import scala.concurrent.ExecutionContext
 import scopt.OptionParser
 import popeye.MainConfig
 import scala.collection.JavaConverters._
-import scala.concurrent.duration._
 
 object QueryCommand extends PopeyeCommand with Logging {
   val serverTypes: Map[String, HttpServerFactory] = Map(
@@ -38,15 +37,12 @@ object QueryCommand extends PopeyeCommand with Logging {
     val serverTypeKey = serverConfig.getString("type")
     val ectx = ExecutionContext.global
     val storageConfig = new HBaseStorageConfig(hbaseConfig, shardAttributeNames)
-    val fetchTimeout = FiniteDuration(hbaseConfig.getMilliseconds("fetch.timeout"), MILLISECONDS)
     val hbaseStorage = new HBaseStorageConfigured(storageConfig, actorSystem, metrics)(ectx)
     hbaseStorage.storage.ping()
     val pointsStorage = PointsStorage.createPointsStorage(
       hbaseStorage.storage,
       hbaseStorage.uniqueIdStorage,
       storageConfig.timeRangeIdMapping,
-      fetchTimeout,
-      actorSystem.scheduler,
       ectx
     )
     serverTypes(serverTypeKey).runServer(serverConfig, pointsStorage, actorSystem, ectx)
