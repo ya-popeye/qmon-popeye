@@ -1,9 +1,7 @@
 package popeye.query
 
-import akka.actor.Scheduler
 import org.apache.hadoop.hbase.util.Bytes
 import popeye.storage.hbase.HBaseStorage.{ListPointsStream, PointsStream, ValueNameFilterCondition}
-import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{ExecutionContext, Future}
 import popeye.storage.hbase._
 import popeye.query.PointsStorage.NameType.NameType
@@ -35,24 +33,17 @@ object PointsStorage {
   def createPointsStorage(pointsStorage: HBaseStorage,
                           uniqueIdStorage: UniqueIdStorage,
                           timeRangeIdMapping: GenerationIdMapping,
-                          fetchTimeout: FiniteDuration,
-                          scheduler: Scheduler,
                           executionContext: ExecutionContext) = new PointsStorage {
 
-    private implicit val exct = executionContext
     def getPoints(metric: String,
                   timeRange: (Int, Int),
                   attributes: Map[String, ValueNameFilterCondition]) =
-      pointsStorage
-        .getPoints(metric, timeRange, attributes)
-        .map(_.withTimeout(scheduler, fetchTimeout))
+      pointsStorage.getPoints(metric, timeRange, attributes)(executionContext)
 
     def getListPoints(metric: String,
                       timeRange: (Int, Int),
                       attributes: Map[String, ValueNameFilterCondition]) =
-      pointsStorage
-        .getListPoints(metric, timeRange, attributes)
-        .map(_.withTimeout(scheduler, fetchTimeout))
+      pointsStorage.getListPoints(metric, timeRange, attributes)(executionContext)
 
     def getSuggestions(namePrefix: String, nameType: NameType): Seq[String] = {
 

@@ -5,7 +5,7 @@ import java.util.concurrent.Executors
 import org.scalatest.{Matchers, FlatSpec}
 import popeye.pipeline.test.AkkaTestKitSpec
 
-import scala.concurrent.{Await, Future, ExecutionContext}
+import scala.concurrent.{Promise, Await, Future, ExecutionContext}
 import scala.concurrent.duration._
 
 class FutureStreamSpec extends AkkaTestKitSpec("test") {
@@ -15,7 +15,7 @@ class FutureStreamSpec extends AkkaTestKitSpec("test") {
 
   it should "behave like normal stream if timeout was not invoked" in {
     val stream = FutureStream.fromItems(1, 2, 3, 4)
-    val streamWithTimeout = stream.withTimeout(system.scheduler, 10 millis)
+    val streamWithTimeout = stream.withCancellation(Promise().future)
     Await.result(streamWithTimeout.reduceElements(_ + _), 1 second) should equal(10)
   }
 
@@ -41,11 +41,15 @@ class FutureStreamSpec extends AkkaTestKitSpec("test") {
   }
 
   def assertTimeout(stream: FutureStream[Int], timeout: FiniteDuration) {
-    val streamWithTimeout = stream.withTimeout(system.scheduler, timeout)
+    val cancellationPromise = Promise[Nothing]()
+    system.scheduler.scheduleOnce(timeout) {
+      cancellationPromise.failure(new RuntimeException("timeout"))
+    }
+    val streamWithTimeout = stream.withCancellation(cancellationPromise.future)
     val ex = intercept[RuntimeException] {
       Await.result(streamWithTimeout.reduceElements(_ + _), 1 second)
     }
-    ex.getMessage should include("timeout")
+    ex.getMessage should equal("timeout")
   }
 
 
