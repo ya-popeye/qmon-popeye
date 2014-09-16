@@ -1,6 +1,6 @@
 package popeye.pipeline
 
-import akka.actor.{ActorSystem, Actor, ActorRef, Props}
+import akka.actor._
 import akka.io.{IO, Tcp}
 import akka.util.{ByteString, Timeout}
 import com.codahale.metrics._
@@ -13,7 +13,11 @@ import popeye.pipeline.PopeyeClientActor._
 
 import scala.util.Random
 
-class PopeyeClientActor(remote: InetSocketAddress, hostIndex: Int, pointGen: PointGen) extends Actor {
+class PopeyeClientActor(remote: InetSocketAddress,
+                        hostIndex: Int,
+                        pointGen: PointGen,
+                        connectionTimeout: FiniteDuration,
+                        commitTimeout: FiniteDuration) extends Actor {
 
   import Tcp._
   import context.system
@@ -28,17 +32,18 @@ class PopeyeClientActor(remote: InetSocketAddress, hostIndex: Int, pointGen: Poi
     }
   }
 
-  var commitNumber = random()
+  var correlationNumber = 0
   var currentBatchPoints = 0
   var commitContext: Timer.Context = null
+  var commitTimeoutTask: Cancellable = null
 
   def receive = {
     case Start =>
-      IO(Tcp) ! Connect(remote)
+      IO(Tcp) ! Connect(remote, timeout = Some(connectionTimeout))
 
     case CommandFailed(_: Connect) =>
-      println("initial connection failed")
-      context stop self
+      PopeyeClientActor.connectFailedMeter.mark()
+      self ! Start
 
     case c@Connected(remote, local) =>
       PopeyeClientActor.connections.inc()
@@ -51,8 +56,8 @@ class PopeyeClientActor(remote: InetSocketAddress, hostIndex: Int, pointGen: Poi
   def metricsSender(connection: ActorRef): Actor.Receive = {
     def reconnect() {
       connection ! Close
-      IO(Tcp) ! Connect(remote)
       context unbecome()
+      self ! Start
       commitContext.close()
       PopeyeClientActor.connections.dec()
     }
@@ -61,20 +66,26 @@ class PopeyeClientActor(remote: InetSocketAddress, hostIndex: Int, pointGen: Poi
       case SendNewPoints =>
         val (pointsString, numberOfPoints) = pointGen.pointsString(hostIndex)
         currentBatchPoints = numberOfPoints
-        val byteString = pointsString ++ ByteString(f"commit $commitNumber\n")
+        val byteString = pointsString ++ ByteString(f"commit $correlationNumber\n")
         connection ! Write(byteString)
         PopeyeClientActor.bytesMetric.mark(byteString.size)
         commitContext = PopeyeClientActor.commitTimeMetric.time()
+        implicit val exct = system.dispatcher
+        commitTimeoutTask = system.scheduler.scheduleOnce(commitTimeout, self, CommitTimeout(correlationNumber))
+      case msg: CommitTimeout if correlationNumber == msg.correlationNumber =>
+        commitContext.stop()
+        commitTimeoutMeter.mark()
+        reconnect()
       case Received(data) =>
         val string = data.utf8String
         if (string.startsWith("OK")) {
           commitContext.stop()
           val stringWithoutOK = string.substring(3)
           val oldCommitNumber = stringWithoutOK.substring(0, stringWithoutOK.indexOf(' ')).toInt
-          if (oldCommitNumber != commitNumber) {
-            println(f"actorId:$hostIndex wrong commit number:$oldCommitNumber, should be $commitNumber")
+          if (oldCommitNumber != correlationNumber) {
+            println(f"actorId:$hostIndex wrong commit number:$oldCommitNumber, should be $correlationNumber")
           }
-          commitNumber = random()
+          correlationNumber += 1
           self ! SendNewPoints
           PopeyeClientActor.pointsMetric.mark(currentBatchPoints)
           currentBatchPoints = 0
@@ -102,6 +113,8 @@ object PopeyeClientActor {
 
   case object SendNewPoints
 
+  case class CommitTimeout(correlationNumber: Int)
+
   case object Start
 
   case object CloseConnection
@@ -111,14 +124,16 @@ object PopeyeClientActor {
   val metrics = new MetricRegistry()
   val pointsMetric = metrics.meter("points")
   val bytesMetric = metrics.meter("bytes")
-  val commitTimeMetric = metrics.timer("commit-time")
+  val commitTimeMetric = metrics.timer("commit.time")
   val successfulCommits = metrics.meter("commits")
-  val failedCommits = metrics.meter("failed-commits")
-  val ioFails = metrics.counter("io-fails")
+  val failedCommits = metrics.meter("failed.commits")
+  val ioFails = metrics.counter("io.failures")
   val connections = metrics.counter("connections")
+  val commitTimeoutMeter = metrics.meter("commit.timeouts")
+  val connectFailedMeter = metrics.meter("connect.failures")
 
   def props(remote: InetSocketAddress, id: Int, pointsGen: PointGen) =
-    Props(new PopeyeClientActor(remote, id, pointsGen))
+    Props(new PopeyeClientActor(remote, id, pointsGen, 30 seconds, 30 seconds))
 
   def main(args: Array[String]) {
     implicit val timeout = Timeout(5 seconds)
