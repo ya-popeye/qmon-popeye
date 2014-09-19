@@ -1,145 +1,227 @@
 package popeye.pipeline
 
-import akka.actor.{ActorSystem, Actor, ActorRef, Props}
+import akka.actor._
 import akka.io.{IO, Tcp}
 import akka.util.{ByteString, Timeout}
 import com.codahale.metrics._
 import java.io.{InputStreamReader, BufferedReader, File}
 import java.net.{InetAddress, InetSocketAddress}
-import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.TimeUnit
 import scala.concurrent.duration._
 import popeye.pipeline.PopeyeClientActor._
 
 import scala.util.Random
 
-class PopeyeClientActor(remote: InetSocketAddress, hostIndex: Int, pointGen: PointGen) extends Actor {
+class PopeyeClientActor(remote: InetSocketAddress,
+                        hostIndex: Int,
+                        pointGen: PointGen,
+                        connectionTimeout: FiniteDuration,
+                        commitTimeout: FiniteDuration,
+                        sendDelay: FiniteDuration) extends FSM[ClientState, ClientData] {
 
   import Tcp._
   import context.system
 
-  val period = 1 second
+  var corrNum = 0
 
-  val random: () => Int = {
-    var num: Long = hostIndex
-    () => {
-      num = (num * 1231241223301l) % 4000037
-      num.toInt
-    }
+  def nextCorrelationNumber: Int = {
+    corrNum += 1
+    corrNum
   }
 
-  var commitNumber = random()
-  var currentBatchPoints = 0
-  var commitContext: Timer.Context = null
+  val random = new Random()
 
-  def receive = {
-    case Start =>
-      IO(Tcp) ! Connect(remote)
+  startWith(IdleState, IdleData)
 
-    case CommandFailed(_: Connect) =>
-      println("initial connection failed")
-      context stop self
+  when(IdleState) {
+    case Event(StartClient, state) =>
+      IO(Tcp) ! Connect(remote, timeout = Some(connectionTimeout))
+      goto(Connecting)
+  }
 
-    case c@Connected(remote, local) =>
-      PopeyeClientActor.connections.inc()
+  when(Connecting) {
+    case Event(c: Connected, IdleData) =>
+      connections.inc()
       val connection = sender
       connection ! Register(self)
-      context become metricsSender(connection)
-      self ! SendNewPoints
+      goto(Sending) using ConnectionData(connection)
+
+    case Event(CommandFailed(_: Connect), IdleData) =>
+      connectFailedMeter.mark()
+      self ! StartClient
+      goto(IdleState) using IdleData
   }
 
-  def metricsSender(connection: ActorRef): Actor.Receive = {
-    def reconnect() {
-      connection ! Close
-      IO(Tcp) ! Connect(remote)
-      context unbecome()
-      commitContext.close()
-      PopeyeClientActor.connections.dec()
-    }
-
-    {
-      case SendNewPoints =>
+  when(Sending, stateTimeout = (sendDelay.toNanos / 10) nanos) {
+    case Event(StateTimeout, ConnectionData(connection)) =>
+      if (random.nextInt(10) == 0) {
         val (pointsString, numberOfPoints) = pointGen.pointsString(hostIndex)
-        currentBatchPoints = numberOfPoints
-        val byteString = pointsString ++ ByteString(f"commit $commitNumber\n")
+        val correlationNumber = nextCorrelationNumber
+        val byteString = pointsString ++ ByteString(f"commit $correlationNumber\n")
         connection ! Write(byteString)
         PopeyeClientActor.bytesMetric.mark(byteString.size)
-        commitContext = PopeyeClientActor.commitTimeMetric.time()
-      case Received(data) =>
-        val string = data.utf8String
-        if (string.startsWith("OK")) {
-          commitContext.stop()
-          val stringWithoutOK = string.substring(3)
-          val oldCommitNumber = stringWithoutOK.substring(0, stringWithoutOK.indexOf(' ')).toInt
-          if (oldCommitNumber != commitNumber) {
-            println(f"actorId:$hostIndex wrong commit number:$oldCommitNumber, should be $commitNumber")
-          }
-          commitNumber = random()
-          self ! SendNewPoints
-          PopeyeClientActor.pointsMetric.mark(currentBatchPoints)
-          currentBatchPoints = 0
-          PopeyeClientActor.successfulCommits.mark()
-        } else if (string.startsWith("ERR")) {
-          PopeyeClientActor.failedCommits.mark()
-          reconnect()
-        } else {
-          println(f"strange response: $string")
-          reconnect()
-        }
-      case CommandFailed(w: Write) =>
-        println(f"actorId:$hostIndex write command failed $w, reconnecting")
-        PopeyeClientActor.ioFails.inc()
-        reconnect()
-      case CloseConnection =>
-        PopeyeClientActor.connections.dec()
-        connection ! Close
-    }
+        val commitContext = PopeyeClientActor.commitTimeMetric.time()
+        goto(WaitingForAck) using CommitData(connection, correlationNumber, numberOfPoints, commitContext)
+      } else stay()
   }
 
+  when(WaitingForAck, stateTimeout = commitTimeout) {
+    case Event(Received(data), CommitData(connection, correlationNumber, numberOfPoints, commitContext)) =>
+      val string = data.utf8String
+      if (string.startsWith("OK")) {
+        commitContext.stop()
+        val stringWithoutOK = string.substring(3)
+        val oldCommitNumber = stringWithoutOK.substring(0, stringWithoutOK.indexOf(' ')).toInt
+        if (oldCommitNumber != correlationNumber) {
+          println(f"actorId:$hostIndex wrong commit number:$oldCommitNumber, should be $correlationNumber")
+        }
+        PopeyeClientActor.pointsMetric.mark(numberOfPoints)
+        PopeyeClientActor.successfulCommits.mark()
+        goto(Sending) using ConnectionData(connection)
+      } else if (string.startsWith("ERR")) {
+        PopeyeClientActor.failedCommits.mark()
+        reconnect(connection)
+      } else {
+        println(f"strange response: $string")
+        reconnect(connection)
+      }
+    case Event(CommandFailed(w: Write), CommitData(connection, _, _, _)) =>
+      ioFails.mark()
+      reconnect(connection)
+    case Event(StateTimeout, CommitData(connection, _, _, _)) =>
+      commitTimeoutMeter.mark()
+      reconnect(connection)
+  }
+
+  def reconnect(connection: ActorRef) = {
+    closeConnection(connection)
+    self ! StartClient
+    goto(IdleState) using IdleData
+  }
+
+  whenUnhandled {
+    case Event(StopClient, _) =>
+      stop()
+  }
+
+  onTermination {
+    case StopEvent(_, _, ConnectionData(connection)) =>
+      closeConnection(connection)
+
+    case StopEvent(_, _, CommitData(connection, _, _, _)) =>
+      closeConnection(connection)
+  }
+
+  def closeConnection(connection: ActorRef) {
+    connections.dec()
+    connection ! Close
+  }
 }
 
 object PopeyeClientActor {
 
-  case object SendNewPoints
+  sealed trait ClientState
 
-  case object Start
+  case object IdleState extends ClientState
 
-  case object CloseConnection
+  case object Connecting extends ClientState
 
-  val pointsSent = new AtomicInteger(0)
-  val bytesSent = new AtomicInteger(0)
+  case object WaitingForAck extends ClientState
+
+  case object Sending extends ClientState
+
+  sealed trait ClientData
+
+  case object IdleData extends ClientData
+
+  case class ConnectionData(connection: ActorRef) extends ClientData
+
+  case class CommitData(connection: ActorRef,
+                        correlationNumber: Int,
+                        numberOfPoints: Int,
+                        timerContext: Timer.Context) extends ClientData
+
+  case object StartClient
+
+  case object StopClient
+
+  case class Config(address: InetSocketAddress = new InetSocketAddress(InetAddress.getLocalHost, 4444),
+                    batches: Int = 10,
+                    connections: Int = 4000,
+                    sendDelay: FiniteDuration = 0 millis,
+                    connectionTimeout: FiniteDuration = 30 seconds,
+                    commitTimeout: FiniteDuration = 30 seconds,
+                    startInterval: FiniteDuration = 10 millis,
+                    metricsDir: File = new File("load-metrics"),
+                    isInteractive: Boolean = false,
+                    isSingleMetricMode: Boolean = false)
+
   val metrics = new MetricRegistry()
   val pointsMetric = metrics.meter("points")
   val bytesMetric = metrics.meter("bytes")
-  val commitTimeMetric = metrics.timer("commit-time")
+  val commitTimeMetric = metrics.timer("commit.time")
   val successfulCommits = metrics.meter("commits")
-  val failedCommits = metrics.meter("failed-commits")
-  val ioFails = metrics.counter("io-fails")
+  val failedCommits = metrics.meter("failed.commits")
+  val ioFails = metrics.meter("io.failures")
   val connections = metrics.counter("connections")
+  val commitTimeoutMeter = metrics.meter("commit.timeouts")
+  val connectFailedMeter = metrics.meter("connect.failures")
 
-  def props(remote: InetSocketAddress, id: Int, pointsGen: PointGen) =
-    Props(new PopeyeClientActor(remote, id, pointsGen))
+  val parser = new scopt.OptionParser[Config]("popeye-run-class.sh popeye.pipeline.PopeyeClientActor") {
+    head("popeye load test tool", "0.1")
+    opt[String]("address") valueName "<slicer address>" action {
+      (param, config) =>
+        val List(host, port) = param.split(":").toList
+        config.copy(address = new InetSocketAddress(InetAddress.getByName(host), port.toInt))
+    }
+    opt[Int]("connections") valueName "<connections>" action {
+      (param, config) => config.copy(connections = param)
+    }
+    opt[Int]("batches") valueName "<batches>" action {
+      (param, config) => config.copy(batches = param)
+    }
+    opt[Int]("send-delay") valueName "<send delay millis>" action {
+      (param, config) => config.copy(sendDelay = FiniteDuration(param, MILLISECONDS))
+    }
+    opt[Int]("connect-timeout") valueName "<connection timeout in seconds>" action {
+      (param, config) => config.copy(connectionTimeout = FiniteDuration(param, SECONDS))
+    }
+    opt[Int]("commit-timeout") valueName "<commit timeout in seconds>" action {
+      (param, config) => config.copy(commitTimeout = FiniteDuration(param, SECONDS))
+    }
+    opt[Unit]("interactive") action {
+      (_, config) => config.copy(isInteractive = true)
+    }
+    opt[Unit]("one-metric") action {
+      (_, config) => config.copy(isSingleMetricMode = true)
+    }
+    opt[Int]("start-interval") valueName "<clients start interval millis>" action {
+      (param, config) => config.copy(startInterval = FiniteDuration(param, MILLISECONDS))
+    }
+  }
+
+  def props(config: Config, id: Int, pointsGen: PointGen) =
+    Props(
+      new PopeyeClientActor(
+        config.address,
+        id,
+        pointsGen,
+        config.connectionTimeout,
+        config.commitTimeout,
+        config.sendDelay
+      )
+    )
 
   def main(args: Array[String]) {
     implicit val timeout = Timeout(5 seconds)
-    val (optionalParams, mandatoryParams) = args.partition(_.startsWith("--"))
-    val nHosts = mandatoryParams(0).toInt
-    val nBatches = mandatoryParams(1).toInt
-    val address = {
-      val List(host, port) = mandatoryParams(2).split(":").toList
-      new InetSocketAddress(InetAddress.getByName(host), port.toInt)
-    }
-    val metricsDir = mandatoryParams(3)
-    val isInteractive = optionalParams.contains("--interactive")
-    val isSingleMetric = optionalParams.contains("--one_metric")
-    val pointGen = if (isSingleMetric) {
-      new SingleMetricPointGen(nBatches * MetricGenerator.metrics.size)
+    val config = parser.parse(args, Config()).get
+    val pointGen = if (config.isSingleMetricMode) {
+      new SingleMetricPointGen(config.batches * MetricGenerator.metrics.size)
     } else {
-      new AllMetricsPointGen(nBatches)
+      new AllMetricsPointGen(config.batches)
     }
     val system = ActorSystem()
-    //    val randomTags = optionalParams.find(_.contains("--random")).map(str => str.split("_")(1).toInt).getOrElse(0)
-    val actors = (1 to nHosts).map(i => system.actorOf(PopeyeClientActor.props(address, i, pointGen)))
+    val actors = (1 to config.connections).map(i => system.actorOf(PopeyeClientActor.props(config, i, pointGen)))
 
     val consoleReporter = ConsoleReporter
       .forRegistry(PopeyeClientActor.metrics)
@@ -152,14 +234,14 @@ object PopeyeClientActor {
       .forRegistry(PopeyeClientActor.metrics)
       .convertDurationsTo(TimeUnit.MILLISECONDS)
       .convertRatesTo(TimeUnit.SECONDS)
-      .build(new File(metricsDir))
+      .build(config.metricsDir)
 
     csvReporter.start(5, TimeUnit.SECONDS)
 
     Runtime.getRuntime.addShutdownHook(new Thread(new Runnable {
       override def run(): Unit = {
         for (actor <- actors) {
-          actor ! CloseConnection
+          actor ! StopClient
         }
         system.shutdown()
         system.awaitTermination(5 seconds)
@@ -167,19 +249,21 @@ object PopeyeClientActor {
     }))
 
     for (actor <- actors) {
-      Thread.sleep(10)
-      actor ! Start
+      Thread.sleep(config.startInterval.toMillis)
+      actor ! StartClient
     }
-    var hosts = nHosts
-    val inReader = new BufferedReader(new InputStreamReader(System.in))
-    if (isInteractive) while(true) {
-      inReader.readLine()
-      val oldHosts = hosts + 1
-      hosts += 100
-      val actors = (oldHosts to hosts).map(i => system.actorOf(PopeyeClientActor.props(address, i, pointGen)))
-      for (actor <- actors) {
-        Thread.sleep(10)
-        actor ! Start
+    if (config.isInteractive) {
+      var hosts = config.connections
+      val inReader = new BufferedReader(new InputStreamReader(System.in))
+      while(true) {
+        inReader.readLine()
+        val oldHosts = hosts + 1
+        hosts += 100
+        val actors = (oldHosts to hosts).map(i => system.actorOf(PopeyeClientActor.props(config, i, pointGen)))
+        for (actor <- actors) {
+          Thread.sleep(config.startInterval.toMillis)
+          actor ! StartClient
+        }
       }
     }
 
