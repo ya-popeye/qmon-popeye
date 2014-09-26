@@ -483,8 +483,9 @@ class HBaseStorage(tableName: String,
     } finally {
       hTable.close()
     }
-    val time = timer.stop()
-    metrics.writeHBaseTimeMeter.mark(time)
+    val timeNano = timer.stop()
+    val timeMillis = TimeUnit.NANOSECONDS.toMillis(timeNano)
+    metrics.writeHBaseTimeMeter.mark(timeMillis)
   }
 
   /**
