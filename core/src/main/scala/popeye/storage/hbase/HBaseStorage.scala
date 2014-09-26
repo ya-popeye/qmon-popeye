@@ -216,6 +216,7 @@ case class HBaseStorageMetrics(name: String, override val metricRegistry: Metric
   val writeHBaseTimeMeter = metrics.meter(s"$name.storage.write.hbase.time-meter")
   val writeTime = metrics.timer(s"$name.storage.write.time")
   val writeTimeMeter = metrics.meter(s"$name.storage.write.time-meter")
+  val totalWriteTimeHistogram = metrics.histogram(s"$name.storage.write.delay.time.hist")
   val writeHBasePoints = metrics.meter(s"$name.storage.write.points")
   val readProcessingTime = metrics.timer(s"$name.storage.read.processing.time")
   val readHBaseTime = metrics.timer(s"$name.storage.read.hbase.time")
@@ -399,9 +400,11 @@ class HBaseStorage(tableName: String,
   def writePoints(points: Iterable[Message.Point])(implicit eCtx: ExecutionContext): Future[Long] = {
 
     val ctx = metrics.writeTime.timerContext()
-      // resolve identifiers
-      // unresolved will be delayed for future expansion
-    convertToKeyValues(points).flatMap {
+    // resolve identifiers
+    // unresolved will be delayed for future expansion
+    val pointsBuffer = points.toBuffer
+    val pointTimestamps = pointsBuffer.map(_.getTimestamp)
+    convertToKeyValues(pointsBuffer).flatMap {
       case (partiallyConvertedPoints, keyValues) =>
         // write resolved points
         val writeComplete = if (!keyValues.isEmpty) Future[Int] {
@@ -415,6 +418,10 @@ class HBaseStorage(tableName: String,
           case (a, b) =>
             val time = ctx.stop.nano
             metrics.writeTimeMeter.mark(time.toMillis)
+            val currentTimeInSeconds = (System.currentTimeMillis() / 1000).toInt
+            for (timestamp <- pointTimestamps) {
+              metrics.totalWriteTimeHistogram.update(currentTimeInSeconds - timestamp)
+            }
             (a + b).toLong
         }
     }
