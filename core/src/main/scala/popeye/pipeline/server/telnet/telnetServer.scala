@@ -24,9 +24,10 @@ class TelnetPointsMetrics(prefix: String, override val metricRegistry: MetricReg
   val pointsRcvMeter = metrics.meter(s"$prefix.points.received")
   val batchesCommitMeter = metrics.meter(s"$prefix.batches.commited")
   val batchSizes = metrics.histogram(s"$prefix.batches.size")
-  val serverReadingSuspensions = metrics.meter(s"$prefix.server.reading.suspensions")
+  val serverReadingSuspensions = metrics.meter(s"$prefix.tcp.suspensions")
+  val newConnections = metrics.meter(s"$prefix.connections.new.rate")
   val connections = new AtomicInteger(0)
-  val connectionsGauge = metrics.gauge(s"$prefix.connections") {
+  val connectionsGauge = metrics.gauge(s"$prefix.connections.count") {
     connections.get()
   }
   val preprocessingErrors = metrics.meter(s"$prefix.preprocessing-errors")
@@ -252,6 +253,7 @@ class TelnetPointsServer(config: TelnetPointsServerConfig,
 
       debug(s"Connection from $remote (connection=${connection.path})")
       metrics.connections.incrementAndGet()
+      metrics.newConnections.mark()
       connection ! Tcp.Register(handler, keepOpenOnPeerClosed = true)
   }
 
