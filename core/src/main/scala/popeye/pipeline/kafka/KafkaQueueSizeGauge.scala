@@ -17,7 +17,9 @@ class KafkaQueueSizeGauge(zkConnect: String,
                           consumerGroupId: String,
                           topic: String) extends Logging {
 
-  private val queueSizes = new AtomicReference[Try[Map[Int, Long]]]()
+  private val queueSizes = new AtomicReference[Try[Map[Int, Long]]](
+    Failure(new RuntimeException("queue size was not fetched yet"))
+  )
 
   def getTotalQueueSizeOption = queueSizes.get.toOption.map(_.values.sum)
 
