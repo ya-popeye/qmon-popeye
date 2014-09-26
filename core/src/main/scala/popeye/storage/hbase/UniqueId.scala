@@ -48,8 +48,9 @@ trait UniqueId {
 }
 
 class UniqueIdMetrics(prefix: String, override val metricRegistry: MetricRegistry) extends Instrumented {
-  val nameCacheMisses = metrics.meter(s"$prefix.name.cache.misses")
-  val idCacheMisses = metrics.meter(s"$prefix.id.cache.misses")
+  val nameCacheMisses = metrics.meter(s"$prefix.cache.name.misses")
+  val idCacheMisses = metrics.meter(s"$prefix.cache.id.misses")
+  val cacheAdditions = metrics.meter(s"$prefix.cache.additions")
   val creationFailRaces = metrics.meter(s"$prefix.creation.fail.races")
   val resolutionFailures = metrics.meter(s"$prefix.resolution.failures")
 }
@@ -196,6 +197,7 @@ class UniqueIdImpl(resolver: ActorRef,
   }
 
   private def addToCache(r: Resolved) = {
+    metrics.cacheAdditions.mark()
     val nameCacheKey = r.name.toQualifiedName
     val idCacheKey = r.name.toQualifiedId
     nameCache.putIfAbsent(nameCacheKey, Promise[BytesKey]().success(r.name.id).future)
