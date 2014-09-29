@@ -3,6 +3,7 @@ package popeye.storage.hbase
 import org.apache.hadoop.hbase._
 import org.apache.hadoop.hbase.client.HBaseAdmin
 import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.hbase.io.encoding.DataBlockEncoding
 
 object CreateTsdbTables {
 
@@ -17,8 +18,9 @@ object CreateTsdbTables {
     }
 
     val tsdbTable = {
-      val tsdbColumn = new HColumnDescriptor("t")
       val tableDescriptor = new HTableDescriptor(TableName.valueOf(pointsTableName))
+      val tsdbColumn = new HColumnDescriptor("t")
+      tsdbColumn.setDataBlockEncoding(DataBlockEncoding.FAST_DIFF)
       tableDescriptor.addFamily(tsdbColumn)
       tableDescriptor
     }
