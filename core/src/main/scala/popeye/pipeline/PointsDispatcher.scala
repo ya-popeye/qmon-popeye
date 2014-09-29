@@ -14,7 +14,8 @@ class PointsDispatcherConfig(config: Config) extends DispatcherConfig(config) {
 class PointsDispatcherMetrics(prefix: String, override val metricRegistry: MetricRegistry)
   extends DispatcherMetrics(prefix, metricRegistry) {
   val pointsMeter = metrics.meter(s"$prefix.points")
-  val batchSize = metrics.histogram(s"$prefix.points-batch-size")
+  val batchSizePoints = metrics.histogram(s"$prefix.batch.size.points")
+  val batchSizePacks = metrics.histogram(s"$prefix.batch.size.packs")
   val queueSizeAfterFlush = metrics.histogram(s"$prefix.queue-size-after-flush")
   val queueSizeAfterWorkDone = metrics.histogram(s"$prefix.queue-size-after-work-done")
   val queueEmpty = metrics.meter(s"$prefix.queue-empty")
@@ -61,7 +62,8 @@ trait PointsDispatcherActor extends DispatcherActor {
       metrics.queueEmpty.mark()
     }
     if (!data.isEmpty) {
-      metrics.batchSize.update(data.map(_.pointsCount).sum)
+      metrics.batchSizePoints.update(data.map(_.pointsCount).sum)
+      metrics.batchSizePacks.update(data.size)
       log.debug(s"Sending ${data.foldLeft(0)({
         (a, b) => a + b.bufferLength
       })} bytes, will trigger ${promises.size} promises")
