@@ -1,8 +1,9 @@
 package popeye.storage.hbase
 
+import com.codahale.metrics.MetricRegistry
 import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.util.Bytes
-import popeye.Logging
+import popeye.{Instrumented, Logging}
 import popeye.storage.hbase.HBaseStorage._
 import scala.collection.JavaConversions._
 import popeye.storage.hbase.HBaseStorage.QualifiedId
@@ -23,8 +24,17 @@ class UniqueIdStorageException(msg: String, t: Throwable) extends IllegalStateEx
 
 class UniqueIdRaceException(msg: String) extends UniqueIdStorageException(msg)
 
+class UniqueIdStorageMetrics(name: String, override val metricRegistry: MetricRegistry) extends Instrumented {
+  val findByNameTimer = metrics.timer(f"$name.find.id.time")
+  val findByNameBatchSize = metrics.histogram(f"$name.find.id.batch.size")
+  val findByIdTimer = metrics.timer(f"$name.find.name.time")
+  val findByIdBatchSize = metrics.histogram(f"$name.find.name.batch.size")
+  val registerNameTimer = metrics.timer(f"$name.register.time")
+}
+
 class UniqueIdStorage(tableName: String,
                       hTablePool: HTablePool,
+                      metrics: UniqueIdStorageMetrics,
                       generationIdWidth: Int = UniqueIdGenerationWidth,
                       kindWidths: Map[String, Short] = UniqueIdMapping) extends Logging {
 
@@ -38,7 +48,8 @@ class UniqueIdStorage(tableName: String,
    * @param qnames qualified name to resolve
    * @return resolved names
    */
-  def findByName(qnames: Seq[QualifiedName]): Seq[ResolvedName] = {
+  def findByName(qnames: Seq[QualifiedName]): Seq[ResolvedName] = metrics.findByNameTimer.time {
+    metrics.findByNameBatchSize.update(qnames.size)
     val gets = qnames.map {
       qname =>
         val nameRow = createNameRow(qname)
@@ -62,7 +73,8 @@ class UniqueIdStorage(tableName: String,
 
   def findByName(qname: QualifiedName): Option[ResolvedName] = findByName(Seq(qname)).headOption
 
-  def findById(ids: Seq[QualifiedId]): Seq[ResolvedName] = {
+  def findById(ids: Seq[QualifiedId]): Seq[ResolvedName] = metrics.findByIdTimer.time {
+    metrics.findByIdBatchSize.update(ids.size)
     val gets = ids.map {
       id =>
         val idRow = id.generationId.bytes ++ id.id.bytes
@@ -86,7 +98,7 @@ class UniqueIdStorage(tableName: String,
     }
   }
 
-  def registerName(qname: QualifiedName): ResolvedName = {
+  def registerName(qname: QualifiedName): ResolvedName = metrics.registerNameTimer.time {
     debug(s"Registering name $qname")
     validateGenerationIdLen(qname.generationId)
     val idWidth = kindWidths.getOrElse(qname.kind, throw new IllegalArgumentException(s"Unknown kind for $qname"))

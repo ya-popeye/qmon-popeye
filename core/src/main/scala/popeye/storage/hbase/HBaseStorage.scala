@@ -583,7 +583,10 @@ class HBaseStorageConfigured(config: HBaseStorageConfig, actorSystem: ActorSyste
 
   actorSystem.registerOnTermination(hTablePool.close())
 
-  val uniqueIdStorage = new UniqueIdStorage(config.uidsTableName, hTablePool)
+  val uniqueIdStorage = {
+    val metrics = new UniqueIdStorageMetrics("uniqueid.storage", metricRegistry)
+    new UniqueIdStorage(config.uidsTableName, hTablePool, metrics)
+  }
 
   val storage = {
     val uniqIdResolver = actorSystem.actorOf(Props.apply(UniqueIdActor(uniqueIdStorage)))

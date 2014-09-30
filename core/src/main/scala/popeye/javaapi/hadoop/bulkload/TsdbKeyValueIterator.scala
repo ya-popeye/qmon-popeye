@@ -1,6 +1,7 @@
 package popeye.javaapi.hadoop.bulkload
 
-import popeye.storage.hbase.{UniqueIdStorage, TsdbFormat}
+import com.codahale.metrics.MetricRegistry
+import popeye.storage.hbase.{UniqueIdStorageMetrics, UniqueIdStorage, TsdbFormat}
 import org.apache.hadoop.hbase.KeyValue
 import scala.collection.JavaConverters._
 import org.apache.hadoop.hbase.client.HTablePool
@@ -12,7 +13,8 @@ object TsdbKeyValueIterator {
              uniqueIdTableName: String,
              tablePool: HTablePool,
              maxCacheSize: Int) = {
-    val idStorage = new UniqueIdStorage(uniqueIdTableName, tablePool)
+    val metrics = new UniqueIdStorageMetrics("uniqueid.storage", new MetricRegistry)
+    val idStorage = new UniqueIdStorage(uniqueIdTableName, tablePool, metrics)
     val uniqueId = new LightweightUniqueId(idStorage, maxCacheSize)
     new TsdbKeyValueIterator(pointsIterator, uniqueId, tsdbFormat)
   }

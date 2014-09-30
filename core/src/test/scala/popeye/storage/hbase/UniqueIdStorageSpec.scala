@@ -3,6 +3,7 @@ package popeye.storage.hbase
 import java.util
 import java.util.Random
 import java.util.concurrent.Executors
+import com.codahale.metrics.MetricRegistry
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.util.Bytes
@@ -150,7 +151,10 @@ class UniqueIdStorageSpec extends FlatSpec with Matchers with MockitoStubs {
     storage.getSuggestions(MetricKind, defaultGenerationId, "a", limit = 2) should equal(Seq("aaa", "aab"))
   }
 
-  def createStorage(htp: HTablePool = hTablePool) = new UniqueIdStorage(tableName, htp, generationIdWidth = 1)
+  def createStorage(htp: HTablePool = hTablePool) = {
+    val metrics = new UniqueIdStorageMetrics("uniqueid.storage", new MetricRegistry)
+    new UniqueIdStorage(tableName, htp, metrics, generationIdWidth = 1)
+  }
 
   def metricQName(name: String, generationId: BytesKey = bytesKey(1)) = QualifiedName(MetricKind, generationId, name)
 }
