@@ -12,7 +12,7 @@ import scala.collection.JavaConverters._
 
 object QueryCommand extends PopeyeCommand with Logging {
   val serverTypes: Map[String, HttpServerFactory] = Map(
-    "opentsdb" -> OpenTSDBHttpApiServer,
+    "opentsdb" -> OpenTSDB2HttpApiServer,
     "simple" -> HttpQueryServer,
     "health-check" -> HealthCheckServer
   ).withDefault {

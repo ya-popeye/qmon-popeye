@@ -40,14 +40,14 @@ class OpenTSDBHttpApiServerTest extends Logging {
                     attributes: Map[String, ValueNameFilterCondition]): Future[PointsStream] =
         storageStub.storage.getPoints(metric, timeRange, attributes)(eCtx)
 
-      def getSuggestions(namePrefix: String, nameType: NameType.NameType): Seq[String] = {
+      def getSuggestions(namePrefix: String, nameType: NameType.NameType, maxSuggestions: Int): Seq[String] = {
         import NameType._
         val names = nameType match {
           case MetricType => metrics
           case AttributeNameType => attrNames
           case AttributeValueType => attrValues
         }
-        val suggestions = names.toList.filter(name => name.startsWith(namePrefix)).sorted.take(10)
+        val suggestions = names.toList.filter(name => name.startsWith(namePrefix)).sorted.take(maxSuggestions)
         info(f"suggestions $suggestions")
         suggestions
       }

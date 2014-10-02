@@ -1,6 +1,6 @@
 package popeye.query
 
-import akka.actor.{ActorSystem, Props, Actor}
+import akka.actor.{ActorRef, ActorSystem, Props, Actor}
 import popeye.Logging
 import akka.pattern.ask
 import java.net.InetSocketAddress
@@ -20,7 +20,6 @@ import popeye.storage.hbase.HBaseStorage._
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition._
 import spray.http.MediaTypes.`application/json`
 import popeye.storage.hbase.HBaseStorage.Point
-import scala.Some
 import spray.http.HttpResponse
 import popeye.storage.hbase.HBaseStorage.PointsGroups
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.SingleValueName
@@ -36,7 +35,6 @@ class OpenTSDBHttpApiServer(storage: PointsStorage, executionContext: ExecutionC
   val storageRequestCancellation = Promise[Nothing]()
 
   def receive: Actor.Receive = {
-    case x: Http.Connected => sender ! Http.Register(self)
     case request@HttpRequest(GET, path@Uri.Path("/q"), _, _, _) =>
       val savedClient = sender
       val parameters = queryToParametersMap(path.query)
@@ -86,7 +84,7 @@ class OpenTSDBHttpApiServer(storage: PointsStorage, executionContext: ExecutionC
             .toRight(f"no such suggest type: $suggestKey, try one of ${suggestTypes.keys}").right
           namePrefix <- parameter("q", "name prefix (q) is not set").right
         } yield Future {
-          val suggestions: Seq[String] = storage.getSuggestions(namePrefix, suggestType)
+          val suggestions: Seq[String] = storage.getSuggestions(namePrefix, suggestType, 10)
           suggestions.mkString("[\"", "\", \"", "\"]")
         }
 
@@ -178,24 +176,17 @@ object OpenTSDBHttpApiServer extends HttpServerFactory {
 
   case class TimeSeriesQuery(aggregatorKey: String, isRate: Boolean, metricName: String, tags: Map[String, ValueNameFilterCondition])
 
-  def runServer(config: Config, storage: PointsStorage, system: ActorSystem, executionContext: ExecutionContext) {
-    implicit val timeout: Timeout = 5 seconds
-    val handler = system.actorOf(
-      Props.apply(new OpenTSDBHttpApiServer(storage, executionContext)),
-      name = "server-http")
+  override def createHandler(system: ActorSystem, storage: PointsStorage, executionContext: ExecutionContext): ActorRef = {
+    system.actorOf(Props.apply(new OpenTSDBHttpApiServer(storage, executionContext)))
+  }
 
-    val hostAndPort = config.getString("http.listen").split(":")
+  override def serverSettings: Option[ServerSettings] = {
     val relaxedUriParsingSettings = """
                                       |spray.can.server.parsing {
                                       |  uri-parsing-mode = relaxed-with-raw-query
                                       |}
                                     """.stripMargin
-    IO(Http)(system) ? Http.Bind(
-      listener = handler,
-      endpoint = new InetSocketAddress(hostAndPort(0), hostAndPort(1).toInt),
-      backlog = config.getInt("http.backlog"),
-      options = Nil,
-      settings = Some(ServerSettings(relaxedUriParsingSettings)))
+    Some(ServerSettings(relaxedUriParsingSettings))
   }
 
   private val paramRegex = "[^&]+".r

@@ -2,7 +2,7 @@ package popeye.query
 
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
-import akka.actor.{Props, ActorSystem, Actor}
+import akka.actor.{ActorRef, Props, ActorSystem, Actor}
 import popeye.Logging
 import spray.http._
 import scala.util.Try
@@ -116,20 +116,10 @@ class HealthCheckServer(storage: PointsStorage, executionContext: ExecutionConte
 }
 
 object HealthCheckServer extends HttpServerFactory {
-  def runServer(config: Config, storage: PointsStorage, system: ActorSystem, executionContext: ExecutionContext) {
-    implicit val timeout: Timeout = 5 seconds
-    val handler = system.actorOf(
-      Props.apply(new HealthCheckServer(storage, executionContext)),
-      name = "health-check-server-http")
-
-    val hostAndPort = config.getString("http.listen").split(":")
-    IO(Http)(system) ? Http.Bind(
-      listener = handler,
-      endpoint = new InetSocketAddress(hostAndPort(0), hostAndPort(1).toInt),
-      backlog = config.getInt("http.backlog"),
-      options = Nil,
-      settings = None
-    )
+  override def createHandler(system: ActorSystem,
+                             storage: PointsStorage,
+                             executionContext: ExecutionContext): ActorRef = {
+    system.actorOf(Props.apply(new HealthCheckServer(storage, executionContext)))
   }
 }
 

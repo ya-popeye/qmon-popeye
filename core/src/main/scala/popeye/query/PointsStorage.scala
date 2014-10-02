@@ -16,13 +16,12 @@ trait PointsStorage {
                     timeRange: (Int, Int),
                     attributes: Map[String, ValueNameFilterCondition]): Future[ListPointsStream]
 
-  def getSuggestions(namePrefix: String, nameType: NameType): Seq[String]
+  def getSuggestions(namePrefix: String, nameType: NameType, maxSuggestions: Int): Seq[String]
 }
 
 object PointsStorage {
 
 
-  val MaxNumberOfSuggestions: Int = 10
   val MaxGenerations = 3
 
   object NameType extends Enumeration {
@@ -45,7 +44,7 @@ object PointsStorage {
                       attributes: Map[String, ValueNameFilterCondition]) =
       pointsStorage.getListPoints(metric, timeRange, attributes)(executionContext)
 
-    def getSuggestions(namePrefix: String, nameType: NameType): Seq[String] = {
+    def getSuggestions(namePrefix: String, nameType: NameType, maxSuggestions: Int): Seq[String] = {
 
       import NameType._
       val kind = nameType match {
@@ -64,7 +63,7 @@ object PointsStorage {
           kind,
           new BytesKey(Bytes.toBytes(genId)),
           namePrefix,
-          MaxNumberOfSuggestions
+          maxSuggestions
         )
       }
       SortedSet(suggestions: _*).toSeq

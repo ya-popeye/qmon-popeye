@@ -116,20 +116,10 @@ object HttpQueryServer extends HttpServerFactory {
     "avg" -> (seq => seq.sum / seq.size)
   )
 
-  def runServer(config: Config, storage: PointsStorage, system: ActorSystem, executionContext: ExecutionContext) = {
-    implicit val timeout: Timeout = 5 seconds
-    val handler = system.actorOf(
-      Props.apply(new HttpQueryServer(storage, executionContext)),
-      name = "server-http")
-
-    val hostport = config.getString("http.listen").split(":")
-    val addr = new InetSocketAddress(hostport(0), hostport(1).toInt)
-    IO(Http)(system) ? Http.Bind(
-      listener = handler,
-      endpoint = addr,
-      backlog = config.getInt("http.backlog"),
-      options = Nil,
-      settings = None)
+  override def createHandler(system: ActorSystem,
+                             storage: PointsStorage,
+                             executionContext: ExecutionContext): ActorRef = {
+    system.actorOf(Props.apply(new HttpQueryServer(storage, executionContext)))
   }
 
   private def aggregationsToString(aggregationsMap: Map[PointAttributes, Seq[(Int, Double)]]): String =
