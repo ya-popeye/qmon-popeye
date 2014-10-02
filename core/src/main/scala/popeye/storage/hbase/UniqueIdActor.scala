@@ -1,20 +1,14 @@
 package popeye.storage.hbase
 
 import akka.actor._
-import popeye.Logging
-import popeye.storage.hbase.BytesKey._
-import popeye.storage.hbase.UniqueIdProtocol.NotFoundName
-import popeye.storage.hbase.UniqueIdProtocol.FindName
-import popeye.storage.hbase.UniqueIdProtocol.NotFoundId
-import popeye.storage.hbase.UniqueIdProtocol.Resolved
-import scala.Some
-import popeye.storage.hbase.UniqueIdProtocol.FindId
-import popeye.storage.hbase.UniqueIdProtocol.Race
-import akka.actor.Terminated
-import popeye.storage.hbase.UniqueIdProtocol.ResolutionFailed
 import akka.actor.SupervisorStrategy.Restart
+import popeye.storage.hbase.BytesKey._
+import popeye.storage.hbase.UniqueIdProtocol._
 
 import HBaseStorage._
+
+import scala.collection.immutable.Queue
+import scala.concurrent.Future
 
 object UniqueIdProtocol {
 
@@ -49,6 +43,17 @@ trait UniqueIdStorageTrait {
 }
 
 object UniqueIdActor {
+
+  case class StateData(requestQueue: Queue[(ActorRef, Request)])
+
+  sealed trait State
+
+  case object Idle extends State
+
+  case object Resolving extends State
+
+  case object Resolved
+
   def apply(storage: UniqueIdStorage, batchSize: Int = 100) = {
     val storageWrapper = new UniqueIdStorageTrait {
       def findByName(qnames: Seq[QualifiedName]): Seq[ResolvedName] = storage.findByName(qnames)
@@ -64,108 +69,119 @@ object UniqueIdActor {
 /**
  * @author Andrey Stepachev
  */
-class UniqueIdActor(storage: UniqueIdStorageTrait,
-                    batchSize: Int = 100)
-  extends Actor with Logging {
 
-
-  private var idRequests = Map[QualifiedId, List[ActorRef]]()
-  private var lookupRequests = Map[QualifiedName, List[ActorRef]]()
-  private var createRequests = Map[QualifiedName, List[ActorRef]]()
+class UniqueIdActor(storage: UniqueIdStorageTrait, batchSize: Int = 1000)
+  extends FSM[UniqueIdActor.State, UniqueIdActor.StateData] {
 
   override def supervisorStrategy: SupervisorStrategy = OneForOneStrategy() {
     case _ => Restart
   }
 
-  override def postStop() {
-    idRequests.foreach {entry => sendResolutionFailed(entry._2)}
-    lookupRequests.foreach {entry => sendResolutionFailed(entry._2)}
-    createRequests.foreach {entry => sendResolutionFailed(entry._2)}
-    super.postStop()
+  implicit val exct = context.dispatcher
+
+  startWith(UniqueIdActor.Idle, UniqueIdActor.StateData(Queue.empty))
+
+  when(UniqueIdActor.Idle) {
+    case Event(r: Request, _) =>
+      resolveNameAndIds(Seq((sender, r))).onComplete(_ => self ! Resolved)
+      goto(UniqueIdActor.Resolving) using UniqueIdActor.StateData(Queue.empty)
   }
 
-  def sendResolutionFailed(actors: Seq[ActorRef]) {
-    actors.map{ar => ar ! ResolutionFailed(new InterruptedException("Stopped Actor"))}
-  }
+  when(UniqueIdActor.Resolving) {
+    case Event(r: Request, state) =>
+      val queueWithNewRequest = state.requestQueue.enqueue((sender, r))
+      val onlyFreshRequests = queueWithNewRequest.drop(queueWithNewRequest.size - batchSize)
+      stay() using state.copy(requestQueue = onlyFreshRequests)
 
-  def receive: Actor.Receive = {
-
-    case r: FindId =>
-      val list = idRequests.getOrElse(r.qid, List.empty)
-      idRequests = idRequests.updated(r.qid, list ++ List(sender))
-      context watch sender
-      checkIds()
-
-    case r: FindName =>
-      @inline
-      def addTo(map: Map[QualifiedName, List[ActorRef]]): Map[QualifiedName, List[ActorRef]] = {
-        val list = map.getOrElse(r.qname, List.empty)
-        map.updated(r.qname, list ++ List(sender))
-      }
-      if (r.create) {
-        createRequests = addTo(createRequests)
+    case Event(Resolved, state) =>
+      if (state.requestQueue.nonEmpty) {
+        resolveNameAndIds(state.requestQueue).onComplete(_ => self ! Resolved)
+        stay() using state.copy(requestQueue = Queue.empty)
       } else {
-        lookupRequests = addTo(lookupRequests)
+        goto(UniqueIdActor.Idle)
       }
-      checkNames()
   }
 
-  private def checkIds() = {
-    try {
-      val resolved = storage.findById(idRequests.keys.toSeq)
-        .map(rname => (new BytesKey(rname.id), rname))
-        .toMap
-      idRequests.foreach { tuple =>
-        resolved.get(tuple._1.id) match {
-          case Some(name) =>
-            tuple._2.foreach { ref => ref ! Resolved(name)}
-          case None =>
-            tuple._2.foreach { ref => ref ! NotFoundId(tuple._1)}
-        }
+  def resolveNameAndIds(requests: Seq[(ActorRef, Request)]): Future[Unit] = {
+    var idRequests = Map[QualifiedId, List[ActorRef]]()
+    var lookupRequests = Map[QualifiedName, List[ActorRef]]()
+    var createRequests = Map[QualifiedName, List[ActorRef]]()
+    for ((sender, request) <- requests) {
+      request match {
+        case r: FindId =>
+          val list = idRequests.getOrElse(r.qid, List.empty)
+          idRequests = idRequests.updated(r.qid, list ++ List(sender))
+
+        case r: FindName =>
+          @inline
+          def addTo(map: Map[QualifiedName, List[ActorRef]]): Map[QualifiedName, List[ActorRef]] = {
+            val list = map.getOrElse(r.qname, List.empty)
+            map.updated(r.qname, list ++ List(sender))
+          }
+          if (r.create) {
+            createRequests = addTo(createRequests)
+          } else {
+            lookupRequests = addTo(lookupRequests)
+          }
       }
-    } finally {
-      idRequests = Map()
+    }
+    Future {
+      if (lookupRequests.nonEmpty || createRequests.nonEmpty) {
+        checkNames(lookupRequests, createRequests)
+      }
+      if (idRequests.nonEmpty) {
+        checkIds(idRequests)
+      }
     }
   }
 
-  private def checkNames() = {
-    var recreate = Map[QualifiedName, List[ActorRef]]()
-    try {
-      val keys = lookupRequests.keySet ++ createRequests.keySet
-      debug(s"Lookup for $keys")
-      val resolved = storage.findByName(keys.toSeq).map(resolved => (resolved.toQualifiedName, resolved)).toMap
-      debug(s"Found $resolved")
-      lookupRequests.foreach { tuple =>
-        resolved.get(tuple._1) match {
-          case Some(rname) =>
-            tuple._2.foreach { ref => ref ! Resolved(rname)}
-          case None =>
-            tuple._2.foreach { ref => ref ! NotFoundName(tuple._1)}
-        }
+  private def checkIds(idRequests: Map[QualifiedId, List[ActorRef]]) = {
+    val resolved = storage.findById(idRequests.keys.toSeq)
+      .map(rname => (new BytesKey(rname.id), rname))
+      .toMap
+    idRequests.foreach { tuple =>
+      resolved.get(tuple._1.id) match {
+        case Some(name) =>
+          tuple._2.foreach { ref => ref ! Resolved(name) }
+        case None =>
+          tuple._2.foreach { ref => ref ! NotFoundId(tuple._1) }
       }
-      createRequests.foreach { tuple =>
-        resolved.get(tuple._1) match {
-          case Some(rname) =>
-            tuple._2.foreach { ref => ref ! Resolved(rname)}
-          case None =>
-            try {
-              val result = storage.registerName(tuple._1)
-              tuple._2.foreach { ref => ref ! Resolved(result)}
-            } catch {
-              case ex: UniqueIdRaceException =>
-                error("Race: ", ex)
-                tuple._2.foreach { ref => ref ! Race(tuple._1)}
-              case ex: Throwable =>
-                error("UniqueIdActor got error", ex)
-                tuple._2.foreach {
-                  _ ! ResolutionFailed(ex)
-                }
-            }
-        }
+     }
+  }
+
+  private def checkNames(lookupRequests: Map[QualifiedName, List[ActorRef]],
+                         createRequests: Map[QualifiedName, List[ActorRef]]) = {
+    val keys = lookupRequests.keySet ++ createRequests.keySet
+    log.debug(s"Lookup for $keys")
+    val resolved = storage.findByName(keys.toSeq).map(resolved => (resolved.toQualifiedName, resolved)).toMap
+    log.debug(s"Found $resolved")
+    lookupRequests.foreach { tuple =>
+      resolved.get(tuple._1) match {
+        case Some(rname) =>
+          tuple._2.foreach { ref => ref ! Resolved(rname) }
+        case None =>
+          tuple._2.foreach { ref => ref ! NotFoundName(tuple._1) }
       }
-    } finally {
-      createRequests = recreate
-      lookupRequests = Map()
+    }
+    createRequests.foreach { tuple =>
+      resolved.get(tuple._1) match {
+        case Some(rname) =>
+          tuple._2.foreach { ref => ref ! Resolved(rname) }
+        case None =>
+          try {
+            val result = storage.registerName(tuple._1)
+            tuple._2.foreach { ref => ref ! Resolved(result) }
+          } catch {
+            case ex: UniqueIdRaceException =>
+              log.error(ex, "Race")
+              tuple._2.foreach { ref => ref ! Race(tuple._1) }
+            case ex: Throwable =>
+              log.error(ex, "UniqueIdActor got error")
+              tuple._2.foreach {
+                _ ! ResolutionFailed(ex)
+              }
+          }
+      }
     }
   }
 }
