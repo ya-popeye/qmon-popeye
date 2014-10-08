@@ -7,6 +7,7 @@ import com.codahale.metrics.MetricRegistry
 import java.util
 import org.apache.hadoop.hbase.KeyValue
 import org.apache.hadoop.hbase.client._
+import org.apache.hadoop.hbase.util.Bytes
 import popeye.proto.{Message, PackedPoints}
 import popeye.util.FutureStream
 import popeye.{Instrumented, Logging}
@@ -281,6 +282,13 @@ class HBaseStorage(tableName: String,
         scanNameToIdMap,
         valueTypeStructureId
       )
+      val scansString = scans.map {
+        scan =>
+          val startRow = Bytes.toStringBinary(scan.getStartRow)
+          val stopRow = Bytes.toStringBinary(scan.getStopRow)
+          s"start row = $startRow stop row = $stopRow"
+      }.mkString("\n")
+      debug(s"starting hbase scans:\n$scansString")
       getChunkedResults(tableName, readChunkSize, scans)
     }
   }
