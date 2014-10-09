@@ -205,21 +205,20 @@ class OpenTSDB2HttpApiServer(storage: PointsStorage, executionContext: Execution
       val graphPoints = points.iterator.map {
         point => (point.timestamp, point.doubleValue)
       }
-      downsamplingOption.map {
+      val downsampled = downsamplingOption.map {
         case (interval, aggregator) => PointSeriesUtils.downsample(graphPoints, interval, aggregator)
       }.getOrElse(graphPoints)
+      if (rate) {
+        PointSeriesUtils.differentiate(downsampled)
+      } else {
+        downsampled
+      }
     }
     pointsGroups.groupsMap.mapValues {
       group =>
         val graphPointIterators = group.values.map(toGraphPointIterator).toSeq
         val aggregated = PointSeriesUtils.interpolateAndAggregate(graphPointIterators, interpolationAggregator)
-        val result =
-          if (rate) {
-            PointSeriesUtils.differentiate(aggregated)
-          } else {
-            aggregated
-          }
-        result.toList
+        aggregated.toList
     }
   }
 
