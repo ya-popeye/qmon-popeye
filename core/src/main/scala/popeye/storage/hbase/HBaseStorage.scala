@@ -12,6 +12,7 @@ import popeye.proto.{Message, PackedPoints}
 import popeye.util.FutureStream
 import popeye.{Instrumented, Logging}
 import scala.collection.JavaConversions._
+import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
 import com.typesafe.config.Config
@@ -105,9 +106,9 @@ object HBaseStorage {
   case class ListPoint(timestamp: Int, value: Either[Seq[Long], Seq[Float]]) {
     def isFloatList = value.isRight
 
-    def getFloatListValue = value match { case Right(f) => f }
+    def getFloatListValue = value.right.get
 
-    def getLongListValue = value match { case Left(l) => l }
+    def getLongListValue = value.left.get
 
     def doubleListValue = {
       if (isFloatList) {
@@ -121,9 +122,9 @@ object HBaseStorage {
   case class Point(timestamp: Int, value: Either[Long, Float]) {
     def isFloat = value.isRight
 
-    def getFloatValue = value match { case Right(f) => f }
+    def getFloatValue = value.right.get
 
-    def getLongValue = value match { case Left(l) => l }
+    def getLongValue = value.left.get
 
     def doubleValue = {
       if (isFloat) {
@@ -412,15 +413,16 @@ class HBaseStorage(tableName: String,
     // unresolved will be delayed for future expansion
     val pointsBuffer = points.toBuffer
     val pointTimestamps = pointsBuffer.map(_.getTimestamp)
-    convertToKeyValues(pointsBuffer).flatMap {
-      case (partiallyConvertedPoints, keyValues) =>
+    val currentTimeInSeconds = (System.currentTimeMillis() / 1000).toInt
+    convertToKeyValues(pointsBuffer, currentTimeInSeconds).flatMap {
+      case (keyValues, delayedPoints) =>
         // write resolved points
         val writeComplete = if (!keyValues.isEmpty) Future[Int] {
           keyValues.size
         } else Future.successful[Int](0)
         writeKv(keyValues)
 
-        val delayedKeyValuesWriteFuture = writePartiallyConvertedPoints(partiallyConvertedPoints)
+        val delayedKeyValuesWriteFuture = writeDelayedPoints(delayedPoints, currentTimeInSeconds)
 
         (delayedKeyValuesWriteFuture zip writeComplete).map {
           case (a, b) =>
@@ -435,29 +437,48 @@ class HBaseStorage(tableName: String,
     }
   }
 
-  private def writePartiallyConvertedPoints(pPoints: PartiallyConvertedPoints)
-                                           (implicit eCtx: ExecutionContext): Future[Int] = {
-    if (pPoints.points.nonEmpty) {
-      val idMapFuture = resolveNames(pPoints.unresolvedNames)
+  private def writeDelayedPoints(delayedPoints: Seq[Message.Point], currentTimeInSeconds: Int)
+                                (implicit eCtx: ExecutionContext): Future[Int] = {
+    if (delayedPoints.nonEmpty) {
+      val names = delayedPoints.flatMap(point => tsdbFormat.getAllQualifiedNames(point, currentTimeInSeconds)).toSet
+      val idMapFuture = resolveNames(names)
       idMapFuture.map {
         idMap =>
-          val keyValues = pPoints.convert(idMap)
+          val keyValues = ArrayBuffer[KeyValue]()
+          delayedPoints.map(point => tsdbFormat.convertToKeyValue(point, idMap.get, currentTimeInSeconds)).foreach {
+            case SuccessfulConversion(keyValue) => keyValues += keyValue
+            case IdCacheMiss => handlePointConversionError(
+              new RuntimeException("delayed points conversion error: not all names were resolved")
+            )
+            case FailedConversion(ex) => handlePointConversionError(ex)
+          }
           writeKv(keyValues)
           keyValues.size
       }
     } else Future.successful[Int](0)
   }
 
-  private def convertToKeyValues(points: Iterable[Message.Point])
-                                (implicit eCtx: ExecutionContext)
-  : Future[(PartiallyConvertedPoints, Seq[KeyValue])] = Future {
-    val idCache: QualifiedName => Option[BytesKey] = uniqueId.findIdByName
-    val currentTimeInSeconds = (System.currentTimeMillis() / 1000).toInt
-    val result@(partiallyConvertedPoints, keyValues) =
-      tsdbFormat.convertToKeyValues(points, idCache, currentTimeInSeconds)
-    metrics.resolvedPointsMeter.mark(keyValues.size)
-    metrics.delayedPointsMeter.mark(partiallyConvertedPoints.points.size)
-    result
+  private def convertToKeyValues(points: Iterable[Message.Point], currentTimeInSeconds: Int)
+                                (implicit eCtx: ExecutionContext): Future[(Seq[KeyValue], Seq[Message.Point])] =
+    Future {
+      val idCache: QualifiedName => Option[BytesKey] = uniqueId.findIdByName
+      val keyValues = ArrayBuffer[KeyValue]()
+      val delayedPoints = ArrayBuffer[Message.Point]()
+      points.foreach {
+        point => tsdbFormat.convertToKeyValue(point, idCache, currentTimeInSeconds) match {
+          case SuccessfulConversion(keyValue) => keyValues += keyValue
+          case IdCacheMiss => delayedPoints += point
+          case FailedConversion(e) => handlePointConversionError(e)
+        }
+      }
+      metrics.resolvedPointsMeter.mark(keyValues.size)
+      metrics.delayedPointsMeter.mark(delayedPoints.size)
+      (keyValues, delayedPoints)
+    }
+
+  private def handlePointConversionError(e: Exception): Unit = {
+    error("Point -> KeyValue conversion failed", e)
+    metrics.failedPointConversions.mark()
   }
 
   private def resolveNames(names: Set[QualifiedName])(implicit eCtx: ExecutionContext): Future[Map[QualifiedName, BytesKey]] = {
@@ -606,13 +627,7 @@ class HBaseStorageConfigured(config: HBaseStorageConfig, actorSystem: ActorSyste
       config.resolveTimeout
     )
     val metrics: HBaseStorageMetrics = new HBaseStorageMetrics(config.storageName, metricRegistry)
-    val conversionErrorHandler = new PointConversionErrorHandler {
-      override def handlePointConversionError(e: Exception): Unit = {
-        debugThrowable("Point -> KeyValue conversion failed", e)
-        metrics.failedPointConversions.mark()
-      }
-    }
-    val tsdbFormat = new TsdbFormat(config.timeRangeIdMapping, config.shardAttributeNames, conversionErrorHandler)
+    val tsdbFormat = new TsdbFormat(config.timeRangeIdMapping, config.shardAttributeNames)
     new HBaseStorage(
       config.pointsTableName,
       hTablePool,

@@ -79,7 +79,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
 
   it should "create KeyValue rows" in {
     val tsdbFormat = createTsdbFormat()
-    val keyValue = tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap.get, 0).right.get
+    val SuccessfulConversion(keyValue) = tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap.get, 0)
     val metricId = Array[Byte](1, 0, 1)
     val valueTypeStructureId = Array[Byte](TsdbFormat.ValueTypes.SingleValueTypeStructureId)
     val timestamp = samplePoint.getTimestamp.toInt
@@ -105,7 +105,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
 
   it should "convert point values" in {
     val tsdbFormat = createTsdbFormat()
-    val keyValue = tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap.get, 0).right.get
+    val SuccessfulConversion(keyValue) = tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap.get, 0)
     val timestamp = samplePoint.getTimestamp.toInt
     val result = new Result(List(keyValue).asJava)
     tsdbFormat.parseSingleValueRowResult(result).points.head should equal(HBaseStorage.Point(timestamp, samplePoint.getIntValue))
@@ -114,7 +114,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
   it should "handle int list values" in {
     val tsdbFormat = createTsdbFormat()
     val point = createListPoint("test", 0, Seq(defaultShardAttributeName -> "value"), Left(Seq(1, 2, 3)))
-    val keyValue = tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0).right.get
+    val SuccessfulConversion(keyValue) = tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0)
     val timestamp = point.getTimestamp.toInt
     val result = new Result(List(keyValue).asJava)
     tsdbFormat.parseListValueRowResult(result).lists.head should equal(HBaseStorage.ListPoint(timestamp, Left(Seq(1, 2, 3))))
@@ -123,7 +123,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
   it should "handle float list values" in {
     val tsdbFormat = createTsdbFormat()
     val point = createListPoint("test", 0, Seq(defaultShardAttributeName -> "value"), Right(Seq(1, 2, 3)))
-    val keyValue = tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0).right.get
+    val SuccessfulConversion(keyValue) = tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0)
     val timestamp = point.getTimestamp.toInt
     val result = new Result(List(keyValue).asJava)
     tsdbFormat.parseListValueRowResult(result).lists.head should equal(HBaseStorage.ListPoint(timestamp, Right(Seq(1, 2, 3))))
@@ -155,7 +155,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     for (_ <- 0 to 100) {
       val startTime = System.currentTimeMillis()
       for (point <- points) {
-        tsdbFormat.convertToKeyValue(point, idMap.get, 0).right.get
+        tsdbFormat.convertToKeyValue(point, idMap.get, 0) shouldBe a[SuccessfulConversion]
       }
       println(f"time:${ System.currentTimeMillis() - startTime }")
     }
@@ -177,30 +177,11 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     FloatListValueType.parseFloatListValue(value).toSeq should be(empty)
   }
 
-  behavior of "TsdbFormat.convertToKeyValues"
-
-  it should "convert point if all names are in cache" in {
-    val tsdbFormat = createTsdbFormat()
-    val (partiallyConvertedPoints, keyValues) = tsdbFormat.convertToKeyValues(Seq(samplePoint), sampleIdMap.get, 0)
-    partiallyConvertedPoints.points.isEmpty should be(true)
-    keyValues.size should equal(1)
-    keyValues.head should equal(tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap.get, 0).right.get)
-    val point = HBaseStorage.Point(samplePoint.getTimestamp.toInt, samplePoint.getIntValue)
-    tsdbFormat.parseSingleValueRowResult(new Result(keyValues.asJava)).points.head should equal(point)
-  }
-
   it should "not convert point if not all names are in cache" in {
     val tsdbFormat = createTsdbFormat()
     val notInCache = sampleIdMap.keys.head
     val idCache = (name: QualifiedName) => (sampleIdMap - notInCache).get(name)
-    val (partiallyConvertedPoints, keyValues) = tsdbFormat.convertToKeyValues(Seq(samplePoint), idCache, 0)
-    partiallyConvertedPoints.points.isEmpty should be(false)
-    keyValues.isEmpty should be(true)
-    partiallyConvertedPoints.unresolvedNames should equal(Set(notInCache))
-    val delayedkeyValues = partiallyConvertedPoints.convert(Map(notInCache -> sampleIdMap(notInCache)))
-    delayedkeyValues.head should equal(tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap.get, 0).right.get)
-    val point = HBaseStorage.Point(samplePoint.getTimestamp.toInt, samplePoint.getIntValue)
-    tsdbFormat.parseSingleValueRowResult(new Result(delayedkeyValues.asJava)).points.head should equal(point)
+    tsdbFormat.convertToKeyValue(samplePoint, idCache, 0) should be(IdCacheMiss)
   }
 
   behavior of "TsdbFormat.parseRowResult"
@@ -222,7 +203,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
         )
     }
     val keyValues = points.map {
-      point => tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0).right.get
+      point => tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0).asInstanceOf[SuccessfulConversion].keyValue
     }
     require(keyValues.map(_.getRow.toBuffer).distinct.size == 1)
     val parsedRowResult = tsdbFormat.parseSingleValueRowResult(new Result(keyValues.asJava))

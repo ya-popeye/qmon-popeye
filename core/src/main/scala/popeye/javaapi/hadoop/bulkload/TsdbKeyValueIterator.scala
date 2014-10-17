@@ -28,13 +28,7 @@ class TsdbKeyValueIterator(pointsIterator: KafkaPointsIterator,
   def next(): java.util.List[KeyValue] = {
     val points = pointsIterator.next()
     val currentTimeInSeconds = (System.currentTimeMillis() / 1000).toInt
-    val (partiallyConvertedPoints, keyValues) = tsdbFormat.convertToKeyValues(
-      points,
-      uniqueId.findByName,
-      currentTimeInSeconds
-    )
-    val loadedIds = uniqueId.findOrRegisterIdsByNames(partiallyConvertedPoints.unresolvedNames)
-    (partiallyConvertedPoints.convert(loadedIds) ++ keyValues).asJava
+    ???
   }
 
   def getProgress = pointsIterator.getProgress
