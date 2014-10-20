@@ -23,7 +23,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder
 import popeye.proto.Message.Point
 import scala.collection.JavaConverters._
 
-object PipelineCommand {
+object PipelineCommand extends PopeyeCommand {
 
   val channels: Map[String, PipelineChannelFactory] = Map(
     "kafka" -> KafkaPipelineChannel.factory(),
@@ -80,17 +80,15 @@ object PipelineCommand {
           f"available types: ${ factories.keys }")
     )
   }
-}
 
-class PipelineCommand extends PopeyeCommand {
   def prepare(parser: OptionParser[MainConfig]): OptionParser[MainConfig] = {
     parser cmd "pipeline" action { (_, c) => c.copy(command = Some(this))}
     parser
   }
 
-  def run(actorSystem: ActorSystem, metrics: MetricRegistry, config: Config, mainConfig: MainConfig): Unit = {
-    val daemonThreadFatory = new ThreadFactoryBuilder().setDaemon(true).build()
-    val ectx = ExecutionContexts.fromExecutorService(Executors.newCachedThreadPool(daemonThreadFatory))
+  def run(actorSystem: ActorSystem, metrics: MetricRegistry, config: Config): Unit = {
+    val daemonThreadFactory = new ThreadFactoryBuilder().setDaemon(true).build()
+    val ectx = ExecutionContexts.fromExecutorService(Executors.newCachedThreadPool(daemonThreadFactory))
     val pc = config.getConfig("popeye.pipeline")
     val idGenerator = new IdGenerator(
       config.getInt("generator.id"),

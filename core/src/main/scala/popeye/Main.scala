@@ -14,11 +14,11 @@ case class MainConfig(debug: Boolean = false,
 
 trait PopeyeCommand {
   def prepare(parser: scopt.OptionParser[MainConfig]): scopt.OptionParser[MainConfig]
-  def run(actorSystem: ActorSystem, metrics: MetricRegistry, config: Config, mainConfig: MainConfig): Unit
+  def run(actorSystem: ActorSystem, metrics: MetricRegistry, config: Config): Unit
 }
 
 object Main extends App with MetricsConfiguration with Logging {
-  val commands = List[PopeyeCommand](new PipelineCommand, QueryCommand, PrepareStorageCommand)
+  val commands = List[PopeyeCommand](PipelineCommand, QueryCommand, PrepareStorageCommand)
 
   val commonParser = new scopt.OptionParser[MainConfig]("popeye") {
     head("popeye", "0.x")
@@ -56,7 +56,7 @@ object Main extends App with MetricsConfiguration with Logging {
         }
       }))
       try {
-        cmd.get.run(actorSystem, metrics, conf, main.get)
+        cmd.get.run(actorSystem, metrics, conf)
       } catch {
         case e: Exception=>
           log.error("Failed to start", e)

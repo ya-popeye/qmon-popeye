@@ -26,7 +26,7 @@ object PrepareStorageCommand extends PopeyeCommand with Logging {
     parser
   }
 
-  override def run(actorSystem: ActorSystem, metrics: MetricRegistry, config: Config, mainConfig: MainConfig): Unit = {
+  override def run(actorSystem: ActorSystem, metrics: MetricRegistry, config: Config): Unit = {
     info("starting....")
     val shardAttributeNames = config.getStringList("popeye.shard-attributes").asScala.toSet
     val prepareStorageConfig = config.getConfig("popeye.prepare-storage")

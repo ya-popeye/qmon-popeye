@@ -27,7 +27,7 @@ object QueryCommand extends PopeyeCommand with Logging {
     parser
   }
 
-  def run(actorSystem: ActorSystem, metrics: MetricRegistry, config: Config, mainConfig: MainConfig): Unit = {
+  def run(actorSystem: ActorSystem, metrics: MetricRegistry, config: Config): Unit = {
     val shardAttributeNames = config.getStringList("popeye.shard-attributes").asScala.toSet
     val queryConfig = config.getConfig("popeye.query")
     val storagesConfig = config.getConfig("popeye.storages")
