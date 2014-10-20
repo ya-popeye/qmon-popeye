@@ -49,6 +49,7 @@ class UniqueIdStorage(tableName: String,
    * @return resolved names
    */
   def findByName(qnames: Seq[QualifiedName]): Seq[ResolvedName] = metrics.findByNameTimer.time {
+    debug(s"looking up ids by names: $qnames")
     metrics.findByNameBatchSize.update(qnames.size)
     val gets = qnames.map {
       qname =>
@@ -56,7 +57,7 @@ class UniqueIdStorage(tableName: String,
         new Get(nameRow).addColumn(IdFamily, Bytes.toBytes(qname.kind))
     }
     withHTable { hTable =>
-      for {
+      val results = for {
         r <- hTable.get(gets).toSeq if !r.isEmpty
         k <- r.raw().toSeq
       } yield {
@@ -68,12 +69,15 @@ class UniqueIdStorage(tableName: String,
           name = Bytes.toString(nameBytes),
           id = new BytesKey(k.getValue))
       }
+      debug(s"looking up ids by names, results: $results")
+      results
     }
   }
 
   def findByName(qname: QualifiedName): Option[ResolvedName] = findByName(Seq(qname)).headOption
 
   def findById(ids: Seq[QualifiedId]): Seq[ResolvedName] = metrics.findByIdTimer.time {
+    debug(s"looking up names by ids: $ids")
     metrics.findByIdBatchSize.update(ids.size)
     val gets = ids.map {
       id =>
@@ -94,6 +98,7 @@ class UniqueIdStorage(tableName: String,
           name = Bytes.toString(k.getValue),
           id = new BytesKey(idBytes))
       }
+      debug(s"looking up names by ids, results: $r")
       r
     }
   }

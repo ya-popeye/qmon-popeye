@@ -149,6 +149,8 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
                           executionContext: ExecutionContext)
   extends FSM[State, ConsumerState] {
 
+  log.info(s"actor $self started")
+
   implicit val eCtx = executionContext
   val numberOfSenders = new AtomicInteger(0)
   metrics.addSenderNumberGauge {

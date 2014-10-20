@@ -132,6 +132,7 @@ class UniqueIdImpl(resolver: ActorRef,
         val promiseCompletionFuture = resolutionFuture.map {
           case r: Resolved =>
             addToCache(r)
+            info(s"id was resolved: $qName => $r")
             promise.success(r.name.id)
           case r: Race =>
             info(s"Got $r, $retries retries left")
@@ -179,6 +180,7 @@ class UniqueIdImpl(resolver: ActorRef,
         val promiseCompletionFuture = responseFuture.map {
           case r: Resolved =>
             addToCache(r)
+            info(s"name was resolved: $qId => $r")
             promise.success(r.name.name)
           case f: ResolutionFailed =>
             log.error("name resolution failed", f.t)

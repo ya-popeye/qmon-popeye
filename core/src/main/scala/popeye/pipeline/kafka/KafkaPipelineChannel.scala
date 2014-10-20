@@ -3,7 +3,7 @@ package popeye.pipeline.kafka
 import _root_.kafka.consumer.{ConsumerConfig, Consumer}
 import akka.actor.ActorRef
 import com.typesafe.config.Config
-import popeye.Instrumented
+import popeye.{Logging, Instrumented}
 import popeye.pipeline._
 import popeye.proto.PackedPoints
 import scala.concurrent.Promise
@@ -15,7 +15,7 @@ import com.codahale.metrics.MetricRegistry
  * @author Andrey Stepachev
  */
 class KafkaPipelineChannel(val config: KafkaPipelineChannelConfig, val context: PipelineContext)
-  extends PipelineChannel {
+  extends PipelineChannel with Logging {
 
   val readerMetrics = new KafkaReaderMetrics(metrics)
   var producer: Option[ActorRef] = None
@@ -44,6 +44,7 @@ class KafkaPipelineChannel(val config: KafkaPipelineChannelConfig, val context: 
   }
 
   def startReader(group: String, mainSink: PointsSink, dropSink: PointsSink): Unit = {
+    info("starting reader...")
     val queueSizeGauge = new KafkaQueueSizeGauge(config.zkConnect, config.brokersList, group, config.topic)
     queueSizeGauge.start(config.queueSizePollInterval, actorSystem.scheduler)(context.ectx)
     readerMetrics.registerQueueSizeGauge(queueSizeGauge, group)
@@ -52,6 +53,7 @@ class KafkaPipelineChannel(val config: KafkaPipelineChannelConfig, val context: 
     for (i <- 0 until nWorkers) {
       consumerId += 1
       val consumerName = s"kafka-consumer-$group-$topic-$consumerId"
+      info(s"starting consumer $consumerName")
       val consumerConfig: KafkaPointsConsumerConfig = config.pointsConsumerConfig
       val pointsSource = getPointsSource(group, consumerName)
       val props = KafkaPointsConsumer.props(
