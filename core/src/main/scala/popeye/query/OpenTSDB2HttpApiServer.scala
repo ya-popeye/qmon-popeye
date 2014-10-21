@@ -84,6 +84,7 @@ class OpenTSDB2HttpApiServer(storage: PointsStorage, executionContext: Execution
               pointsStream.withCancellation(storageRequestCancellation.future)
             )
           } yield {
+            debug(s"got points groups: ${ pointGroups.groupsMap.mapValues(_.mapValues(_.size)) }")
             (query.metricName, aggregatePoints(pointGroups, aggregator, query.isRate, downsampleOption))
           }
       }
@@ -147,7 +148,7 @@ class OpenTSDB2HttpApiServer(storage: PointsStorage, executionContext: Execution
     TimeSeriesQuery(
       jsonQuery.get("metric").getTextValue,
       jsonQuery.get("aggregator").getTextValue,
-      isRate = jsonQuery.has("rate") && jsonQuery.get("rate").getValueAsBoolean,
+      isRate = jsonQuery.has("rate") && jsonQuery.get("rate").asBoolean(),
       downsample,
       tags
     )
@@ -221,7 +222,6 @@ class OpenTSDB2HttpApiServer(storage: PointsStorage, executionContext: Execution
         aggregated.toList
     }
   }
-
 }
 
 object OpenTSDB2HttpApiServer extends HttpServerFactory {
