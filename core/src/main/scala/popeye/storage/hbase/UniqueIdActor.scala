@@ -140,10 +140,10 @@ class UniqueIdActor(storage: UniqueIdStorageTrait, executionContext: ExecutionCo
 
   private def checkIds(idRequests: Map[QualifiedId, List[ActorRef]]) = {
     val resolved = storage.findById(idRequests.keys.toSeq)
-      .map(rname => (new BytesKey(rname.id), rname))
+      .map(rname => (rname.toQualifiedId, rname))
       .toMap
     idRequests.foreach { tuple =>
-      resolved.get(tuple._1.id) match {
+      resolved.get(tuple._1) match {
         case Some(name) =>
           tuple._2.foreach { ref => ref ! Resolved(name) }
         case None =>

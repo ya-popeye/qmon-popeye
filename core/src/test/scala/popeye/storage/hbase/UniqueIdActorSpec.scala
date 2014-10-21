@@ -9,13 +9,14 @@ import popeye.pipeline.test.AkkaTestKitSpec
 import org.mockito.Mockito._
 import akka.testkit.TestActorRef
 import akka.actor.Props
-import popeye.storage.hbase.UniqueIdProtocol.{ResolutionFailed, Resolved, FindName}
+import popeye.storage.hbase.UniqueIdProtocol.{FindId, ResolutionFailed, Resolved, FindName}
 import popeye.storage.hbase.HBaseStorage.{QualifiedId, ResolvedName, QualifiedName}
 import akka.pattern.ask
 import scala.concurrent.{Promise, Future, Await}
 import scala.concurrent.duration._
 import akka.util.Timeout
 import org.mockito.Matchers._
+import popeye.test.PopeyeTestUtils._
 
 
 class UniqueIdActorSpec extends AkkaTestKitSpec("uniqueid") with MockitoStubs {
@@ -76,6 +77,35 @@ class UniqueIdActorSpec extends AkkaTestKitSpec("uniqueid") with MockitoStubs {
     val future = actor ? FindName(resolvedName.toQualifiedName, create = true)
     val response = Await.result(future, 5 seconds)
     response should equal(Resolved(resolvedName))
+  }
+
+  it should "resolve qids that have equal ids but different qualifiers" in {
+    val numberOfNames = 10
+    val allRequestsSent = Promise[Unit]()
+    val generationId = new BytesKey(Array[Byte](0, 0))
+    val resolvedNames = Seq(
+      ResolvedName("tagk", generationId, "host", bytesKey(0)),
+      ResolvedName("tagv", generationId, "yandex.net", bytesKey(0))
+    )
+    val storage = new UniqueIdStorageStub {
+      override def findById(ids: Seq[QualifiedId]): Seq[ResolvedName] = {
+        if (!allRequestsSent.future.isCompleted) {
+          Await.result(allRequestsSent.future, 5 seconds)
+        }
+        ids.map {
+          id => resolvedNames.find(_.toQualifiedId == id).get
+        }
+      }
+    }
+    val actor = createUniqueIdActor(storage)
+    actor ! FindId(resolvedNames.head.toQualifiedId)
+    val idFutures = resolvedNames.toList.map {
+      resolvedName => actor ? FindId(resolvedName.toQualifiedId)
+    }
+    allRequestsSent.success(())
+    val responses = Await.result(Future.sequence(idFutures), 100 millis)
+    responses.collect { case ResolutionFailed(t) => t }.headOption.foreach(throw _)
+    responses should equal(resolvedNames.map(r => Resolved(r)))
   }
 
   class UniqueIdStorageStub extends UniqueIdStorageTrait {
