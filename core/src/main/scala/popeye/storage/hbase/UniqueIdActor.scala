@@ -3,12 +3,14 @@ package popeye.storage.hbase
 import akka.actor._
 import akka.actor.SupervisorStrategy.Restart
 import popeye.storage.hbase.BytesKey._
+import popeye.storage.hbase.UniqueIdActor.RequestsServed
 import popeye.storage.hbase.UniqueIdProtocol._
 
 import HBaseStorage._
 
 import scala.collection.immutable.Queue
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
+import scala.util.{Failure, Success, Try}
 
 object UniqueIdProtocol {
 
@@ -37,6 +39,7 @@ object UniqueIdProtocol {
 trait UniqueIdStorageTrait {
   def findByName(qnames: Seq[QualifiedName]): Seq[ResolvedName]
 
+
   def findById(ids: Seq[QualifiedId]): Seq[ResolvedName]
 
   def registerName(qname: QualifiedName): ResolvedName
@@ -52,9 +55,9 @@ object UniqueIdActor {
 
   case object Resolving extends State
 
-  case object Resolved
+  case object RequestsServed
 
-  def apply(storage: UniqueIdStorage, batchSize: Int = 100) = {
+  def apply(storage: UniqueIdStorage, executionContext: ExecutionContext, batchSize: Int = 100) = {
     val storageWrapper = new UniqueIdStorageTrait {
       def findByName(qnames: Seq[QualifiedName]): Seq[ResolvedName] = storage.findByName(qnames)
 
@@ -62,7 +65,7 @@ object UniqueIdActor {
 
       def registerName(qname: QualifiedName): ResolvedName = storage.registerName(qname)
     }
-    new UniqueIdActor(storageWrapper, batchSize)
+    new UniqueIdActor(storageWrapper, executionContext, batchSize)
   }
 }
 
@@ -70,20 +73,20 @@ object UniqueIdActor {
  * @author Andrey Stepachev
  */
 
-class UniqueIdActor(storage: UniqueIdStorageTrait, batchSize: Int = 1000)
+class UniqueIdActor(storage: UniqueIdStorageTrait, executionContext: ExecutionContext, batchSize: Int = 1000)
   extends FSM[UniqueIdActor.State, UniqueIdActor.StateData] {
 
   override def supervisorStrategy: SupervisorStrategy = OneForOneStrategy() {
     case _ => Restart
   }
 
-  implicit val exct = context.dispatcher
+  implicit val exct = executionContext
 
   startWith(UniqueIdActor.Idle, UniqueIdActor.StateData(Queue.empty))
 
   when(UniqueIdActor.Idle) {
     case Event(r: Request, _) =>
-      resolveNameAndIds(Seq((sender, r))).onComplete(_ => self ! Resolved)
+      resolveNameAndIds(Seq((sender, r))).onComplete(_ => self ! RequestsServed)
       goto(UniqueIdActor.Resolving) using UniqueIdActor.StateData(Queue.empty)
   }
 
@@ -93,9 +96,9 @@ class UniqueIdActor(storage: UniqueIdStorageTrait, batchSize: Int = 1000)
       val onlyFreshRequests = queueWithNewRequest.drop(queueWithNewRequest.size - batchSize)
       stay() using state.copy(requestQueue = onlyFreshRequests)
 
-    case Event(Resolved, state) =>
+    case Event(RequestsServed, state) =>
       if (state.requestQueue.nonEmpty) {
-        resolveNameAndIds(state.requestQueue).onComplete(_ => self ! Resolved)
+        resolveNameAndIds(state.requestQueue).onComplete(_ => self ! RequestsServed)
         stay() using state.copy(requestQueue = Queue.empty)
       } else {
         goto(UniqueIdActor.Idle)
@@ -152,11 +155,20 @@ class UniqueIdActor(storage: UniqueIdStorageTrait, batchSize: Int = 1000)
   private def checkNames(lookupRequests: Map[QualifiedName, List[ActorRef]],
                          createRequests: Map[QualifiedName, List[ActorRef]]) = {
     val keys = lookupRequests.keySet ++ createRequests.keySet
-    log.debug(s"Lookup for $keys")
-    val resolved = storage.findByName(keys.toSeq).map(resolved => (resolved.toQualifiedName, resolved)).toMap
-    log.debug(s"Found $resolved")
+    log.info(s"Lookup for $keys")
+    val resolved = Try(storage.findByName(keys.toSeq).map(resolved => (resolved.toQualifiedName, resolved)).toMap)
+    log.info(s"Found $resolved")
+    resolved match {
+      case Success(resolvedNames) => sendResponses(resolvedNames, lookupRequests, createRequests)
+      case Failure(t) => (lookupRequests.values ++ createRequests.values).flatten.foreach(_ ! ResolutionFailed(t))
+    }
+  }
+
+  def sendResponses(resolvedNames: Map[QualifiedName, ResolvedName],
+                    lookupRequests: Map[QualifiedName, List[ActorRef]],
+                    createRequests: Map[QualifiedName, List[ActorRef]]) = {
     lookupRequests.foreach { tuple =>
-      resolved.get(tuple._1) match {
+      resolvedNames.get(tuple._1) match {
         case Some(rname) =>
           tuple._2.foreach { ref => ref ! Resolved(rname) }
         case None =>
@@ -164,7 +176,7 @@ class UniqueIdActor(storage: UniqueIdStorageTrait, batchSize: Int = 1000)
       }
     }
     createRequests.foreach { tuple =>
-      resolved.get(tuple._1) match {
+      resolvedNames.get(tuple._1) match {
         case Some(rname) =>
           tuple._2.foreach { ref => ref ! Resolved(rname) }
         case None =>

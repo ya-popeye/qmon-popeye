@@ -618,7 +618,7 @@ class HBaseStorageConfigured(config: HBaseStorageConfig, actorSystem: ActorSyste
   }
 
   val storage = {
-    val uniqIdResolver = actorSystem.actorOf(Props.apply(UniqueIdActor(uniqueIdStorage)))
+    val uniqIdResolver = actorSystem.actorOf(Props.apply(UniqueIdActor(uniqueIdStorage, actorSystem.dispatcher)))
     val uniqueId = new UniqueIdImpl(
       uniqIdResolver,
       new UniqueIdMetrics("uniqueid", metricRegistry),

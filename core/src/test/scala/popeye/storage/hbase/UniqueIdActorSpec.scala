@@ -1,16 +1,18 @@
 package popeye.storage.hbase
 
-import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
 
+import akka.dispatch.ExecutionContexts
 import popeye.test.MockitoStubs
 import popeye.pipeline.test.AkkaTestKitSpec
 import org.mockito.Mockito._
 import akka.testkit.TestActorRef
 import akka.actor.Props
-import popeye.storage.hbase.UniqueIdProtocol.{Resolved, FindName}
+import popeye.storage.hbase.UniqueIdProtocol.{ResolutionFailed, Resolved, FindName}
 import popeye.storage.hbase.HBaseStorage.{QualifiedId, ResolvedName, QualifiedName}
 import akka.pattern.ask
-import scala.concurrent.{Future, Await}
+import scala.concurrent.{Promise, Future, Await}
 import scala.concurrent.duration._
 import akka.util.Timeout
 import org.mockito.Matchers._
@@ -23,7 +25,7 @@ class UniqueIdActorSpec extends AkkaTestKitSpec("uniqueid") with MockitoStubs {
 
   it should "create new unique id" in {
     val storage = mock[UniqueIdStorageTrait]
-    val actor = TestActorRef(Props.apply(new UniqueIdActor(storage)))
+    val actor = createUniqueIdActor(storage)
     val generationId = new BytesKey(Array[Byte](0, 0))
     val qName = QualifiedName("kind", generationId, "name")
     val id: BytesKey = new BytesKey(Array[Byte](0))
@@ -38,40 +40,39 @@ class UniqueIdActorSpec extends AkkaTestKitSpec("uniqueid") with MockitoStubs {
   }
 
   it should "use batching" in {
-    val fetches = new AtomicInteger(0)
+    val numberOfNames = 10
+    val allRequestsSent = Promise[Unit]()
+    val maxBatchSize = new AtomicLong(0)
     val storage = new UniqueIdStorageStub {
       override def findByName(qnames: Seq[QualifiedName]): Seq[ResolvedName] = {
-        Thread.sleep(10)
-        fetches.getAndIncrement
+        if (!allRequestsSent.future.isCompleted) {
+          Await.result(allRequestsSent.future, 5 seconds)
+        }
+        if (maxBatchSize.get() < qnames.size) {
+          maxBatchSize.set(qnames.size)
+        }
         qnames.map(qName => ResolvedName(qName, new BytesKey(Array())))
       }
     }
-    val actor = system.actorOf(Props.apply(new UniqueIdActor(storage)))
+    val actor = createUniqueIdActor(storage)
     val generationId = new BytesKey(Array[Byte](0, 0))
-    val numberOfNames = 10
     val qNames = (0 until numberOfNames).map(i => QualifiedName("kind", generationId, i.toString))
-    val idsFuture = Future.traverse(qNames) {
+    val idFutures = qNames.toList.map {
       qName => actor ? FindName(qName)
     }
-    Await.result(idsFuture, 100 millis)
-    fetches.get() should be < (numberOfNames / 3)
+    allRequestsSent.success(())
+    val responses = Await.result(Future.sequence(idFutures), 100 millis)
+    responses.collect { case ResolutionFailed(t) => t }.headOption.foreach(throw _)
+    maxBatchSize.get.toInt should (be > 1)
   }
 
   it should "handle failures" in {
     val storage = mock[UniqueIdStorageTrait]
-    val actor = TestActorRef(Props.apply(new UniqueIdActor(storage)))
+    val actor = createUniqueIdActor(storage)
     val generationId = new BytesKey(Array[Byte](0, 0))
     val resolvedName = ResolvedName(QualifiedName("kind", generationId, "first"), new BytesKey(Array[Byte](0)))
-    val nExceptions = 10
-    val exceptions = (1 to nExceptions).map(_ => new RuntimeException)
-    require(nExceptions == exceptions.size)
-
-    exceptions.foldLeft(storage.findByName(any[Seq[QualifiedName]]) throws new RuntimeException) {
-      (stor, ex) => stor thenThrows ex
-    } thenAnswers (_ => Seq(resolvedName))
-    for(_ <- 1 to nExceptions + 1){
-      actor ! FindName(resolvedName.toQualifiedName, create = true)
-    }
+    storage.findByName(any[Seq[QualifiedName]]) throws new RuntimeException thenAnswers (_ => Seq(resolvedName))
+    actor ! FindName(resolvedName.toQualifiedName, create = true)
     val future = actor ? FindName(resolvedName.toQualifiedName, create = true)
     val response = Await.result(future, 5 seconds)
     response should equal(Resolved(resolvedName))
@@ -85,4 +86,8 @@ class UniqueIdActorSpec extends AkkaTestKitSpec("uniqueid") with MockitoStubs {
     override def registerName(qname: QualifiedName): ResolvedName = ???
   }
 
+  def createUniqueIdActor(storage: UniqueIdStorageTrait): TestActorRef[Nothing] = {
+    val exctx = ExecutionContexts.fromExecutor(Executors.newSingleThreadExecutor())
+    TestActorRef(Props.apply(new UniqueIdActor(storage, exctx)))
+  }
 }
