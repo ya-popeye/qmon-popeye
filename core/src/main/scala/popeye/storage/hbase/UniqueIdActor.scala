@@ -139,61 +139,63 @@ class UniqueIdActor(storage: UniqueIdStorageTrait, executionContext: ExecutionCo
   }
 
   private def checkIds(idRequests: Map[QualifiedId, List[ActorRef]]) = {
-    val resolved = storage.findById(idRequests.keys.toSeq)
-      .map(rname => (rname.toQualifiedId, rname))
-      .toMap
-    idRequests.foreach { tuple =>
-      resolved.get(tuple._1) match {
-        case Some(name) =>
-          tuple._2.foreach { ref => ref ! Resolved(name) }
-        case None =>
-          tuple._2.foreach { ref => ref ! NotFoundId(tuple._1) }
+    val attempt = Try(storage.findById(idRequests.keys.toSeq).map(rName => (rName.toQualifiedId, rName)).toMap)
+    attempt match {
+      case Success(resolvedNames) => sendResolvedIdMessages(resolvedNames, idRequests)
+      case Failure(t) => idRequests.values.flatten.foreach(_ ! ResolutionFailed(t))
+    }
+  }
+
+  private def sendResolvedIdMessages(resolvedNames: Map[QualifiedId, ResolvedName],
+                                     idRequests: Map[QualifiedId, List[ActorRef]]) = {
+    for ((qId, actorRefs) <- idRequests) {
+      val message = resolvedNames.get(qId) match {
+        case Some(resolvedName) => Resolved(resolvedName)
+        case None => NotFoundId(qId)
       }
-     }
+      actorRefs.foreach(actor => actor ! message)
+    }
   }
 
   private def checkNames(lookupRequests: Map[QualifiedName, List[ActorRef]],
                          createRequests: Map[QualifiedName, List[ActorRef]]) = {
     val keys = lookupRequests.keySet ++ createRequests.keySet
-    log.info(s"Lookup for $keys")
-    val resolved = Try(storage.findByName(keys.toSeq).map(resolved => (resolved.toQualifiedName, resolved)).toMap)
-    log.info(s"Found $resolved")
-    resolved match {
-      case Success(resolvedNames) => sendResponses(resolvedNames, lookupRequests, createRequests)
+    log.info(s"lookup for $keys")
+    val attempt = Try(storage.findByName(keys.toSeq).map(resolved => (resolved.toQualifiedName, resolved)).toMap)
+    log.info(s"lookup result: $attempt")
+    attempt match {
+      case Success(resolvedNames) => sendResolvedNamesMessages(resolvedNames, lookupRequests, createRequests)
       case Failure(t) => (lookupRequests.values ++ createRequests.values).flatten.foreach(_ ! ResolutionFailed(t))
     }
   }
 
-  def sendResponses(resolvedNames: Map[QualifiedName, ResolvedName],
-                    lookupRequests: Map[QualifiedName, List[ActorRef]],
-                    createRequests: Map[QualifiedName, List[ActorRef]]) = {
-    lookupRequests.foreach { tuple =>
-      resolvedNames.get(tuple._1) match {
-        case Some(rname) =>
-          tuple._2.foreach { ref => ref ! Resolved(rname) }
-        case None =>
-          tuple._2.foreach { ref => ref ! NotFoundName(tuple._1) }
+  private def sendResolvedNamesMessages(resolvedNames: Map[QualifiedName, ResolvedName],
+                                        lookupRequests: Map[QualifiedName, List[ActorRef]],
+                                        createRequests: Map[QualifiedName, List[ActorRef]]) = {
+    for ((qName, actorRefs) <- lookupRequests) {
+      val message = resolvedNames.get(qName) match {
+        case Some(rName) => Resolved(rName)
+        case None => NotFoundName(qName)
       }
+      actorRefs.foreach(actor => actor ! message)
     }
-    createRequests.foreach { tuple =>
-      resolvedNames.get(tuple._1) match {
-        case Some(rname) =>
-          tuple._2.foreach { ref => ref ! Resolved(rname) }
+    for ((qName, actorRefs) <- createRequests) {
+      val message = resolvedNames.get(qName) match {
+        case Some(rname) => Resolved(rname)
         case None =>
           try {
-            val result = storage.registerName(tuple._1)
-            tuple._2.foreach { ref => ref ! Resolved(result) }
+            val result = storage.registerName(qName)
+            Resolved(result)
           } catch {
             case ex: UniqueIdRaceException =>
               log.error(ex, "Race")
-              tuple._2.foreach { ref => ref ! Race(tuple._1) }
+              Race(qName)
             case ex: Throwable =>
               log.error(ex, "UniqueIdActor got error")
-              tuple._2.foreach {
-                _ ! ResolutionFailed(ex)
-              }
+              ResolutionFailed(ex)
           }
       }
+      actorRefs.foreach(actor => actor ! message)
     }
   }
 }
