@@ -1,11 +1,13 @@
 package popeye.storage.hbase
 
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
+import akka.dispatch.ExecutionContexts
 import org.kiji.testing.fakehtable.FakeHTable
 import org.apache.hadoop.hbase.client.{HTableInterface, HTableInterfaceFactory, HTablePool}
 import org.apache.hadoop.conf.Configuration
 import akka.testkit.TestActorRef
-import akka.actor.{ActorSystem, Props}
+import akka.actor.{Actor, ActorSystem, Props}
 import com.codahale.metrics.MetricRegistry
 import scala.concurrent.ExecutionContext
 
@@ -14,13 +16,15 @@ object PointsStorageStub {
 }
 
 class PointsStorageStub(timeRangeIdMapping: GenerationIdMapping = PointsStorageStub.timeRangeIdMapping,
-                        shardAttrs: Set[String] = Set("host"))
+                        shardAttrs: Set[String] = Set("host"),
+                        inMemoryUniqueId: Boolean = true)
                        (implicit val actorSystem: ActorSystem,
                         implicit val executionContext: ExecutionContext) {
   private val metricRegistry = new MetricRegistry()
   val pointsStorageMetrics = new HBaseStorageMetrics("hbase", metricRegistry)
   val id = new AtomicInteger(1)
   val tableName = "tsdb"
+  val uidTableName = "tsdb-uid"
   val hTable = new FakeHTable(tableName, desc = null)
   val hTablePool = new HTablePool(new Configuration(), 1, new HTableInterfaceFactory {
     def releaseHTableInterface(table: HTableInterface) {}
@@ -28,9 +32,25 @@ class PointsStorageStub(timeRangeIdMapping: GenerationIdMapping = PointsStorageS
     def createHTableInterface(config: Configuration, tableName: Array[Byte]): HTableInterface = hTable
   })
 
-  val uniqActor: TestActorRef[InMemoryUniqueIdActor] = TestActorRef(Props.apply(new InMemoryUniqueIdActor()))
+  val uIdHTable = new FakeHTable(uidTableName, desc = null)
+  val uIdHTablePool = new HTablePool(new Configuration(), 1, new HTableInterfaceFactory {
+    def releaseHTableInterface(table: HTableInterface) {}
 
-  val uniqueId = new UniqueIdImpl(uniqActor, new UniqueIdMetrics("uniqueid", metricRegistry))
+    def createHTableInterface(config: Configuration, tableName: Array[Byte]): HTableInterface = hTable
+  })
+
+  def uniqActorProps =
+    if (inMemoryUniqueId) {
+      Props.apply(new InMemoryUniqueIdActor())
+    } else {
+      val metrics = new UniqueIdStorageMetrics("uid", metricRegistry)
+      val uniqueIdStorage = new UniqueIdStorage(uidTableName, uIdHTablePool, metrics)
+      Props.apply(UniqueIdActor(uniqueIdStorage, ExecutionContexts.fromExecutor(Executors.newSingleThreadExecutor())))
+    }
+
+  def uniqActor: TestActorRef[Actor] = TestActorRef(uniqActorProps)
+
+  def uniqueId = new UniqueIdImpl(uniqActor, new UniqueIdMetrics("uniqueid", metricRegistry))
   val tsdbFormat = new TsdbFormat(timeRangeIdMapping, shardAttrs)
   val storage = new HBaseStorage(
     tableName,
