@@ -23,12 +23,13 @@ class EmbeddedZookeeper(maxConnections: Int = 100) {
   val zkConnectionTimeout = 6000
   val zkSessionTimeout = 6000
 
-  def newClient = {
-    val client = new ZkClient(connectString, zkSessionTimeout, zkConnectionTimeout, ZKStringSerializer)
+  def newClient = newChrootedClient("")
+
+  def newChrootedClient(chroot: String) = {
+    val client = new ZkClient(connectString + chroot, zkSessionTimeout, zkConnectionTimeout, ZKStringSerializer)
     clients.add(client)
     client
   }
-
 
   def shutdown() {
     clients.foreach(_.close())

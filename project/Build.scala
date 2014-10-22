@@ -76,7 +76,7 @@ object Version {
   val Jackson = "1.8.8"
   val Kafka = "0.8.1"
   val Metrics = "3.0.0"
-  val Slf4j = "1.7.5"
+  val Slf4j = "1.7.7"
   val Logback = "1.0.7"
   val Snappy = "1.0.5"
   val Guava = "11.0.2"
@@ -84,6 +84,7 @@ object Version {
   val Scopt = "3.1.0"
   val Avro = "1.7.5"
   val Hadoop = "2.3.0-cdh5.0.1"
+  val HadoopTest = "2.3.0-mr1-cdh5.0.1"
   val HBase = "0.96.1.1-cdh5.0.1"
 
   val slf4jDependencies: Seq[ModuleID] = Seq(
@@ -215,18 +216,31 @@ object PopeyeBuild extends Build {
   lazy val popeyeBench = Project(
     id = "popeye-bench",
     base = file("bench"),
-    settings = defaultSettings).dependsOn(popeyeCore)
+    settings = defaultSettings).dependsOn(popeyeCore % "compile->compile;test->test")
     .settings(
-    libraryDependencies ++= Version.slf4jDependencies ++ Seq(
-      "nl.grons" %% "metrics-scala" % Version.Metrics,
-      "com.typesafe.akka" %% "akka-actor" % Version.Akka,
-      "com.typesafe.akka" %% "akka-slf4j" % Version.Akka,
-      "org.apache.kafka" %% "kafka" % Version.Kafka,
-      "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
-      "org.mockito" % "mockito-core" % Version.Mockito % "test",
-      "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"
-    ).excluding(Version.commonExclusions :_*)
-     .excluding(Version.slf4jExclusions :_*)
+      libraryDependencies ++= Seq(
+        "org.apache.hadoop" % "hadoop-common" % Version.Hadoop,
+        "org.apache.hadoop" % "hadoop-common" % Version.Hadoop classifier "tests",
+        "org.apache.hadoop" % "hadoop-hdfs" % Version.Hadoop,
+        "org.apache.hadoop" % "hadoop-hdfs" % Version.Hadoop classifier "tests",
+        "org.apache.hadoop" % "hadoop-test" % Version.HadoopTest,
+        "org.apache.hbase" % "hbase-server" % Version.HBase,
+        "org.apache.hbase" % "hbase-server" % Version.HBase classifier "tests",
+        "org.apache.hbase" % "hbase-common" % Version.HBase,
+        "org.apache.hbase" % "hbase-common" % Version.HBase classifier "tests",
+        "org.apache.hbase" % "hbase-hadoop-compat" % Version.HBase,
+        "org.apache.hbase" % "hbase-hadoop-compat" % Version.HBase classifier "tests",
+        "org.apache.hbase" % "hbase-hadoop2-compat" % Version.HBase,
+        "org.apache.hbase" % "hbase-hadoop2-compat" % Version.HBase classifier "tests",
+        "nl.grons" %% "metrics-scala" % Version.Metrics,
+        "com.typesafe.akka" %% "akka-actor" % Version.Akka,
+        "com.typesafe.akka" %% "akka-slf4j" % Version.Akka,
+        "org.apache.kafka" %% "kafka" % Version.Kafka,
+        "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
+        "org.mockito" % "mockito-core" % Version.Mockito % "test",
+        "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"
+      ).excluding(Version.commonExclusions: _*)
+        .excluding(Version.slf4jExclusions: _*)
   )
 
   lazy val popeye = Project(

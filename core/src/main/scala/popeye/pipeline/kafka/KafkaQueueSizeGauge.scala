@@ -39,7 +39,7 @@ class KafkaQueueSizeGauge(zkConnect: String,
     }
   }
 
-  private def fetchQueueSizes: Map[Int, Long] = {
+  def fetchQueueSizes: Map[Int, Long] = {
     val latestOffsets = new KafkaMetaRequests(brokers, topic).fetchLatestOffsets()
     val consumerOffsets = fetchConsumerOffsets
     merge(latestOffsets, consumerOffsets)(_ - _)
