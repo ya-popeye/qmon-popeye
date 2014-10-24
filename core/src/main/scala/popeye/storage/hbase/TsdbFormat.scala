@@ -238,12 +238,18 @@ object TsdbFormat {
   }
 
   def shardAttributeToShardName(attrName: String, attrValue: String): String = {
-    val nameSizeBytes = Bytes.toBytes(attrName.length)
-    val valuesSizeBytes = Bytes.toBytes(attrValue.length)
-    val sizesInfix = Bytes.toString(nameSizeBytes ++ valuesSizeBytes)
-    f"{$attrName:$attrValue}$sizesInfix"
+    mutable.StringBuilder.newBuilder
+      .append('{')
+      .append(attrName)
+      .append(": ")
+      .append(attrValue)
+      .append('}')
+      .append('_')
+      .append(attrName.length)
+      .append('_')
+      .append(attrValue.length)
+      .toString()
   }
-
 }
 
 case class TimeseriesId(generationId: BytesKey,
