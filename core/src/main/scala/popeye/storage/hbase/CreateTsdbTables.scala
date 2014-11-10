@@ -8,14 +8,9 @@ import org.apache.hadoop.hbase.io.encoding.DataBlockEncoding
 object CreateTsdbTables {
 
   def createTables(hbaseConfiguration: Configuration, pointsTableName: String, uidsTableName: String) {
-    val namespace = {
-      val pointsTokens = pointsTableName.split(":")
-      require(pointsTokens.size == 2, f"namespace not specified or wrong format: $pointsTableName")
-      val uidsTokens = pointsTableName.split(":")
-      require(uidsTokens.size == 2, f"namespace not specified or wrong format: $pointsTableName")
-      require(pointsTokens(0) == uidsTokens(0), f"namespaces mismatch: $pointsTableName $uidsTableName")
-      pointsTokens(0)
-    }
+    def getNamespace(tableName: String) = TableName.valueOf(tableName).getNamespaceAsString
+
+    val namespaces = Seq(pointsTableName, uidsTableName).map(getNamespace)
 
     val tsdbTable = {
       val tableDescriptor = new HTableDescriptor(TableName.valueOf(pointsTableName))
@@ -36,10 +31,12 @@ object CreateTsdbTables {
 
     val hBaseAdmin = new HBaseAdmin(hbaseConfiguration)
     try {
-      try {
-        hBaseAdmin.createNamespace(NamespaceDescriptor.create(namespace).build())
-      } catch {
-        case e: NamespaceExistException => // do nothing
+      for (namespace <- namespaces) {
+        try {
+          hBaseAdmin.createNamespace(NamespaceDescriptor.create(namespace).build())
+        } catch {
+          case e: NamespaceExistException => // do nothing
+        }
       }
       try {
         hBaseAdmin.createTable(tsdbTable)
