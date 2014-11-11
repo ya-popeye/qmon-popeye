@@ -417,10 +417,15 @@ class HBaseStorage(tableName: String,
     convertToKeyValues(pointsBuffer, currentTimeInSeconds).flatMap {
       case (keyValues, delayedPoints) =>
         // write resolved points
-        val writeComplete = if (!keyValues.isEmpty) Future[Int] {
-          keyValues.size
-        } else Future.successful[Int](0)
-        writeKv(keyValues)
+        val writeComplete =
+          if (keyValues.nonEmpty) {
+            Future[Int] {
+              writeKv(keyValues)
+              keyValues.size
+            }
+          } else {
+            Future.successful[Int](0)
+          }
 
         val delayedKeyValuesWriteFuture = writeDelayedPoints(delayedPoints, currentTimeInSeconds)
 
