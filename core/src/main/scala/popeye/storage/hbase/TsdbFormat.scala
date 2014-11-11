@@ -313,6 +313,7 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
           shardId.get,
           point.getTimestamp,
           attributeIds.map { case (n, v) => (n.get, v.get) },
+          currentTimeSeconds.toLong * 1000,
           qualifiedValue
         )
         SuccessfulConversion(keyValue)
@@ -602,6 +603,7 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
                          shardId: BytesKey,
                          timestamp: Long,
                          attributeIds: Seq[(BytesKey, BytesKey)],
+                         keyValueTimestamp: Long,
                          value: (Array[Byte], Array[Byte])) = {
     val baseTime: Int = (timestamp - (timestamp % MAX_TIMESPAN)).toInt
     val rowLength = attributesOffset + attributeIds.length * attributeWidth
@@ -620,7 +622,7 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
     }
     val delta = (timestamp - baseTime).toShort
     trace(s"Made point: ts=$timestamp, basets=$baseTime, delta=$delta")
-    new KeyValue(row, HBaseStorage.PointsFamily, value._1, value._2)
+    new KeyValue(row, HBaseStorage.PointsFamily, value._1, keyValueTimestamp, value._2)
   }
 
   /**
