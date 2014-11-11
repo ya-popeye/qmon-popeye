@@ -416,7 +416,7 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
     }
     buffer += QualifiedName(MetricKind, timeRangeId, point.getMetric)
     buffer += QualifiedName(ShardKind, timeRangeId, getShardName(point))
-    buffer.distinct.toVector
+    buffer
   }
 
   def getScanNames(metric: String,
