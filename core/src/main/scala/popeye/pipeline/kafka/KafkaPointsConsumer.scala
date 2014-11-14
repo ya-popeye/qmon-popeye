@@ -107,7 +107,7 @@ object KafkaPointsConsumer {
 
 object KafkaPointsConsumerProto {
 
-  case object Ok
+  case class Ok(batchIds: Seq[Long])
 
   case class Failed(cause: Throwable, failedBatches: PointBatches)
 
@@ -190,9 +190,10 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
         goto(Idle) using ConsumerState()
       }
 
-    case Event(Ok, state) =>
+    case Event(Ok(batchIds), state) =>
       numberOfSenders.decrementAndGet()
       // if all senders succeeded then offsets can be safely committed
+      log.info(s"batches $batchIds was successfully sent")
       val completedDeliveries = state.completedDeliveries + 1
       if (completedDeliveries == state.startedSenders) {
         log.info(s"Committing batches ${state.batchIds}")
@@ -222,10 +223,11 @@ class KafkaPointsConsumer(val config: KafkaPointsConsumerConfig,
     } else {
       idGenerator.nextId()
     }
+    log.info(f"sending batches ${points.batchIds} to failoverSink")
     failoverSink.sendBatches(batchId, points) onComplete {
       case Success(x) =>
         log.debug(s"Batches: ${ points.batchIds } delivered as $batchId")
-        self ! Ok
+        self ! Ok(points.batchIds)
       case Failure(x: Throwable) =>
         log.error(x, s"Failed to deliver batches ${ points.batchIds }")
         self ! Failed(x, points)

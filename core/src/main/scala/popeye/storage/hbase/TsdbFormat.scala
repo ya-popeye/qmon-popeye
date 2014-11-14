@@ -463,6 +463,7 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
     val (startTime, stopTime) = timeRange
     val ranges = getTimeRanges(startTime, stopTime)
     val shardNames = getShardNames(attributeValueFilters)
+    info(s"getScans metric: $metric, shard names: $shardNames, ranges: $ranges")
     ranges.map {
       range =>
         val generationId = range.id

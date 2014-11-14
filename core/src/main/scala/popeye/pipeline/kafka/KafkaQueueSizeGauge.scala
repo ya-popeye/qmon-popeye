@@ -30,7 +30,6 @@ class KafkaQueueSizeGauge(zkConnect: String,
     val randomDuration = FiniteDuration(random.nextInt(pollPeriod.toMillis.toInt), MILLISECONDS)
     scheduler.schedule(initialDelay = randomDuration, interval = pollPeriod) {
       val newQueueSizes = Try(fetchQueueSizes)
-      info(f"kafka queue sizes: $fetchQueueSizes")
       newQueueSizes match {
         case Failure(t) => error("kafka queue size fetch failed", t)
         case _ => ()
@@ -41,8 +40,12 @@ class KafkaQueueSizeGauge(zkConnect: String,
 
   def fetchQueueSizes: Map[Int, Long] = {
     val latestOffsets = new KafkaMetaRequests(brokers, topic).fetchLatestOffsets()
+    info(f"latest offsets: ${ prettyPrintMap(latestOffsets) }")
     val consumerOffsets = fetchConsumerOffsets
-    merge(latestOffsets, consumerOffsets)(_ - _)
+    info(f"consumer offsets: ${ prettyPrintMap(consumerOffsets) }")
+    val diff = merge(latestOffsets, consumerOffsets)(_ - _)
+    info(f"kafka queue sizes: ${ prettyPrintMap(diff) }")
+    diff
   }
 
   private def merge[A, B, C](left: Map[A, B], right: Map[A, B])(f: (B, B) => C) = {
@@ -65,6 +68,10 @@ class KafkaQueueSizeGauge(zkConnect: String,
             (partition, offset)
         }.toMap
     }
+  }
+
+  private def prettyPrintMap[A: Ordering, B](mapToPrint: Map[A, B]) = {
+    mapToPrint.toList.sortBy(_._1).map { case (key, value) => f"$key -> $value" }.mkString("(", ", ", ")")
   }
 
   private def withZkClient[T](operation: ZkClient => T): T = {

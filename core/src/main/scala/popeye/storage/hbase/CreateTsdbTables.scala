@@ -4,8 +4,9 @@ import org.apache.hadoop.hbase._
 import org.apache.hadoop.hbase.client.HBaseAdmin
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.io.encoding.DataBlockEncoding
+import popeye.Logging
 
-object CreateTsdbTables {
+object CreateTsdbTables extends Logging{
 
   def createTables(hbaseConfiguration: Configuration, pointsTableName: String, uidsTableName: String) {
     def getNamespace(tableName: String) = TableName.valueOf(tableName).getNamespaceAsString
@@ -33,18 +34,24 @@ object CreateTsdbTables {
     try {
       for (namespace <- namespaces) {
         try {
+          info(f"creating namespace $namespace")
           hBaseAdmin.createNamespace(NamespaceDescriptor.create(namespace).build())
+          info(f"namespace $namespace was created")
         } catch {
           case e: NamespaceExistException => // do nothing
         }
       }
       try {
+        info(f"creating points table $tsdbTable")
         hBaseAdmin.createTable(tsdbTable)
+        info(f"points table $tsdbTable was created")
       } catch {
         case e: TableExistsException => // do nothing
       }
       try {
+        info(f"creating uids table $tsdbUidTable")
         hBaseAdmin.createTable(tsdbUidTable)
+        info(f"uids table $tsdbUidTable was created")
       } catch {
         case e: TableExistsException => // do nothing
       }
