@@ -63,7 +63,7 @@ class OpenTSDB2HttpApiServer(storage: PointsStorage, executionContext: Execution
 
     case request@HttpRequest(POST, path@Uri.Path("/api/query"), _, _, _) =>
       val json = objectMapper.readTree(request.entity.asString)
-      debug(s"points request: ${ objectMapper.defaultPrettyPrintingWriter().writeValueAsString(json) }")
+      info(s"points request: ${ objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(json) }")
       val startMillis = json.get("start").getLongValue
       val stopMillis = if (json.has("end")) json.get("end").getLongValue else System.currentTimeMillis()
       val queries = json.get("queries").asScala.toList.map(parseTsQuery)
@@ -197,31 +197,6 @@ class OpenTSDB2HttpApiServer(storage: PointsStorage, executionContext: Execution
     }
     number * multiplier
   }
-
-  private def aggregatePoints(pointsGroups: PointsGroups,
-                              interpolationAggregator: Seq[Double] => Double,
-                              rate: Boolean,
-                              downsamplingOption: Option[(Int, Seq[Double] => Double)]): Map[PointAttributes, Seq[(Int, Double)]] = {
-    def toGraphPointIterator(points: Seq[Point]) = {
-      val graphPoints = points.iterator.map {
-        point => (point.timestamp, point.doubleValue)
-      }
-      val downsampled = downsamplingOption.map {
-        case (interval, aggregator) => PointSeriesUtils.downsample(graphPoints, interval, aggregator)
-      }.getOrElse(graphPoints)
-      if (rate) {
-        PointSeriesUtils.differentiate(downsampled)
-      } else {
-        downsampled
-      }
-    }
-    pointsGroups.groupsMap.mapValues {
-      group =>
-        val graphPointIterators = group.values.map(toGraphPointIterator).toSeq
-        val aggregated = PointSeriesUtils.interpolateAndAggregate(graphPointIterators, interpolationAggregator)
-        aggregated.toList
-    }
-  }
 }
 
 object OpenTSDB2HttpApiServer extends HttpServerFactory {
@@ -249,6 +224,31 @@ object OpenTSDB2HttpApiServer extends HttpServerFactory {
     "max" -> (seq => seq.max),
     "avg" -> (seq => seq.sum / seq.size)
   )
+
+  def aggregatePoints(pointsGroups: PointsGroups,
+                      interpolationAggregator: Seq[Double] => Double,
+                      rate: Boolean,
+                      downsamplingOption: Option[(Int, Seq[Double] => Double)]): Map[PointAttributes, Seq[(Int, Double)]] = {
+    def toGraphPointIterator(points: Seq[Point]) = {
+      val graphPoints = points.iterator.map {
+        point => (point.timestamp, point.doubleValue)
+      }
+      val downsampled = downsamplingOption.map {
+        case (interval, aggregator) => PointSeriesUtils.downsample(graphPoints, interval, aggregator)
+      }.getOrElse(graphPoints)
+      if (rate) {
+        PointSeriesUtils.differentiate(downsampled)
+      } else {
+        downsampled
+      }
+    }
+    pointsGroups.groupsMap.mapValues {
+      group =>
+        val graphPointIterators = group.values.map(toGraphPointIterator).toSeq
+        val aggregated = PointSeriesUtils.interpolateAndAggregate(graphPointIterators, interpolationAggregator)
+        aggregated.toList
+    }
+  }
 
   override def createHandler(system: ActorSystem,
                              storage: PointsStorage,
