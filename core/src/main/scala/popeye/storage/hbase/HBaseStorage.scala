@@ -137,7 +137,7 @@ object HBaseStorage {
 
   type PointsStream = FutureStream[PointsGroups]
 
-  def collectAllGroups(groupsStream: PointsStream)(implicit eCtx: ExecutionContext) = {
+  def collectAllGroups(groupsStream: PointsStream)(implicit eCtx: ExecutionContext): Future[PointsGroups] = {
     groupsStream.reduceElements((a, b) => a.concat(b))
   }
 
@@ -352,7 +352,7 @@ class HBaseStorage(tableName: String,
         val lastRow = pointsArray(lastIndex)
         pointsArray(lastIndex) = lastRow.filter(point => point.timestamp < endTime)
         pointsArray.toSeq.flatten
-    }
+    }.view.force // mapValues returns lazy Map
   }
 
   private def toListPointSequences(rows: Array[ParsedListValueRowResult],
