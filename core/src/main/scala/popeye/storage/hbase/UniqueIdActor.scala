@@ -57,7 +57,7 @@ object UniqueIdActor {
 
   case object RequestsServed
 
-  def apply(storage: UniqueIdStorage, executionContext: ExecutionContext, batchSize: Int = 100) = {
+  def apply(storage: UniqueIdStorage, executionContext: ExecutionContext, batchSize: Int = 1000) = {
     val storageWrapper = new UniqueIdStorageTrait {
       def findByName(qnames: Seq[QualifiedName]): Seq[ResolvedName] = storage.findByName(qnames)
 
@@ -93,7 +93,12 @@ class UniqueIdActor(storage: UniqueIdStorageTrait, executionContext: ExecutionCo
   when(UniqueIdActor.Resolving) {
     case Event(r: Request, state) =>
       val queueWithNewRequest = state.requestQueue.enqueue((sender, r))
-      val onlyFreshRequests = queueWithNewRequest.drop(queueWithNewRequest.size - batchSize)
+      val dropeedRequestsCount = queueWithNewRequest.size - batchSize
+      val onlyFreshRequests = queueWithNewRequest.drop(dropeedRequestsCount)
+      if (dropeedRequestsCount > 0) {
+        log.info(f"dropped $dropeedRequestsCount requests, " +
+          f"queue size: ${ queueWithNewRequest.size }, batch size: $batchSize")
+      }
       stay() using state.copy(requestQueue = onlyFreshRequests)
 
     case Event(RequestsServed, state) =>
