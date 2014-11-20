@@ -23,21 +23,12 @@ class PointsStorageStub(timeRangeIdMapping: GenerationIdMapping = PointsStorageS
   private val metricRegistry = new MetricRegistry()
   val pointsStorageMetrics = new HBaseStorageMetrics("hbase", metricRegistry)
   val id = new AtomicInteger(1)
-  val tableName = "tsdb"
+  val pointsTableName = "tsdb"
   val uidTableName = "tsdb-uid"
-  val hTable = new FakeHTable(tableName, desc = null)
-  val hTablePool = new HTablePool(new Configuration(), 1, new HTableInterfaceFactory {
-    def releaseHTableInterface(table: HTableInterface) {}
-
-    def createHTableInterface(config: Configuration, tableName: Array[Byte]): HTableInterface = hTable
-  })
-
+  val pointsTable = new FakeHTable(pointsTableName, desc = null)
   val uIdHTable = new FakeHTable(uidTableName, desc = null)
-  val uIdHTablePool = new HTablePool(new Configuration(), 1, new HTableInterfaceFactory {
-    def releaseHTableInterface(table: HTableInterface) {}
-
-    def createHTableInterface(config: Configuration, tableName: Array[Byte]): HTableInterface = hTable
-  })
+  val hTablePool = createHTablePool(pointsTable)
+  val uIdHTablePool = createHTablePool(uIdHTable)
 
   def uniqActorProps =
     if (inMemoryUniqueId) {
@@ -53,12 +44,20 @@ class PointsStorageStub(timeRangeIdMapping: GenerationIdMapping = PointsStorageS
   def uniqueId = new UniqueIdImpl(uniqActor, new UniqueIdMetrics("uniqueid", metricRegistry))
   val tsdbFormat = new TsdbFormat(timeRangeIdMapping, shardAttrs)
   val storage = new HBaseStorage(
-    tableName,
+    pointsTableName,
     hTablePool,
     uniqueId,
     tsdbFormat,
     pointsStorageMetrics,
     readChunkSize = 10
   )
+
+  def createHTablePool(hTable: HTableInterface): HTablePool = {
+    new HTablePool(new Configuration(), 1, new HTableInterfaceFactory {
+      def releaseHTableInterface(table: HTableInterface) {}
+
+      def createHTableInterface(config: Configuration, tableNameBytes: Array[Byte]): HTableInterface = hTable
+    })
+  }
 }
 

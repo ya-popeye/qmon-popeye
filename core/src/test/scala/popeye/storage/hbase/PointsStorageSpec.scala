@@ -37,7 +37,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
     }
     val point = messagePoint(metric, timestamp = 0, 0, attributes)
     Await.ready(storageStub.storage.writeMessagePoints(point), 5 seconds)
-    val points = storageStub.hTable.getScanner(HBaseStorage.PointsFamily).map(_.raw).flatMap {
+    val points = storageStub.pointsTable.getScanner(HBaseStorage.PointsFamily).map(_.raw).flatMap {
       kv =>
         kv.map(storageStub.storage.keyValueToPoint)
     }
@@ -58,7 +58,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
     val future = storageStub.storage.writeMessagePoints(events :_*)
     val written = Await.result(future, 5 seconds)
     written should be(events.size)
-    val points = storageStub.hTable.getScanner(HBaseStorage.PointsFamily).map(_.raw).flatMap {
+    val points = storageStub.pointsTable.getScanner(HBaseStorage.PointsFamily).map(_.raw).flatMap {
       kv =>
         kv.map(storageStub.storage.keyValueToPoint)
     }
