@@ -1,10 +1,11 @@
 package popeye.util.hbase
 
+import com.codahale.metrics.MetricRegistry
 import org.scalatest.{Matchers, FlatSpec}
 import org.kiji.testing.fakehtable.FakeHTable
 import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.conf.Configuration
-import popeye.util.hbase.HBaseUtils.ChunkedResults
+import popeye.util.hbase.HBaseUtils.{ChunkedResultsMetrics, ChunkedResults}
 import org.apache.hadoop.hbase.KeyValue
 
 
@@ -14,7 +15,6 @@ class HBaseUtilsSpec extends FlatSpec with Matchers {
 
   it should "return correct chunks" in {
     val pool = getHTablePool("table")
-    val utils = HBaseUtilsImpl(pool)
     val table = pool.getTable("table")
     val family = Array[Byte]('f')
     val qualifier = Array[Byte]('q')
@@ -35,7 +35,8 @@ class HBaseUtilsSpec extends FlatSpec with Matchers {
       val stopRow = Array[Byte](11)
       new Scan(startRow, stopRow)
     }
-    val chunkedResults = utils.getChunkedResults("table", 3, Seq(firstScan, secondScan))
+    val metrics = new ChunkedResultsMetrics("chunked", new MetricRegistry)
+    val chunkedResults = HBaseUtils.getChunkedResults(metrics, pool, "table", 3, Seq(firstScan, secondScan))
     val flattenChunks = toSingleResult(chunkedResults)
     def getRowIndex(result: Result) = result.getRow()(0)
     flattenChunks.map(getRowIndex).toList should equal((1 to 10).map(_.toByte).toList)
@@ -71,9 +72,6 @@ class HBaseUtilsSpec extends FlatSpec with Matchers {
     val (chunk, next) = chunkedResults.getRows()
     chunk ++ next.map(toSingleResult).getOrElse(Array())
   }
-
-
-  case class HBaseUtilsImpl(hTablePool: HTablePool) extends HBaseUtils
 
   private def getHTablePool(tableName: String) = {
     val hTable = new FakeHTable(tableName, desc = null)

@@ -22,7 +22,7 @@ import popeye.util.hbase.{HBaseUtils, HBaseConfigured}
 import java.nio.charset.Charset
 import HBaseStorage._
 import scala.collection.immutable.SortedMap
-import popeye.util.hbase.HBaseUtils.ChunkedResults
+import popeye.util.hbase.HBaseUtils.{ChunkedResultsMetrics, ChunkedResults}
 import popeye.pipeline.PointsSink
 
 object HBaseStorage {
@@ -221,21 +221,19 @@ case class HBaseStorageMetrics(name: String, override val metricRegistry: Metric
   val totalWriteTimeHistogram = metrics.histogram(s"$name.storage.write.delay.time.hist")
   val writeHBasePoints = metrics.meter(s"$name.storage.write.points")
   val readProcessingTime = metrics.timer(s"$name.storage.read.processing.time")
-  val readHBaseTime = metrics.timer(s"$name.storage.read.hbase.time")
   val resolvedPointsMeter = metrics.meter(s"$name.storage.resolved.points")
   val delayedPointsMeter = metrics.meter(s"$name.storage.delayed.points")
   val failedPointConversions = metrics.meter(s"$name.storage.failed.point.conversions")
+  val chunkedResultsMetrics = new ChunkedResultsMetrics(f"$name.storage.read", metricRegistry)
 }
 
 class HBaseStorage(tableName: String,
-                   hTablePool_ : HTablePool,
+                   hTablePool: HTablePool,
                    uniqueId: UniqueId,
                    tsdbFormat: TsdbFormat,
                    metrics: HBaseStorageMetrics,
                    resolveTimeout: Duration = 15 seconds,
-                   readChunkSize: Int) extends Logging with HBaseUtils {
-
-  def hTablePool: HTablePool = hTablePool_
+                   readChunkSize: Int) extends Logging {
 
   val tableBytes = tableName.getBytes(Encoding)
 
@@ -290,7 +288,7 @@ class HBaseStorage(tableName: String,
           s"start row = $startRow stop row = $stopRow"
       }.mkString("\n")
       debug(s"starting hbase scans:\n$scansString")
-      getChunkedResults(tableName, readChunkSize, scans)
+      HBaseUtils.getChunkedResults(metrics.chunkedResultsMetrics, hTablePool, tableName, readChunkSize, scans)
     }
   }
 

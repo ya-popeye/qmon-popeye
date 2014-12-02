@@ -1,35 +1,9 @@
 package popeye.util.hbase
 
+import com.codahale.metrics.MetricRegistry
 import org.apache.hadoop.hbase.client.{Result, Scan, HTablePool, HTableInterface}
-import popeye.Logging
+import popeye.{Instrumented, Logging}
 import popeye.util.hbase.HBaseUtils.ChunkedResults
-
-private[popeye] trait HBaseUtils extends Logging {
-
-  def hTablePool: HTablePool
-
-  @inline
-  protected def withHTable[U](tableName: String)(body: (HTableInterface) => U): U = {
-    log.debug("withHTable - trying to get HTable {}", tableName)
-    val hTable = hTablePool.getTable(tableName)
-    log.debug("withHTable - got HTable {}", tableName)
-    try {
-      body(hTable)
-    } catch {
-      case e: Exception =>
-        e.printStackTrace()
-        throw e
-    } finally {
-      hTable.close()
-    }
-  }
-
-  def getChunkedResults(tableName: String, readChunkSize: Int, scans: Seq[Scan]) = {
-    require(scans.nonEmpty, "scans sequence is empty")
-    new ChunkedResults(tableName, readChunkSize, scans.head, scans.tail, this)
-  }
-
-}
 
 object HBaseUtils {
 
@@ -47,33 +21,66 @@ object HBaseUtils {
     return unsignedBytes.clone()
   }
 
-  class ChunkedResults(tableName: String,
+  def getChunkedResults(metrics: ChunkedResultsMetrics,
+                        hTablePool: HTablePool,
+                        tableName: String,
+                        readChunkSize: Int,
+                        scans: Seq[Scan]) = {
+    require(scans.nonEmpty, "scans sequence is empty")
+    new ChunkedResults(
+      metrics,
+      () => hTablePool.getTable(tableName),
+      readChunkSize,
+      scans.head,
+      scans.tail
+    )
+  }
+
+  class ChunkedResultsMetrics(name: String, override val metricRegistry: MetricRegistry) extends Instrumented {
+    val tableCreationTime = metrics.timer(s"$name.table.creation.time")
+    val scannerCreationTime = metrics.timer(s"$name.scanner.creation.time")
+    val scannerCloseTime = metrics.timer(s"$name.scanner.close.time")
+    val dummyNextCallTime = metrics.timer(s"$name.dummy.next.call.time")
+    val dataNextCallTime = metrics.timer(s"$name.data.next.call.time")
+  }
+
+  class ChunkedResults(metrics: ChunkedResultsMetrics,
+                       createTable: () => HTableInterface,
                        readChunkSize: Int,
                        scan: Scan,
                        nextScans: Seq[Scan],
-                       utils: HBaseUtils,
-                       skipFirstRow: Boolean = false) {
-    def getRows(): (Array[Result], Option[ChunkedResults]) = utils.withHTable(tableName) {
+                       skipFirstRow: Boolean = false) extends Logging {
+    def getRows(): (Array[Result], Option[ChunkedResults]) = withHTable {
       table =>
-        val scanner = table.getScanner(scan)
+        val scanner = metrics.scannerCreationTime.time {
+          table.getScanner(scan)
+        }
         val results =
           try {
             if (skipFirstRow) {
-              scanner.next()
+              metrics.dummyNextCallTime.time {
+                scanner.next()
+              }
             }
-            scanner.next(readChunkSize)
+            metrics.dataNextCallTime.time {
+              scanner.next(readChunkSize)
+            }
           }
-          finally {scanner.close()}
+          finally {
+            metrics.scannerCloseTime.time {
+              scanner.close()
+            }
+          }
         val nextQuery =
           if (results.length < readChunkSize) {
             if (nextScans.nonEmpty) {
               val nextResults =
                 new ChunkedResults(
-                  tableName,
+                  metrics,
+                  createTable,
                   readChunkSize,
                   nextScans.head,
                   nextScans.tail,
-                  utils,
                   skipFirstRow = false
                 )
               Some(nextResults)
@@ -86,16 +93,36 @@ object HBaseUtils {
             nextScan.setStartRow(lastRow)
             val nextResults =
               new ChunkedResults(
-                tableName,
+                metrics,
+                createTable,
                 readChunkSize,
                 nextScan,
                 nextScans,
-                utils,
                 skipFirstRow = true
               )
             Some(nextResults)
           }
         (results, nextQuery)
+    }
+
+    private def withHTable[U](body: (HTableInterface) => U): U = {
+      debug("creating table")
+      val hTable = metrics.tableCreationTime.time {
+        createTable()
+      }
+      debug("table was created")
+      try {
+        debug("starting HTable task")
+        val result = body(hTable)
+        debug("HTable task succeeded")
+        result
+      } catch {
+        case e: Exception =>
+          error("HTable operation failed", e)
+          throw e
+      } finally {
+        hTable.close()
+      }
     }
   }
 
