@@ -84,7 +84,7 @@ class OpenTSDB2HttpApiServer(storage: PointsStorage, executionContext: Execution
               pointsStream.withCancellation(storageRequestCancellation.future)
             )
           } yield {
-            debug(s"got points groups: ${ pointGroups.groupsMap.mapValues(_.mapValues(_.size)) }")
+            debug(s"got point groups sizes: ${ pointGroups.groupsMap.mapValues(_.mapValues(_.size)) }")
             (query.metricName, aggregatePoints(pointGroups, aggregator, query.isRate, downsampleOption))
           }
       }
@@ -118,6 +118,7 @@ class OpenTSDB2HttpApiServer(storage: PointsStorage, executionContext: Execution
       sender ! HttpResponse(status = StatusCodes.BadRequest, entity = HttpEntity("not implemented"))
 
     case msg: Http.ConnectionClosed =>
+      info(f"closing connection on message: $msg")
       storageRequestCancellation.tryFailure(
         new RuntimeException("http connection was closed; storage request cancelled")
       )
