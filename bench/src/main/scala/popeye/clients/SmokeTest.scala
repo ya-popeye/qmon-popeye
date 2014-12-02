@@ -1,4 +1,4 @@
-package popeye.pipeline
+package popeye.clients
 
 import java.io.IOException
 import java.util.UUID

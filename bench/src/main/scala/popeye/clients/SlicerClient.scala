@@ -1,4 +1,4 @@
-package popeye.pipeline
+package popeye.clients
 
 import java.io.{BufferedReader, InputStreamReader, PrintWriter}
 import java.net.Socket

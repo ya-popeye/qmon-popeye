@@ -11,6 +11,7 @@ import kafka.server.{KafkaConfig, KafkaServerStartable}
 import org.I0Itec.zkclient.ZkClient
 import org.apache.hadoop.hbase.HBaseTestingUtility
 import org.apache.zookeeper.CreateMode
+import popeye.clients.{SlicerClient, TsPoint, QueryClient}
 import popeye.Logging
 import popeye.pipeline.kafka.KafkaQueueSizeGauge
 import popeye.query.PointsStorage.NameType
@@ -21,7 +22,7 @@ import akka.actor.ActorSystem
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.ConfigFactory
 import org.scalatest.{BeforeAndAfter, Matchers, FlatSpec}
-import popeye.pipeline.{TsPoint, QueryClient, SlicerClient, PipelineCommand}
+import popeye.pipeline.PipelineCommand
 import popeye.query.QueryCommand
 
 import scala.collection.JavaConverters._
