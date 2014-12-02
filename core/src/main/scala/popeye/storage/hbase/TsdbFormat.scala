@@ -469,9 +469,14 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
         val generationId = range.id
         val genIdBytes = new BytesKey(Bytes.toBytes(generationId))
         val shardQNames = shardNames.map(name => QualifiedName(ShardKind, genIdBytes, name))
+        val metricQName = QualifiedName(MetricKind, genIdBytes, metric)
+        val metricIdOption = idMap.get(metricQName)
+        info(f"resolving metric id: $metricQName -> $metricIdOption")
+        val shardIdOptions = shardQNames.map(idMap.get)
+        info(f"resolving shard ids: ${ (shardQNames zip shardIdOptions).toMap }")
+        val shardIds = shardIdOptions.collect { case Some(id) => id }
         for {
-          metricId <- idMap.get(QualifiedName(MetricKind, genIdBytes, metric))
-          shardIds <- convertNamesSeq(shardQNames, idMap)
+          metricId <- metricIdOption if shardIds.nonEmpty
           attrIdFilters <- covertAttrNamesToIds(genIdBytes, attributeValueFilters, idMap)
         } yield {
           getShardScans(
@@ -506,13 +511,21 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
                                    attributes: Map[String, ValueNameFilterCondition],
                                    idMap: Map[QualifiedName, BytesKey]
                                     ): Option[Map[BytesKey, ValueIdFilterCondition]] = {
-    val attrIdFilters = attributes.toSeq.map {
+    val (attrIdOptions, attrIdFiltersOptions) = attributes.toSeq.map {
       case (attrName, valueFilter) =>
-        val valueIdFilter = convertAttrValuesToIds(generationId, valueFilter, idMap).getOrElse(return None)
-        val nameId = idMap.get(QualifiedName(AttrNameKind, generationId, attrName)).getOrElse(return None)
-        (nameId, valueIdFilter)
-    }.toMap
-    Some(attrIdFilters)
+        val valueIdFilterOption = convertAttrValuesToIds(generationId, valueFilter, idMap)
+        val qName = QualifiedName(AttrNameKind, generationId, attrName)
+        val nameIdOption = idMap.get(qName)
+        info(f"resolving $qName -> $nameIdOption")
+        (nameIdOption, valueIdFilterOption)
+    }.unzip
+    if (attrIdOptions.exists(_.isEmpty) || attrIdFiltersOptions.exists(_.isEmpty)) {
+      None
+    } else {
+      val ids = attrIdOptions.map(_.get)
+      val filters = attrIdFiltersOptions.map(_.get)
+      Some((ids zip filters).toMap)
+    }
   }
 
   private def convertAttrValuesToIds(generationId: BytesKey,
@@ -520,24 +533,23 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
                                      idMap: Map[QualifiedName, BytesKey]): Option[ValueIdFilterCondition] = {
     value match {
       case SingleValueName(name) =>
-        idMap.get(QualifiedName(AttrValueKind, generationId, name)).map {
+        val qName = QualifiedName(AttrValueKind, generationId, name)
+        val maybeId = idMap.get(qName).map {
           id => SingleValueId(id)
         }
+        info(f"resolving single value filter: $qName -> $maybeId")
+        maybeId
       case MultipleValueNames(names) =>
         val qNames = names.map(name => QualifiedName(AttrValueKind, generationId, name))
-        val idsOption = convertNamesSeq(qNames, idMap)
-        idsOption.map(ids => MultipleValueIds(ids))
+        val idOptions = qNames.map(idMap.get)
+        info(f"resolving multiple value filter: ${ qNames.zip(idOptions).toMap }")
+        if (idOptions.exists(_.isDefined)) {
+          val ids = idOptions.collect { case Some(id) => id }
+          Some(MultipleValueIds(ids))
+        } else {
+          None
+        }
       case AllValueNames => Some(AllValueIds)
-    }
-  }
-
-  private def convertNamesSeq(qNames: Seq[QualifiedName], idMap: Map[QualifiedName, BytesKey]): Option[Seq[BytesKey]] = {
-    val idOptions = qNames.map(name => idMap.get(name))
-    val ids = idOptions.collect { case Some(id) => id }
-    if (ids.nonEmpty) {
-      Some(ids)
-    } else {
-      None
     }
   }
 
