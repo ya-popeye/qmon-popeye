@@ -1,5 +1,7 @@
 package popeye.storage.hbase
 
+import org.apache.hadoop.hbase.util.Bytes
+
 import scala.collection.immutable.SortedMap
 
 object GenerationIdMapping {
@@ -15,6 +17,8 @@ trait GenerationIdMapping {
 
 case class TimeRangeAndId(start: Int, stop: Int, id: Short) {
   def contains(timestamp: Int) = start <= timestamp && timestamp < stop
+
+  override def toString: String = f"${ getClass.getSimpleName }($start, $stop, ${ new BytesKey(Bytes.toBytes(id)) }})"
 }
 
 // points are packed in rows by timespans, so period must be timespan-aligned
