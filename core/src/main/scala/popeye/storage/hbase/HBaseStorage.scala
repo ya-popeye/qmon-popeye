@@ -5,12 +5,12 @@ import java.util.TimeZone
 
 import com.codahale.metrics.MetricRegistry
 import java.util
-import org.apache.hadoop.hbase.KeyValue
+import org.apache.hadoop.hbase.{CellUtil, KeyValue}
 import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.util.Bytes
 import popeye.proto.{Message, PackedPoints}
 import popeye.util.FutureStream
-import popeye.{Instrumented, Logging}
+import popeye.{PointRope, Instrumented, Logging}
 import scala.collection.JavaConversions._
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration._
@@ -72,7 +72,7 @@ object HBaseStorage {
   sealed case class QualifiedId(kind: String, generationId: BytesKey, id: BytesKey)
 
 
-  type PointsGroup = Map[PointAttributes, Seq[Point]]
+  type PointsGroup = Map[PointAttributes, PointRope]
 
   type PointAttributes = SortedMap[String, String]
 
@@ -80,7 +80,8 @@ object HBaseStorage {
     b.foldLeft(a) {
       case (accGroup, (attrs, newPoints)) =>
         val pointsOption = accGroup.get(attrs)
-        accGroup.updated(attrs, pointsOption.getOrElse(Seq()) ++ newPoints)
+        val pointArray = pointsOption.map(oldPoints => oldPoints.concat(newPoints)).getOrElse(newPoints)
+        accGroup.updated(attrs, pointArray)
     }
   }
 
@@ -99,10 +100,6 @@ object HBaseStorage {
 
   case class ListPointTimeseries(tags: SortedMap[String, String], lists: Seq[ListPoint])
 
-  object Point {
-    def apply(timestamp: Int, value: Long): Point = Point(timestamp, Left(value))
-  }
-
   case class ListPoint(timestamp: Int, value: Either[Seq[Long], Seq[Float]]) {
     def isFloatList = value.isRight
 
@@ -115,22 +112,6 @@ object HBaseStorage {
         getFloatListValue.map(_.toDouble)
       } else {
         getLongListValue.map(_.toDouble)
-      }
-    }
-  }
-
-  case class Point(timestamp: Int, value: Either[Long, Float]) {
-    def isFloat = value.isRight
-
-    def getFloatValue = value.right.get
-
-    def getLongValue = value.left.get
-
-    def doubleValue = {
-      if (isFloat) {
-        getFloatValue.toDouble
-      } else {
-        getLongValue.toDouble
       }
     }
   }
@@ -307,7 +288,7 @@ class HBaseStorage(tableName: String,
       idNamePairsFuture.map {
         idNamePairs =>
           val idMap = idNamePairs.toMap
-          val pointSequences: Map[PointAttributes, Seq[Point]] = toPointSequencesMap(rowResults, timeRange, idMap)
+          val pointSequences: Map[PointAttributes, PointRope] = toPointSequencesMap(rowResults, timeRange, idMap)
           val pointGroups: Map[PointAttributes, PointsGroup] = groupPoints(groupByAttributeNameIds, pointSequences)
           PointsGroups(pointGroups)
       }
@@ -339,7 +320,7 @@ class HBaseStorage(tableName: String,
 
   private def toPointSequencesMap(rows: Array[ParsedSingleValueRowResult],
                                   timeRange: (Int, Int),
-                                  idMap: Map[QualifiedId, String]): Map[PointAttributes, Seq[Point]] = {
+                                  idMap: Map[QualifiedId, String]): Map[PointAttributes, PointRope] = {
     val (startTime, endTime) = timeRange
     rows.groupBy(row => row.timeseriesId.getAttributes(idMap)).mapValues {
       rowsArray =>
@@ -349,7 +330,7 @@ class HBaseStorage(tableName: String,
         val lastIndex = pointsArray.length - 1
         val lastRow = pointsArray(lastIndex)
         pointsArray(lastIndex) = lastRow.filter(point => point.timestamp < endTime)
-        pointsArray.toSeq.flatten
+        PointRope.concatAll(pointsArray.toSeq)
     }.view.force // mapValues returns lazy Map
   }
 
@@ -375,7 +356,7 @@ class HBaseStorage(tableName: String,
   }
 
   def groupPoints(groupByAttributeNames: Seq[String],
-                  pointsSequences: Map[PointAttributes, Seq[Point]]): Map[PointAttributes, PointsGroup] = {
+                  pointsSequences: Map[PointAttributes, PointRope]): Map[PointAttributes, PointsGroup] = {
     pointsSequences.groupBy {
       case (attributes, _) =>
         val groupByAttributeValueIds = groupByAttributeNames.map(attributes(_))
@@ -536,31 +517,36 @@ class HBaseStorage(tableName: String,
    * @return future
    */
   private def mkPointFuture(kv: KeyValue)(implicit eCtx: ExecutionContext): Future[Message.Point] = {
-    import scala.collection.JavaConverters._
-    val rowResult = tsdbFormat.parseSingleValueRowResult(new Result(Seq(kv).asJava))
-    val rowIds = tsdbFormat.getUniqueIds(rowResult.timeseriesId)
+    val (timeseriesId, baseTime) = tsdbFormat.parseTimeseriesIdAndBaseTime(CellUtil.cloneRow(kv))
+    val qualifierBytes = CellUtil.cloneQualifier(kv)
+    val valueBytes = CellUtil.cloneValue(kv)
+    val (delta, isFloat) = TsdbFormat.ValueTypes.parseQualifier(qualifierBytes)
+    val value = TsdbFormat.ValueTypes.parseSingleValue(valueBytes, isFloat)
+    val timestamp = baseTime + delta
+    val rowIds = tsdbFormat.getUniqueIds(timeseriesId)
     val idNamePairsFuture = Future.traverse(rowIds) {
       case qId =>
         uniqueId.resolveNameById(qId)(resolveTimeout).map {
           name => (qId, name)
         }
     }
-    val valuePoint = rowResult.points.head
-    val timeseriesId = rowResult.timeseriesId
     idNamePairsFuture.map {
       idNamePairs =>
         val metricName = timeseriesId.getMetricName(idNamePairs.toMap)
         val attrs = timeseriesId.getAttributes(idNamePairs.toMap)
         val builder = Message.Point.newBuilder()
-        builder.setTimestamp(valuePoint.timestamp)
+        builder.setTimestamp(timestamp)
         builder.setMetric(metricName)
-        if (valuePoint.isFloat) {
-          builder.setFloatValue(valuePoint.getFloatValue)
-          builder.setValueType(Message.Point.ValueType.FLOAT)
-        } else {
-          builder.setIntValue(valuePoint.getLongValue)
-          builder.setValueType(Message.Point.ValueType.INT)
-        }
+        value.fold(
+          longValue => {
+            builder.setIntValue(longValue)
+            builder.setValueType(Message.Point.ValueType.INT)
+          },
+          floatValue => {
+            builder.setFloatValue(floatValue)
+            builder.setValueType(Message.Point.ValueType.FLOAT)
+          }
+        )
         for ((name, value) <- attrs) {
           builder.addAttributesBuilder()
             .setName(name)

@@ -4,7 +4,7 @@ import popeye.proto.Message
 import popeye.storage.hbase.HBaseStorage._
 import org.apache.hadoop.hbase.KeyValue
 import org.apache.hadoop.hbase.util.Bytes
-import popeye.Logging
+import popeye.{PointRope, Point, Logging}
 import scala.collection.JavaConverters._
 import org.apache.hadoop.hbase.client.{Scan, Result}
 import scala.collection.mutable
@@ -268,7 +268,7 @@ case class TimeseriesId(generationId: BytesKey,
   }
 }
 
-case class ParsedSingleValueRowResult(timeseriesId: TimeseriesId, points: Seq[HBaseStorage.Point])
+case class ParsedSingleValueRowResult(timeseriesId: TimeseriesId, points: PointRope)
 
 case class ParsedListValueRowResult(timeseriesId: TimeseriesId, lists: Seq[HBaseStorage.ListPoint])
 
@@ -349,14 +349,14 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
   def parseSingleValueRowResult(result: Result): ParsedSingleValueRowResult = {
     val row = result.getRow
     val (timeseriesId, baseTime) = parseTimeseriesIdAndBaseTime(row)
-    val columns = result.getFamilyMap(HBaseStorage.PointsFamily).asScala.toList
+    val columns = result.getFamilyMap(HBaseStorage.PointsFamily).asScala.iterator
     val points = columns.map {
       case (qualifierBytes, valueBytes) =>
         val (delta, isFloat) = ValueTypes.parseQualifier(qualifierBytes)
         val value = ValueTypes.parseSingleValue(valueBytes, isFloat)
-        HBaseStorage.Point(baseTime + delta, value)
+        Point(baseTime + delta, value.fold(_.toDouble, _.toDouble))
     }
-    ParsedSingleValueRowResult(timeseriesId, points)
+    ParsedSingleValueRowResult(timeseriesId, PointRope.fromIterator(points))
   }
 
   def parseListValueRowResult(result: Result): ParsedListValueRowResult = {

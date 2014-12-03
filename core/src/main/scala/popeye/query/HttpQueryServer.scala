@@ -5,20 +5,13 @@ import popeye.Logging
 import popeye.storage.hbase.HBaseStorage
 import spray.http._
 import spray.http.HttpMethods._
-import akka.pattern.ask
-import java.net.InetSocketAddress
-import akka.io.IO
 import spray.can.Http
-import com.typesafe.config.Config
-import akka.util.Timeout
-import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext
 import popeye.storage.hbase.HBaseStorage._
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition
 import scala.util.Try
 import java.io.{PrintWriter, StringWriter}
 import HttpQueryServer._
-import popeye.storage.hbase.HBaseStorage.Point
 import spray.http.HttpResponse
 import popeye.storage.hbase.HBaseStorage.PointsGroups
 import spray.http.HttpRequest
@@ -131,18 +124,6 @@ object HttpQueryServer extends HttpServerFactory {
   private def aggregatePoints(pointsGroups: PointsGroups,
                               interpolationAggregator: Seq[Double] => Double,
                               downsamplingOption: Option[(Int, Seq[Double] => Double)]): Map[PointAttributes, Seq[(Int, Double)]] = {
-    def toGraphPointIterator(points: Seq[Point]) = {
-      val graphPoints = points.iterator.map {
-        point => (point.timestamp, point.doubleValue)
-      }
-      downsamplingOption.map {
-        case (interval, aggregator) => PointSeriesUtils.downsample(graphPoints, interval, aggregator)
-      }.getOrElse(graphPoints)
-    }
-    pointsGroups.groupsMap.mapValues {
-      group =>
-        val graphPointIterators = group.values.map(toGraphPointIterator).toSeq
-        PointSeriesUtils.interpolateAndAggregate(graphPointIterators, interpolationAggregator).toList
-    }
+    OpenTSDB2HttpApiServer.aggregatePoints(pointsGroups, interpolationAggregator, false, downsamplingOption)
   }
 }

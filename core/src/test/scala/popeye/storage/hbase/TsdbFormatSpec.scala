@@ -1,6 +1,7 @@
 package popeye.storage.hbase
 
 import org.scalatest.{Matchers, FlatSpec}
+import popeye.Point
 import popeye.proto.Message
 import scala.collection.JavaConverters._
 import popeye.storage.hbase.HBaseStorage._
@@ -8,7 +9,7 @@ import org.apache.hadoop.hbase.util.Bytes
 import org.apache.hadoop.hbase.client.Result
 import popeye.test.PopeyeTestUtils._
 import scala.collection.immutable.SortedMap
-import org.apache.hadoop.hbase.KeyValue
+import org.apache.hadoop.hbase.{CellUtil, KeyValue}
 import popeye.storage.hbase.HBaseStorage.ValueIdFilterCondition._
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition._
 import java.nio.CharBuffer
@@ -107,8 +108,13 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val tsdbFormat = createTsdbFormat()
     val SuccessfulConversion(keyValue) = tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap.get, 0)
     val timestamp = samplePoint.getTimestamp.toInt
-    val result = new Result(List(keyValue).asJava)
-    tsdbFormat.parseSingleValueRowResult(result).points.head should equal(HBaseStorage.Point(timestamp, samplePoint.getIntValue))
+    val (timeseriesId, baseTime) = tsdbFormat.parseTimeseriesIdAndBaseTime(CellUtil.cloneRow(keyValue))
+    val qualifierBytes = CellUtil.cloneQualifier(keyValue)
+    val valueBytes = CellUtil.cloneValue(keyValue)
+    val (delta, isFloat) = TsdbFormat.ValueTypes.parseQualifier(qualifierBytes)
+    val value = TsdbFormat.ValueTypes.parseSingleValue(valueBytes, isFloat)
+    value should equal(Left(samplePoint.getIntValue))
+    (baseTime + delta) should equal(timestamp)
   }
 
   it should "handle int list values" in {
@@ -212,14 +218,17 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       sampleIdMap(qualifiedName(AttrNameKind, "name")) -> sampleIdMap(qualifiedName(AttrValueKind, "value")),
       sampleIdMap(qualifiedName(AttrNameKind, "anotherName")) -> sampleIdMap(qualifiedName(AttrValueKind, "anotherValue"))
     )
-    val expectedPoints = timeAndValues.map { case (time, value) => HBaseStorage.Point(time.toInt, value) }
+    val expectedPoints = timeAndValues.map {
+      case (time, value) =>
+        Point(time.toInt, value.fold(_.toDouble, _.toDouble))
+    }
 
     val timeseriesId = parsedRowResult.timeseriesId
     timeseriesId.generationId should equal(defaultGenerationIdBytes)
     timeseriesId.metricId should equal(sampleIdMap(qualifiedName(MetricKind, "test")))
     timeseriesId.shardId should equal(bytesKey(4, 0, 1))
     timeseriesId.attributeIds should equal(expectedAttributeIds)
-    parsedRowResult.points should equal(expectedPoints)
+    parsedRowResult.points.iterator.toList should equal(expectedPoints)
 
   }
 

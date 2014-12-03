@@ -1,5 +1,6 @@
 package popeye.storage.hbase
 
+import popeye.Point
 import popeye.test.PopeyeTestUtils._
 import popeye.test.{PopeyeTestUtils, MockitoStubs}
 import popeye.pipeline.test.AkkaTestKitSpec
@@ -112,7 +113,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
     val groupsMap = toGroupsMap(future)
     val group = groupsMap(SortedMap())
     group.size should equal(1)
-    val series = group(SortedMap("host" -> "localhost"))
+    val series = group(SortedMap("host" -> "localhost")).iterator.toList
     series should contain(Point(1200, 1))
     series should (not contain Point(0, 0))
     series should (not contain Point(6000, 5))
@@ -132,7 +133,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
     val groupsMap = toGroupsMap(future)
     val group = groupsMap(SortedMap())
     group.size should equal(1)
-    val series = group(SortedMap("host" -> "localhost"))
+    val series = group(SortedMap("host" -> "localhost")).iterator.toList
     series should contain(Point(0, 0))
   }
 
@@ -154,7 +155,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
     val groupsMap = toGroupsMap(future)
     val group = groupsMap(SortedMap())
     group.size should equal(1)
-    val series = group(SortedMap("a" -> "foo", "b" -> "foo"))
+    val series = group(SortedMap("a" -> "foo", "b" -> "foo")).iterator.toList
 
     series should contain(Point(0, 1))
   }
@@ -188,8 +189,8 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
     val barGroup = groupsMap(SortedMap("type" -> "bar"))
     fooGroup.size should equal(1)
     barGroup.size should equal(1)
-    fooGroup(SortedMap("type" -> "foo")) should (contain(Point(0, 1)) and (not contain Point(0, 3)))
-    barGroup(SortedMap("type" -> "bar")) should (contain(Point(0, 2)) and (not contain Point(0, 3)))
+    fooGroup(SortedMap("type" -> "foo")).iterator.toList should (contain(Point(0, 1)) and (not contain Point(0, 3)))
+    barGroup(SortedMap("type" -> "bar")).iterator.toList should (contain(Point(0, 2)) and (not contain Point(0, 3)))
   }
 
   it should "perform multiple attribute value queries (All filter)" in {
@@ -224,8 +225,10 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
     val barGroup = groupsMap(SortedMap("type" -> "bar"))
     fooGroup.size should equal(1)
     barGroup.size should equal(1)
-    fooGroup(SortedMap("type" -> "foo", "attr" -> "foo")) should (contain(Point(0, 1)) and (not contain Point(0, 3)))
-    barGroup(SortedMap("type" -> "bar", "attr" -> "foo")) should (contain(Point(0, 2)) and (not contain Point(0, 3)))
+    val fooList = fooGroup(SortedMap("type" -> "foo", "attr" -> "foo")).iterator.toList
+    fooList should (contain(Point(0, 1)) and (not contain Point(0, 3)))
+    val barList = barGroup(SortedMap("type" -> "bar", "attr" -> "foo")).iterator.toList
+    barList should (contain(Point(0, 2)) and (not contain Point(0, 3)))
   }
 
   it should "perform list value queries" in {

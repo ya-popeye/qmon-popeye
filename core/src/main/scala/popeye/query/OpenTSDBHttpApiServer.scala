@@ -7,9 +7,6 @@ import java.net.InetSocketAddress
 import akka.io.IO
 import popeye.storage.hbase.HBaseStorage
 import spray.can.Http
-import com.typesafe.config.Config
-import akka.util.Timeout
-import scala.concurrent.duration._
 import scala.concurrent.{Promise, Future, ExecutionContext}
 import spray.http._
 import spray.http.HttpMethods._
@@ -19,7 +16,6 @@ import java.text.SimpleDateFormat
 import popeye.storage.hbase.HBaseStorage._
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition._
 import spray.http.MediaTypes.`application/json`
-import popeye.storage.hbase.HBaseStorage.Point
 import spray.http.HttpResponse
 import popeye.storage.hbase.HBaseStorage.PointsGroups
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.SingleValueName
@@ -47,7 +43,7 @@ class OpenTSDBHttpApiServer(storage: PointsStorage, executionContext: ExecutionC
           metricQueryString <- parameter("m", "metric is not set").right
           timeSeriesQuery <- parseTimeSeriesQuery(metricQueryString).right
           aggregator <- aggregatorsMap.get(timeSeriesQuery.aggregatorKey)
-            .toRight(f"no such aggregation: $timeSeriesQuery; available aggregations: ${aggregatorsMap.keys}").right
+            .toRight(f"no such aggregation: $timeSeriesQuery; available aggregations: ${ aggregatorsMap.keys }").right
         } yield {
           val startTime = parseTime(startDate)
           val endTime = parseTime(endDate)
@@ -81,7 +77,7 @@ class OpenTSDBHttpApiServer(storage: PointsStorage, executionContext: ExecutionC
         for {
           suggestKey <- parameter("type", "suggest type (type) is not set").right
           suggestType <- suggestTypes.get(suggestKey)
-            .toRight(f"no such suggest type: $suggestKey, try one of ${suggestTypes.keys}").right
+            .toRight(f"no such suggest type: $suggestKey, try one of ${ suggestTypes.keys }").right
           namePrefix <- parameter("q", "name prefix (q) is not set").right
         } yield Future {
           val suggestions: Seq[String] = storage.getSuggestions(namePrefix, suggestType, 10)
@@ -192,7 +188,7 @@ object OpenTSDBHttpApiServer extends HttpServerFactory {
   private val paramRegex = "[^&]+".r
 
   private[query] def queryToParametersMap(query: Uri.Query): Map[String, String] = {
-    val queryString = if(query.isEmpty) "" else query.value
+    val queryString = if (query.isEmpty) "" else query.value
     paramRegex.findAllIn(queryString).map {
       parameter =>
         val equalsIndex = parameter.indexOf('=')
@@ -264,28 +260,13 @@ object OpenTSDBHttpApiServer extends HttpServerFactory {
   private def aggregatePoints(pointsGroups: PointsGroups,
                               interpolationAggregator: Seq[Double] => Double,
                               rate: Boolean): Map[PointAttributes, Seq[(Int, Double)]] = {
-
-    def toGraphPointIterator(points: Seq[Point]) = points.iterator.map {
-      point => (point.timestamp, point.doubleValue)
-    }
-    pointsGroups.groupsMap.mapValues {
-      group =>
-        val graphPointIterators = group.values.map(toGraphPointIterator).toSeq
-        val aggregated = PointSeriesUtils.interpolateAndAggregate(graphPointIterators, interpolationAggregator)
-        val result =
-          if (rate) {
-            PointSeriesUtils.differentiate(aggregated)
-          } else {
-            aggregated
-          }
-        result.toList
-    }
+    OpenTSDB2HttpApiServer.aggregatePoints(pointsGroups, interpolationAggregator, rate, None)
   }
 
   private def pointsToString(metricName: String, allSeries: Map[PointAttributes, Seq[(Int, Double)]]) = {
     val lines = for {
       (attributes, points) <- allSeries.iterator
-      attributesString = attributes.map { case (name, value) => f"$name=$value"}.mkString(" ")
+      attributesString = attributes.map { case (name, value) => f"$name=$value" }.mkString(" ")
       (timestamp, value) <- points
     } yield f"$metricName $timestamp $value $attributesString"
     lines.mkString("\n")

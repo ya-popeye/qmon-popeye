@@ -1,7 +1,7 @@
 package popeye.query
 
+import popeye.{PointRope, Point}
 import popeye.bench.BenchUtils
-import popeye.storage.hbase.HBaseStorage
 import popeye.storage.hbase.HBaseStorage.PointsGroups
 
 import scala.collection.immutable.SortedMap
@@ -34,12 +34,14 @@ object AggregationAndInterpolationBench {
     val startTime = 1416395727 // Wed Nov 19 14:15:27 MSK 2014
     val seriesStartTimes = List.fill(numberOfSeries)(random.nextInt(timeStep))
     val serieses = seriesStartTimes.map {
-      startTime => (0 until pointsPerSeries).map {
-        i =>
-          val timestamp = startTime + i * timeStep
-          val value = random.nextFloat() * 100 + 200
-          HBaseStorage.Point(timestamp, Right(value))
-      }
+      startTime =>
+        val points = (0 until pointsPerSeries).map {
+          i =>
+            val timestamp = startTime + i * timeStep
+            val value = random.nextDouble() * 100 + 200
+            Point(timestamp, value)
+        }
+        PointRope.fromIterator(points.iterator)
     }
     val pointsGroup = serieses.zipWithIndex.map {
       case (series, index) =>

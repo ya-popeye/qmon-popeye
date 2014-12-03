@@ -2,9 +2,9 @@ package popeye.query
 
 import akka.io.IO
 import com.typesafe.config.ConfigFactory
-import org.scalatest.matchers.ShouldMatchers
 import OpenTSDBHttpApiServer._
 import org.scalatest.EitherValues._
+import popeye.{PointRope, Point}
 import popeye.storage.hbase.HBaseStorage
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition._
 import popeye.pipeline.test.AkkaTestKitSpec
@@ -80,11 +80,11 @@ class OpenTSDBHttpApiServerSpec extends AkkaTestKitSpec("http-query") with Mocki
     val uriString = f"/q?$timeParams&$metricParam"
 
     val fooGroup = Map(
-      SortedMap("groupByAttr" -> "foo", "attr" -> "12") -> Seq(Point(0, 1), Point(1, 2)),
-      SortedMap("groupByAttr" -> "foo", "attr" -> "00") -> Seq(Point(0, 0), Point(1, 0))
+      SortedMap("groupByAttr" -> "foo", "attr" -> "12") -> PointRope(Point(0, 1), Point(1, 2)),
+      SortedMap("groupByAttr" -> "foo", "attr" -> "00") -> PointRope(Point(0, 0), Point(1, 0))
     )
     val barGroup = Map(
-      SortedMap("groupByAttr" -> "bar", "attr" -> "34") -> Seq(Point(0, 3), Point(1, 4))
+      SortedMap("groupByAttr" -> "bar", "attr" -> "34") -> PointRope(Point(0, 3), Point(1, 4))
     )
 
     val groups = Map(

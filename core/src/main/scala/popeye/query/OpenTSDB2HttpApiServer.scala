@@ -10,7 +10,7 @@ import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.{SingleValueNa
 import scala.collection.JavaConverters._
 import akka.actor.{Props, ActorRef, ActorSystem, Actor}
 import org.codehaus.jackson.map.ObjectMapper
-import popeye.{Instrumented, Logging}
+import popeye.{PointRope, Instrumented, Logging}
 import spray.can.Http
 import spray.http.HttpHeaders._
 import spray.http.HttpMethods._
@@ -246,9 +246,9 @@ object OpenTSDB2HttpApiServer {
                       interpolationAggregator: Seq[Double] => Double,
                       rate: Boolean,
                       downsamplingOption: Option[(Int, Seq[Double] => Double)]): Map[PointAttributes, Seq[(Int, Double)]] = {
-    def toGraphPointIterator(points: Seq[Point]) = {
+    def toGraphPointIterator(points: PointRope) = {
       val graphPoints = points.iterator.map {
-        point => (point.timestamp, point.doubleValue)
+        point => (point.timestamp, point.value)
       }
       val downsampled = downsamplingOption.map {
         case (interval, aggregator) => PointSeriesUtils.downsample(graphPoints, interval, aggregator)

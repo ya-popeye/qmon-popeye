@@ -3,6 +3,7 @@ package popeye.query
 import akka.actor.ActorSystem
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.ConfigFactory
+import popeye.{PointRope, Point}
 import popeye.query.PointsStorage.NameType
 import popeye.query.PointsStorage.NameType.NameType
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.{MultipleValueNames, AllValueNames, SingleValueName}
@@ -54,8 +55,11 @@ object OpenTSDB2HttpApiServerStub {
               .filter(ts => conditionHolds(ts.tags(tagKey), tagValueFilter))
         }
         val (start, stop) = timeRange
-        def toPoints(f: Double => Double) = (start to stop).by((stop - start) / 100).map(t => Point(t, Right(f(t).toFloat)))
-        val pointSeries = filteredTs.map(ts => (ts.tags, toPoints(ts.f))).toMap
+        def createFunctionGraph(f: Double => Double) = {
+          val points = (start to stop).by((stop - start) / 100).map(t => Point(t, f(t)))
+          PointRope.fromIterator(points.iterator)
+        }
+        val pointSeries = filteredTs.map(ts => (ts.tags, createFunctionGraph(ts.f))).toMap
         val groupByTags = attributes.filter { case (tagKey, tagValueFilter) => tagValueFilter.isGroupByAttribute }.map(_._1)
         val groupedTs = pointSeries.groupBy {
           case (tags, _) =>
