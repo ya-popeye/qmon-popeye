@@ -11,13 +11,17 @@ import popeye.MainConfig
 import scala.collection.JavaConverters._
 
 object QueryCommand extends PopeyeCommand with Logging {
-  val serverTypes: Map[String, HttpServerFactory] = Map(
-    "opentsdb" -> OpenTSDB2HttpApiServer,
-    "simple" -> HttpQueryServer,
-    "health-check" -> HealthCheckServer
-  ).withDefault {
-    key =>
-      throw new NoSuchElementException(f"wrong server type name: $key; available types: ${serverTypes.keys} ")
+  def getServerFactoriesMap(metricRegistry: MetricRegistry): Map[String, HttpServerFactory] = {
+    val otsdbServerMetrics = new OpenTSDB2HttpApiServerMetrics("otsdb.api", metricRegistry)
+    val factories = Map(
+      "opentsdb" -> new OpenTSDB2HttpApiServer(otsdbServerMetrics),
+      "simple" -> HttpQueryServer,
+      "health-check" -> HealthCheckServer
+    )
+    factories.withDefault {
+      key =>
+        throw new NoSuchElementException(f"wrong server type name: $key; available types: ${ factories.keys } ")
+    }
   }
 
   def prepare(parser: OptionParser[MainConfig]): OptionParser[MainConfig] = {
@@ -45,6 +49,7 @@ object QueryCommand extends PopeyeCommand with Logging {
       storageConfig.timeRangeIdMapping,
       ectx
     )
-    serverTypes(serverTypeKey).runServer(serverConfig, pointsStorage, actorSystem, ectx)
+    val serverFactoriesMap = getServerFactoriesMap(metrics)
+    serverFactoriesMap(serverTypeKey).runServer(serverConfig, pointsStorage, actorSystem, ectx)
   }
 }

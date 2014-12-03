@@ -1,5 +1,6 @@
 package popeye.query
 
+import com.codahale.metrics.MetricRegistry
 import org.codehaus.jackson.JsonNode
 import org.codehaus.jackson.node.{ObjectNode, JsonNodeFactory}
 import popeye.storage.hbase.HBaseStorage
@@ -9,7 +10,7 @@ import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.{SingleValueNa
 import scala.collection.JavaConverters._
 import akka.actor.{Props, ActorRef, ActorSystem, Actor}
 import org.codehaus.jackson.map.ObjectMapper
-import popeye.Logging
+import popeye.{Instrumented, Logging}
 import spray.can.Http
 import spray.http.HttpHeaders._
 import spray.http.HttpMethods._
@@ -19,7 +20,9 @@ import popeye.query.OpenTSDB2HttpApiServer._
 
 import scala.concurrent.{Promise, Future, ExecutionContext}
 
-class OpenTSDB2HttpApiServer(storage: PointsStorage, executionContext: ExecutionContext) extends Actor with Logging {
+class OpenTSDB2HttpApiServerHandler(storage: PointsStorage,
+                                    executionContext: ExecutionContext,
+                                    metrics: OpenTSDB2HttpApiServerMetrics) extends Actor with Logging {
 
   val storageRequestCancellation = Promise[Nothing]()
   implicit val exct = executionContext
@@ -67,8 +70,10 @@ class OpenTSDB2HttpApiServer(storage: PointsStorage, executionContext: Execution
       val startMillis = json.get("start").getLongValue
       val stopMillis = if (json.has("end")) json.get("end").getLongValue else System.currentTimeMillis()
       val queries = json.get("queries").asScala.toList.map(parseTsQuery)
+      val totalTimeContext = metrics.totalReadTime.timerContext()
       val queryResults = Future.traverse(queries) {
         query =>
+          val storageReadTimeContext = metrics.storageReadTime.timerContext()
           val pointsStreamFuture = storage.getPoints(
             query.metricName,
             ((startMillis / 1000).toInt, (stopMillis / 1000).toInt),
@@ -84,8 +89,12 @@ class OpenTSDB2HttpApiServer(storage: PointsStorage, executionContext: Execution
               pointsStream.withCancellation(storageRequestCancellation.future)
             )
           } yield {
+            storageReadTimeContext.stop()
             debug(s"got point groups sizes: ${ pointGroups.groupsMap.mapValues(_.mapValues(_.size)) }")
-            (query.metricName, aggregatePoints(pointGroups, aggregator, query.isRate, downsampleOption))
+            val aggregatedPoints = metrics.aggregationTime.time {
+              aggregatePoints(pointGroups, aggregator, query.isRate, downsampleOption)
+            }
+            (query.metricName, aggregatedPoints)
           }
       }
       val responseStringFuture = queryResults.map {
@@ -107,6 +116,7 @@ class OpenTSDB2HttpApiServer(storage: PointsStorage, executionContext: Execution
       responseStringFuture.map {
         response =>
           client ! HttpResponse(headers = headers, entity = HttpEntity(response))
+          totalTimeContext.stop()
       }.onFailure {
         case e: Exception =>
           log.error("request failed", e)
@@ -200,7 +210,13 @@ class OpenTSDB2HttpApiServer(storage: PointsStorage, executionContext: Execution
   }
 }
 
-object OpenTSDB2HttpApiServer extends HttpServerFactory {
+class OpenTSDB2HttpApiServerMetrics(name: String, override val metricRegistry: MetricRegistry) extends Instrumented {
+  val totalReadTime = metrics.timer(f"$name.total.read.time")
+  val storageReadTime = metrics.timer(f"$name.storage.read.time")
+  val aggregationTime = metrics.timer(f"$name.aggregation.time")
+}
+
+object OpenTSDB2HttpApiServer {
 
   import PointsStorage.NameType._
 
@@ -250,11 +266,15 @@ object OpenTSDB2HttpApiServer extends HttpServerFactory {
         aggregated.toList
     }
   }
+}
+
+class OpenTSDB2HttpApiServer(metrics: OpenTSDB2HttpApiServerMetrics) extends HttpServerFactory {
+
 
   override def createHandler(system: ActorSystem,
                              storage: PointsStorage,
                              executionContext: ExecutionContext): ActorRef = {
-    system.actorOf(Props(new OpenTSDB2HttpApiServer(storage, executionContext)))
+    system.actorOf(Props(new OpenTSDB2HttpApiServerHandler(storage, executionContext, metrics)))
   }
 
 

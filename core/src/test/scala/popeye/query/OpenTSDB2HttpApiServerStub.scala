@@ -1,11 +1,10 @@
 package popeye.query
 
 import akka.actor.ActorSystem
+import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.ConfigFactory
 import popeye.query.PointsStorage.NameType
 import popeye.query.PointsStorage.NameType.NameType
-import popeye.query.PointsStorage.NameType.NameType
-import popeye.storage.hbase.HBaseStorage
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.{MultipleValueNames, AllValueNames, SingleValueName}
 import popeye.storage.hbase.HBaseStorage._
 import popeye.util.FutureStream
@@ -89,6 +88,7 @@ object OpenTSDB2HttpApiServerStub {
         |  listen = "localhost:8080"
         |}
       """.stripMargin)
-    OpenTSDB2HttpApiServer.runServer(config, storage, system, system.dispatcher)
+    val serverMetrics = new OpenTSDB2HttpApiServerMetrics("otsdb.api", new MetricRegistry)
+    new OpenTSDB2HttpApiServer(serverMetrics).runServer(config, storage, system, system.dispatcher)
   }
 }
