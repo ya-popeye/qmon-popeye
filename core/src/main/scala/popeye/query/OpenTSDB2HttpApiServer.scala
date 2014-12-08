@@ -23,7 +23,8 @@ class OpenTSDB2HttpApiServerHandler(storage: PointsStorage,
                                     executionContext: ExecutionContext,
                                     metrics: OpenTSDB2HttpApiServerMetrics) extends Actor with Logging {
 
-  val storageRequestCancellation = Promise[Nothing]()
+  info("new handler was created")
+  var storageRequestCancellation = Promise[Nothing]()
   implicit val exct = executionContext
 
   override def receive: Receive = {
@@ -112,12 +113,18 @@ class OpenTSDB2HttpApiServerHandler(storage: PointsStorage,
       val client = sender
       responseStringFuture.map {
         response =>
-          client ! HttpResponse(headers = headers, entity = HttpEntity(response))
+          self ! FinalizeRequest(
+            client,
+            HttpResponse(headers = headers, entity = HttpEntity(response))
+          )
           totalTimeContext.stop()
       }.onFailure {
         case e: Exception =>
           log.error("request failed", e)
-          client ! HttpResponse(status = StatusCodes.InternalServerError, entity = HttpEntity(e.getMessage))
+          self ! FinalizeRequest(
+            client,
+            HttpResponse(status = StatusCodes.InternalServerError, entity = HttpEntity(e.getMessage))
+          )
       }
 
     case request: HttpRequest =>
@@ -129,7 +136,17 @@ class OpenTSDB2HttpApiServerHandler(storage: PointsStorage,
       storageRequestCancellation.tryFailure(
         new RuntimeException("http connection was closed; storage request cancelled")
       )
+
+    case FinalizeRequest(client, response) =>
+      info("finalizing request")
+      // refresh actor state to avoid memory leaks (in case of keep-alive connections)
+      storageRequestCancellation = Promise()
+      client ! response
     case msg => println(msg)
+  }
+
+  private def finalizeRequest(client: ActorRef, response: HttpResponse) = {
+    self ! FinalizeRequest(client, response)
   }
 
   private def parseTsQuery(jsonQuery: JsonNode) = {
@@ -222,6 +239,8 @@ object OpenTSDB2HttpApiServer {
                              isRate: Boolean,
                              downsample: Option[(Int, String)],
                              tags: Map[String, ValueNameFilterCondition])
+
+  case class FinalizeRequest(client: ActorRef, response: HttpResponse)
 
   val objectMapper = new ObjectMapper()
 
