@@ -1,27 +1,37 @@
 package popeye
 
-class PointRope(protected val pointArrays: Vector[PointArray]) {
-  def iterator: Iterator[Point] = pointArrays.iterator.map(_.iterator).flatten
+trait PointRope {
+  def iterator: Iterator[Point]
 
   def filter(cond: Point => Boolean): PointRope = PointRope.fromIterator(iterator.filter(cond))
 
-  def concat(right: PointRope) = new PointRope(pointArrays ++ right.pointArrays)
+  def concat(right: PointRope) = new PointRope.CompositePointRope(Vector(this, right))
 
-  def size = pointArrays.iterator.map(_.size).sum
-
-  override def toString: String = pointArrays.mkString("PointRope(", ", ", ")")
+  def size: Int
 }
+
 
 object PointRope {
 
+  private[PointRope] class CompositePointRope(pointRopes: Vector[PointRope]) extends PointRope {
+    override def iterator: Iterator[Point] = pointRopes.iterator.flatMap(_.iterator)
+
+    override def size: Int = pointRopes.map(_.size).sum
+  }
+
+  private[PointRope] class SinglePointArrayRope(pointArray: PointArray) extends PointRope {
+    override def iterator: Iterator[Point] = pointArray.iterator
+
+    override def size: Int = pointArray.size
+  }
+
   def fromIterator(points: Iterator[Point]) = {
     val pArray = PointArray.fromIterator(points)
-    new PointRope(Vector(pArray))
+    new SinglePointArrayRope(pArray)
   }
 
   def concatAll(ropes: Traversable[PointRope]) = {
-    val arrays = ropes.map(_.pointArrays).flatten
-    new PointRope(arrays.toVector)
+    new CompositePointRope(ropes.toVector)
   }
 
   def fromPoints(points: Point*) = fromIterator(points.iterator)

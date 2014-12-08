@@ -2,8 +2,7 @@ package popeye.util.hbase
 
 import com.codahale.metrics.MetricRegistry
 import org.apache.hadoop.hbase.client.{Result, Scan, HTablePool, HTableInterface}
-import popeye.{Instrumented, Logging}
-import popeye.util.hbase.HBaseUtils.ChunkedResults
+import popeye.{ImmutableIterator, Instrumented, Logging}
 
 object HBaseUtils {
 
@@ -25,14 +24,13 @@ object HBaseUtils {
                         hTablePool: HTablePool,
                         tableName: String,
                         readChunkSize: Int,
-                        scans: Seq[Scan]) = {
+                        scans: Seq[Scan]): ImmutableIterator[Array[Result]] = {
     require(scans.nonEmpty, "scans sequence is empty")
     new ChunkedResults(
       metrics,
       () => hTablePool.getTable(tableName),
       readChunkSize,
-      scans.head,
-      scans.tail
+      scans.toList
     )
   }
 
@@ -42,67 +40,65 @@ object HBaseUtils {
     val scannerCloseTime = metrics.timer(s"$name.scanner.close.time")
     val dummyNextCallTime = metrics.timer(s"$name.dummy.next.call.time")
     val dataNextCallTime = metrics.timer(s"$name.data.next.call.time")
+    val scanCount = metrics.histogram(s"$name.scan.count")
   }
 
-  class ChunkedResults(metrics: ChunkedResultsMetrics,
-                       createTable: () => HTableInterface,
-                       readChunkSize: Int,
-                       scan: Scan,
-                       nextScans: Seq[Scan],
-                       skipFirstRow: Boolean = false) extends Logging {
-    def getRows(): (Array[Result], Option[ChunkedResults]) = withHTable {
+  case class ChunkedResults(metrics: ChunkedResultsMetrics,
+                            createTable: () => HTableInterface,
+                            readChunkSize: Int,
+                            scans: List[Scan],
+                            skipFirstRow: Boolean = false,
+                            totalScanCount: Int = 0) extends ImmutableIterator[Array[Result]] with Logging {
+
+    def next: Option[(Array[Result], ImmutableIterator[Array[Result]])] = {
+      if (scans.isEmpty) {
+        metrics.scanCount.update(totalScanCount)
+      }
+      scans.headOption.map {
+        scan =>
+          val results = fetchResults(scan)
+          val nextChunkedResults =
+            if (results.length < readChunkSize) {
+              copy(
+                scans = scans.tail,
+                skipFirstRow = false,
+                totalScanCount = totalScanCount + 1
+              )
+            } else {
+              val lastRow = results.last.getRow
+              val nextScan = new Scan(scan)
+              nextScan.setStartRow(lastRow)
+              copy(
+                scans = nextScan :: scans.tail,
+                skipFirstRow = true,
+                totalScanCount = totalScanCount + 1
+              )
+            }
+          (results, nextChunkedResults)
+      }
+    }
+
+    def fetchResults(scan: Scan) = withHTable {
       table =>
+        scan.setCaching(readChunkSize + 1)
         val scanner = metrics.scannerCreationTime.time {
           table.getScanner(scan)
         }
-        val results =
-          try {
-            if (skipFirstRow) {
-              metrics.dummyNextCallTime.time {
-                scanner.next()
-              }
-            }
-            metrics.dataNextCallTime.time {
-              scanner.next(readChunkSize)
+        try {
+          if (skipFirstRow) {
+            metrics.dummyNextCallTime.time {
+              scanner.next()
             }
           }
-          finally {
-            metrics.scannerCloseTime.time {
-              scanner.close()
-            }
+          val results = metrics.dataNextCallTime.time {
+            scanner.next(readChunkSize)
           }
-        val nextQuery =
-          if (results.length < readChunkSize) {
-            if (nextScans.nonEmpty) {
-              val nextResults =
-                new ChunkedResults(
-                  metrics,
-                  createTable,
-                  readChunkSize,
-                  nextScans.head,
-                  nextScans.tail,
-                  skipFirstRow = false
-                )
-              Some(nextResults)
-            } else {
-              None
-            }
-          } else {
-            val lastRow = results.last.getRow
-            val nextScan = new Scan(scan)
-            nextScan.setStartRow(lastRow)
-            val nextResults =
-              new ChunkedResults(
-                metrics,
-                createTable,
-                readChunkSize,
-                nextScan,
-                nextScans,
-                skipFirstRow = true
-              )
-            Some(nextResults)
+          results
+        } finally {
+          metrics.scannerCloseTime.time {
+            scanner.close()
           }
-        (results, nextQuery)
+        }
     }
 
     private def withHTable[U](body: (HTableInterface) => U): U = {

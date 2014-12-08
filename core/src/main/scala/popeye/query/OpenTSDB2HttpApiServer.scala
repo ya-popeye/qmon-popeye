@@ -3,7 +3,6 @@ package popeye.query
 import com.codahale.metrics.MetricRegistry
 import org.codehaus.jackson.JsonNode
 import org.codehaus.jackson.node.{ObjectNode, JsonNodeFactory}
-import popeye.storage.hbase.HBaseStorage
 import popeye.storage.hbase.HBaseStorage._
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.{SingleValueName, MultipleValueNames, AllValueNames}
 
@@ -74,20 +73,18 @@ class OpenTSDB2HttpApiServerHandler(storage: PointsStorage,
       val queryResults = Future.traverse(queries) {
         query =>
           val storageReadTimeContext = metrics.storageReadTime.timerContext()
-          val pointsStreamFuture = storage.getPoints(
+          val pointGroupsFuture = storage.getPoints(
             query.metricName,
             ((startMillis / 1000).toInt, (stopMillis / 1000).toInt),
-            query.tags
+            query.tags,
+            storageRequestCancellation.future
           )
           val aggregator = aggregators(query.aggregatorKey)
           val downsampleOption = query.downsample.map {
             case (interval, aggrgKey) => (interval, aggregators(aggrgKey))
           }
           for {
-            pointsStream <- pointsStreamFuture
-            pointGroups <- HBaseStorage.collectAllGroups(
-              pointsStream.withCancellation(storageRequestCancellation.future)
-            )
+            pointGroups <- pointGroupsFuture
           } yield {
             storageReadTimeContext.stop()
             debug(s"got point groups sizes: ${ pointGroups.groupsMap.mapValues(_.mapValues(_.size)) }")

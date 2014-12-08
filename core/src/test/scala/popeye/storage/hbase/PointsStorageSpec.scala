@@ -1,11 +1,11 @@
 package popeye.storage.hbase
 
-import popeye.Point
+import popeye.{AsyncIterator, Point}
 import popeye.test.PopeyeTestUtils._
 import popeye.test.{PopeyeTestUtils, MockitoStubs}
 import popeye.pipeline.test.AkkaTestKitSpec
 import scala.collection.JavaConversions.iterableAsScalaIterable
-import scala.concurrent.{Future, Await}
+import scala.concurrent.{Promise, Await}
 import scala.concurrent.duration._
 import popeye.proto.Message
 import nl.grons.metrics.scala.Meter
@@ -258,12 +258,19 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
     listPointSeries should equal(Seq(expectedListPointSeries))
   }
 
-  def toGroupsMap(future: Future[PointsStream]): Map[PointAttributes, PointsGroup] = {
-    Await.result(future.flatMap(HBaseStorage.collectAllGroups), 5 seconds).groupsMap
+  def toGroupsMap(groupsIterator: AsyncIterator[PointsGroups]): Map[PointAttributes, PointsGroup] = {
+    val groupsFuture = HBaseStorage.collectAllGroups(groupsIterator)(executionContext)
+    Await.result(groupsFuture, 5 seconds).groupsMap
   }
 
-  def toListPoints(future: Future[ListPointsStream]): Seq[ListPointTimeseries] = {
-    Await.result(future.flatMap(HBaseStorage.collectAllListPoints), 5 seconds)
+  def toListPoints(listPointSeriesIterator: AsyncIterator[Seq[ListPointTimeseries]]): Seq[ListPointTimeseries] = {
+    val seriesFuture = AsyncIterator.foldLeft[Seq[ListPointTimeseries], Seq[ListPointTimeseries]](
+      listPointSeriesIterator,
+      Seq(),
+      _ ++ _,
+      Promise().future
+    )(executionContext)
+    Await.result(seriesFuture, 5 seconds)
   }
 
   def writePoints(state: PointsStorageStub, points: Seq[Message.Point]) {

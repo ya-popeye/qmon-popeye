@@ -2,11 +2,10 @@ package popeye.query
 
 import akka.actor.{ActorRef, ActorSystem, Props, Actor}
 import popeye.Logging
-import popeye.storage.hbase.HBaseStorage
 import spray.http._
 import spray.http.HttpMethods._
 import spray.can.Http
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{Promise, ExecutionContext}
 import popeye.storage.hbase.HBaseStorage._
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition
 import scala.util.Try
@@ -20,8 +19,6 @@ import spray.http.HttpRequest
 class HttpQueryServer(storage: PointsStorage, executionContext: ExecutionContext) extends Actor with Logging {
   implicit val eCtx = executionContext
   val pointsPathPattern = """/points/([^/]+)""".r
-
-  case class SendNextPoints(client: ActorRef, points: PointsStream)
 
   def receive: Actor.Receive = {
     case x: Http.Connected => sender ! Http.Register(self)
@@ -37,11 +34,16 @@ class HttpQueryServer(storage: PointsStorage, executionContext: ExecutionContext
         aggregation <- parseInterpolationAggregator(query).right
         downsampling <- Right(parseDownsampling(query)).right
       } yield {
-        val pointStreamFuture = storage.getPoints(metricName, (startTime.toInt, endTime.toInt), attributes)
-        val aggregatedPointsFuture =
-          pointStreamFuture
-            .flatMap(HBaseStorage.collectAllGroups)
-            .map(groups => aggregationsToString(aggregatePoints(groups, aggregation, downsampling)))
+        val unfulfillablePromise = Promise()
+        val pointsGroupsFuture = storage.getPoints(
+          metricName,
+          (startTime.toInt, endTime.toInt),
+          attributes,
+          unfulfillablePromise.future
+        )
+        val aggregatedPointsFuture = pointsGroupsFuture.map {
+          groups => aggregationsToString(aggregatePoints(groups, aggregation, downsampling))
+        }
         aggregatedPointsFuture.onComplete {
           tryString =>
             tryString.map {

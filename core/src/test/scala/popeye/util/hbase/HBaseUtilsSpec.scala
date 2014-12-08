@@ -37,7 +37,7 @@ class HBaseUtilsSpec extends FlatSpec with Matchers {
     }
     val metrics = new ChunkedResultsMetrics("chunked", new MetricRegistry)
     val chunkedResults = HBaseUtils.getChunkedResults(metrics, pool, "table", 3, Seq(firstScan, secondScan))
-    val flattenChunks = toSingleResult(chunkedResults)
+    val flattenChunks = chunkedResults.foldLeft(Array[Result]())(_ ++ _)
     def getRowIndex(result: Result) = result.getRow()(0)
     flattenChunks.map(getRowIndex).toList should equal((1 to 10).map(_.toByte).toList)
   }
@@ -66,11 +66,6 @@ class HBaseUtilsSpec extends FlatSpec with Matchers {
     HBaseUtils.addOneIfNotMaximum(maximum) should not(be theSameInstanceAs maximum)
     val zero = Array[Byte](0x00, 0x00)
     HBaseUtils.addOneIfNotMaximum(zero) should not(be theSameInstanceAs zero)
-  }
-
-  private def toSingleResult(chunkedResults: ChunkedResults): Array[Result] = {
-    val (chunk, next) = chunkedResults.getRows()
-    chunk ++ next.map(toSingleResult).getOrElse(Array())
   }
 
   private def getHTablePool(tableName: String) = {

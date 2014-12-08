@@ -1,7 +1,7 @@
 package popeye.query
 
 import org.apache.hadoop.hbase.util.Bytes
-import popeye.storage.hbase.HBaseStorage.{ListPointsStream, PointsStream, ValueNameFilterCondition}
+import popeye.storage.hbase.HBaseStorage.{PointsGroups, ValueNameFilterCondition}
 import scala.concurrent.{ExecutionContext, Future}
 import popeye.storage.hbase._
 import popeye.query.PointsStorage.NameType.NameType
@@ -10,11 +10,8 @@ import scala.collection.immutable.SortedSet
 trait PointsStorage {
   def getPoints(metric: String,
                 timeRange: (Int, Int),
-                attributes: Map[String, ValueNameFilterCondition]): Future[PointsStream]
-
-  def getListPoints(metric: String,
-                    timeRange: (Int, Int),
-                    attributes: Map[String, ValueNameFilterCondition]): Future[ListPointsStream]
+                attributes: Map[String, ValueNameFilterCondition],
+                cancellation: Future[Nothing]): Future[PointsGroups]
 
   def getSuggestions(namePrefix: String, nameType: NameType, maxSuggestions: Int): Seq[String]
 }
@@ -36,13 +33,11 @@ object PointsStorage {
 
     def getPoints(metric: String,
                   timeRange: (Int, Int),
-                  attributes: Map[String, ValueNameFilterCondition]) =
-      pointsStorage.getPoints(metric, timeRange, attributes)(executionContext)
-
-    def getListPoints(metric: String,
-                      timeRange: (Int, Int),
-                      attributes: Map[String, ValueNameFilterCondition]) =
-      pointsStorage.getListPoints(metric, timeRange, attributes)(executionContext)
+                  attributes: Map[String, ValueNameFilterCondition],
+                  cancellation: Future[Nothing]) = {
+      val groupsIterator = pointsStorage.getPoints(metric, timeRange, attributes)(executionContext)
+      HBaseStorage.collectAllGroups(groupsIterator, cancellation)(executionContext)
+    }
 
     def getSuggestions(namePrefix: String, nameType: NameType, maxSuggestions: Int): Seq[String] = {
 

@@ -9,7 +9,6 @@ import akka.actor.{ActorSystem, Props}
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.ConfigFactory
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.hbase.KeyValue
 import org.apache.hadoop.hbase.client.{Put, HTableInterface, HTableInterfaceFactory, HTablePool}
 import org.kiji.testing.fakehtable.FakeHTable
 import popeye.Logging
@@ -20,9 +19,8 @@ import popeye.storage.hbase.HBaseStorage.{PointsGroups, ValueNameFilterCondition
 import popeye.util.hbase.HBaseConfigured
 
 import scala.collection.JavaConverters._
-import scala.concurrent.{ExecutionContext, Await}
+import scala.concurrent.{ExecutionContext, Await, Future}
 import scala.concurrent.duration._
-import scala.concurrent.Future
 import scala.util.Try
 
 object PointsStorageBench extends Logging {
@@ -91,8 +89,8 @@ object PointsStorageBench extends Logging {
       val tags = Map(shardAttr -> HBaseStorage.ValueNameFilterCondition.SingleValueName(shardAttrValue))
 
       val benchResult = BenchUtils.bench(10, 1) {
-        val eventualPointsGroupsStream = storage.getPoints(metric, (minTimestamp, maxTimestamp + 1), tags)
-        val eventualPointsGroups = eventualPointsGroupsStream.flatMap(HBaseStorage.collectAllGroups)
+        val pointsGroupsIterator = storage.getPoints(metric, (minTimestamp, maxTimestamp + 1), tags)
+        val eventualPointsGroups = HBaseStorage.collectAllGroups(pointsGroupsIterator)
         Await.result(eventualPointsGroups, Duration.Inf)
       }
 
@@ -194,12 +192,12 @@ object PointsStorageBench extends Logging {
     }
     val timeRange = (timestamps.head, timestamps.last + 1)
     val benchResults = BenchUtils.bench(20000, 1) {
-      val eventualPointsStream = storage.getPoints(
+      val pointsGroupsIterator = storage.getPoints(
         metric,
         timeRange,
         Map("cluster" -> ValueNameFilterCondition.SingleValueName("test"))
       )
-      val eventualPointsGroups = eventualPointsStream.flatMap(HBaseStorage.collectAllGroups)
+      val eventualPointsGroups = HBaseStorage.collectAllGroups(pointsGroupsIterator)
       Await.result(eventualPointsGroups, Duration.Inf): PointsGroups
     }
     println(benchResults)

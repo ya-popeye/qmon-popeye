@@ -1,21 +1,14 @@
 package popeye.query
 
-import scala.concurrent.ExecutionContext
-import scala.concurrent.Future
+import scala.concurrent.{Promise, ExecutionContext, Future}
 import akka.actor.{ActorRef, Props, ActorSystem, Actor}
 import popeye.Logging
 import spray.http._
 import scala.util.Try
-import popeye.storage.hbase.HBaseStorage.PointsStream
-import scala.concurrent.duration._
+import popeye.storage.hbase.HBaseStorage.PointsGroups
 import spray.http.HttpRequest
 import spray.http.HttpResponse
-import com.typesafe.config.Config
-import akka.util.Timeout
-import akka.io.IO
-import akka.pattern.ask
 import spray.can.Http
-import java.net.InetSocketAddress
 
 class HealthCheckServer(storage: PointsStorage, executionContext: ExecutionContext) extends Actor with Logging {
 
@@ -135,13 +128,10 @@ object HealthCheckTool {
                  (implicit ectx: ExecutionContext): Future[Boolean] = {
     val nameValueConditions = createNameValueConditions(fixedAttributes, countAttribute)
     def countDistinctTagValues(startStopTime: (Int, Int)): Future[Int] = {
-      val pointsStreamFuture = pointsStorage.getPoints(metric, startStopTime, nameValueConditions)
-      for {
-        pointsStream <- pointsStreamFuture
-        distinctValues <- getAllDistinctAttributeValues(pointsStream)
-      } yield {
-        distinctValues.size
-      }
+      val unfulfillablePromise = Promise()
+      pointsStorage
+        .getPoints(metric, startStopTime, nameValueConditions, unfulfillablePromise.future)
+        .map(groups => getAllDistinctAttributeValues(groups).size)
     }
     val firstInterval = (checkTime - timeInterval * 3, checkTime - timeInterval * 2)
     val secondInterval = (checkTime - timeInterval * 2, checkTime - timeInterval)
@@ -153,15 +143,11 @@ object HealthCheckTool {
     }
   }
 
-  def getAllDistinctAttributeValues(pointsStream: PointsStream)(implicit ectx: ExecutionContext): Future[Set[String]] = {
-    val attrSetsStream = pointsStream.mapElements {
-      pointsGroup =>
-      val attrs = pointsGroup.groupsMap.keys
-      val attrNames = attrs.flatMap(_.keys)
-      require(attrNames.size == 1, f"should be exactly one \'group by\' attribute name, not ${attrNames.size}")
-        attrs.flatMap(_.values).toSet
-    }
-    attrSetsStream.reduceElements(_ ++ _)
+  def getAllDistinctAttributeValues(pointsGroups: PointsGroups): Set[String] = {
+    val attrs = pointsGroups.groupsMap.keys
+    val attrNames = attrs.flatMap(_.keys)
+    require(attrNames.size == 1, f"should be exactly one \'group by\' attribute name, not ${ attrNames.size }")
+    attrs.flatMap(_.values).toSet
   }
 
   private def createNameValueConditions(fixedAttrs: Seq[(String, String)], countAttrName: String) = {

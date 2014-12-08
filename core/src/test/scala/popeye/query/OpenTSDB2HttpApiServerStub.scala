@@ -8,7 +8,6 @@ import popeye.query.PointsStorage.NameType
 import popeye.query.PointsStorage.NameType.NameType
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.{MultipleValueNames, AllValueNames, SingleValueName}
 import popeye.storage.hbase.HBaseStorage._
-import popeye.util.FutureStream
 
 import scala.collection.immutable.SortedMap
 import scala.concurrent.Future
@@ -42,7 +41,8 @@ object OpenTSDB2HttpApiServerStub {
     val storage = new PointsStorage {
       override def getPoints(metric: String,
                              timeRange: (Int, Int),
-                             attributes: Map[String, ValueNameFilterCondition]): Future[PointsStream] = {
+                             attributes: Map[String, ValueNameFilterCondition],
+                             cancellation: Future[Nothing]): Future[PointsGroups] = {
         def conditionHolds(tagValue: String, condition: ValueNameFilterCondition) = condition match {
           case SingleValueName(name) => name == tagValue
           case MultipleValueNames(names) => names.contains(tagValue)
@@ -67,7 +67,7 @@ object OpenTSDB2HttpApiServerStub {
             SortedMap(gTags: _*)
         }
         val groupsMap: Map[PointAttributes, PointsGroup] = groupedTs
-        Future.successful(FutureStream.fromItems(PointsGroups(groupsMap)))
+        Future.successful(PointsGroups(groupsMap))
       }
 
       override def getSuggestions(namePrefix: String,
@@ -80,10 +80,6 @@ object OpenTSDB2HttpApiServerStub {
           case NameType.AttributeValueType => filterSuggestions(Seq(periods, amps, adds).flatten.map(_.toString))
         }
       }
-
-      override def getListPoints(metric: String,
-                                 timeRange: (Int, Int),
-                                 attributes: Map[String, ValueNameFilterCondition]): Future[ListPointsStream] = ???
     }
     val config = ConfigFactory.parseString(
       """

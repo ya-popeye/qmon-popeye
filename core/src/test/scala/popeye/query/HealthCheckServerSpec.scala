@@ -2,7 +2,6 @@ package popeye.query
 
 import org.scalatest.mock.MockitoSugar
 import org.mockito.Mockito._
-import popeye.util.FutureStream
 import scala.concurrent.{ExecutionContext, Await, Future}
 import scala.collection.immutable.SortedMap
 import popeye.storage.hbase.HBaseStorage
@@ -16,6 +15,7 @@ import spray.http.{StatusCodes, HttpResponse, Uri, HttpRequest}
 import spray.http.HttpMethods._
 import popeye.storage.hbase.HBaseStorage.PointsGroups
 import org.mockito.Matchers._
+import org.mockito.Matchers.{eq => equalTo}
 import akka.util.Timeout
 import org.scalatest.matchers.Matcher
 
@@ -42,9 +42,9 @@ class HealthCheckServerSpec extends AkkaTestKitSpec("http-query") with MockitoSu
 
   it should "get all distinct values" in {
     implicit val ectx = newExecutionContext
-    val points = pointsStream("test", 10, 3)
+    val points = pointsGroups("test", 10)
     val distinctValues = HealthCheckTool.getAllDistinctAttributeValues(points)
-    Await.result(distinctValues, 5 seconds) should equal((1 to 10).map(_.toString).toSet)
+    distinctValues should equal((1 to 10).map(_.toString).toSet)
   }
 
   def testHealth(numberOfDistinctTagValuesInFirstTimeInterval: Int,
@@ -56,10 +56,20 @@ class HealthCheckServerSpec extends AkkaTestKitSpec("http-query") with MockitoSu
     val countAttr = "host"
     val valueFilters = Map("name" -> SingleValueName("value"), countAttr -> AllValueNames)
     val storage = mock[PointsStorage]
-    val firstStream = pointsStream(countAttr, numberOfDistinctTagValuesInFirstTimeInterval, 3)
-    stub(storage.getPoints(metricName, (70, 80), valueFilters)).toReturn(Future.successful(firstStream))
-    val secondStream = pointsStream(countAttr, numberOfDistinctTagValuesInSecondTimeInterval, 3)
-    stub(storage.getPoints(metricName, (80, 90), valueFilters)).toReturn(Future.successful(secondStream))
+    val firstGroups = pointsGroups(countAttr, numberOfDistinctTagValuesInFirstTimeInterval)
+    stub(storage.getPoints(
+      equalTo(metricName),
+      equalTo((70, 80)),
+      equalTo(valueFilters),
+      any()
+    )).toReturn(Future.successful(firstGroups))
+    val secondGroups = pointsGroups(countAttr, numberOfDistinctTagValuesInSecondTimeInterval)
+    stub(storage.getPoints(
+      equalTo(metricName),
+      equalTo((80, 90)),
+      equalTo(valueFilters),
+      any()
+    )).toReturn(Future.successful(secondGroups))
     val future = HealthCheckTool.checkHealth(
       storage,
       metricName,
@@ -71,14 +81,10 @@ class HealthCheckServerSpec extends AkkaTestKitSpec("http-query") with MockitoSu
     Await.result(future, 5 seconds)
   }
 
-  def pointsStream(countAttrName: String, numberOfDistinctValues: Int, sizeOfChunk: Int = 3) = {
-    val valueChunks = (1 to numberOfDistinctValues).map(_.toString).grouped(sizeOfChunk).toList
-    val groups = valueChunks.map {
-      values =>
-        val groupKeyAttrs = values.map(v => Seq(countAttrName -> v))
-        createPointsGroup(groupKeyAttrs)
-    }
-    FutureStream.fromItems(groups: _*)
+  def pointsGroups(countAttrName: String, numberOfDistinctValues: Int) = {
+    val values = (1 to numberOfDistinctValues).map(_.toString).toList
+    val groupKeyAttrs = values.map(v => Seq(countAttrName -> v))
+    createPointsGroup(groupKeyAttrs)
   }
 
   def createPointsGroup(groupKeyAttributes: Seq[Seq[(String, String)]]) = {
@@ -96,8 +102,8 @@ class HealthCheckServerSpec extends AkkaTestKitSpec("http-query") with MockitoSu
     val fixedAttrs = "foo+bar,name+value"
     val countAttr = "host"
     val timeInterval = 10
-    val points = pointsStream(countAttr, 10, 3)
-    stub(storage.getPoints(any(), any(), any())).toReturn(Future.successful(points))
+    val points = pointsGroups(countAttr, 10)
+    stub(storage.getPoints(any(), any(), any(), any())).toReturn(Future.successful(points))
     val serverRef = TestActorRef(Props.apply(new HealthCheckServer(storage, executionContext)))
     val uriString = f"/?metric=$metricName&fixed_attrs=$fixedAttrs&count_attr=$countAttr&time_interval=$timeInterval"
     val future = (serverRef ? HttpRequest(GET, Uri(uriString))).mapTo[HttpResponse]
@@ -111,7 +117,7 @@ class HealthCheckServerSpec extends AkkaTestKitSpec("http-query") with MockitoSu
     val fixedAttrs = "foo+bar"
     val countAttr = "host"
     val timeInterval = 10
-    stub(storage.getPoints(any(), any(), any())).toReturn(Future.failed(new RuntimeException()))
+    stub(storage.getPoints(any(), any(), any(), any())).toReturn(Future.failed(new RuntimeException()))
     val serverRef = TestActorRef(Props.apply(new HealthCheckServer(storage, executionContext)))
     val uriString = f"/?metric=$metricName&fixed_attrs=$fixedAttrs&count_attr=$countAttr&time_interval=$timeInterval"
     val future = (serverRef ? HttpRequest(GET, Uri(uriString))).mapTo[HttpResponse]
@@ -125,8 +131,8 @@ class HealthCheckServerSpec extends AkkaTestKitSpec("http-query") with MockitoSu
     val fixedAttrs = ""
     val countAttr = "host"
     val timeInterval = 10
-    val points = pointsStream(countAttr, 10, 3)
-    stub(storage.getPoints(any(), any(), any())).toReturn(Future.successful(points))
+    val points = pointsGroups(countAttr, 10)
+    stub(storage.getPoints(any(), any(), any(), any())).toReturn(Future.successful(points))
     val serverRef = TestActorRef(Props.apply(new HealthCheckServer(storage, executionContext)))
     val uriString = f"/?metric=$metricName&fixed_attrs=$fixedAttrs&count_attr=$countAttr&time_interval=$timeInterval"
     val future = (serverRef ? HttpRequest(GET, Uri(uriString))).mapTo[HttpResponse]
@@ -139,8 +145,8 @@ class HealthCheckServerSpec extends AkkaTestKitSpec("http-query") with MockitoSu
     val metricName = "test"
     val countAttr = "host"
     val timeInterval = 10
-    val points = pointsStream(countAttr, 10, 3)
-    stub(storage.getPoints(any(), any(), any())).toReturn(Future.successful(points))
+    val points = pointsGroups(countAttr, 10)
+    stub(storage.getPoints(any(), any(), any(), any())).toReturn(Future.successful(points))
     val serverRef = TestActorRef(Props.apply(new HealthCheckServer(storage, executionContext)))
     val uriString = f"/?metric=$metricName&count_attr=$countAttr&time_interval=$timeInterval"
     val future = (serverRef ? HttpRequest(GET, Uri(uriString))).mapTo[HttpResponse]
@@ -170,7 +176,7 @@ class HealthCheckServerSpec extends AkkaTestKitSpec("http-query") with MockitoSu
   def testBadRequestResponse(uriString: String, errorMessageMatcher: Matcher[String]) {
     val executionContext = newExecutionContext
     val storage = mock[PointsStorage]
-    stub(storage.getPoints(any(), any(), any())).toReturn(Future.failed(new RuntimeException()))
+    stub(storage.getPoints(any(), any(), any(), any())).toReturn(Future.failed(new RuntimeException()))
     val serverRef = TestActorRef(Props.apply(new HealthCheckServer(storage, executionContext)))
     val future = (serverRef ? HttpRequest(GET, Uri(uriString))).mapTo[HttpResponse]
     val response = Await.result(future, 5 seconds)
