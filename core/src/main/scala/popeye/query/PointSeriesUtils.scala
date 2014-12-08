@@ -44,7 +44,10 @@ object PointSeriesUtils {
       series.sortBy(_.firstLineStart)
     }
     var activeSeries = mutable.PriorityQueue[ActiveSeries]()(new Ordering[ActiveSeries] {
-      def compare(x: ActiveSeries, y: ActiveSeries): Int = y.currentLineEnd.compareTo(x.currentLineEnd)
+      def compare(x: ActiveSeries, y: ActiveSeries): Int = {
+        // java.lang.Integer.compare is used to avoid autoboxing
+        Integer.compare(y.currentLineEnd, x.currentLineEnd)
+      }
     })
 
     def hasNext: Boolean = activeSeries.nonEmpty || idleSeries.nonEmpty
