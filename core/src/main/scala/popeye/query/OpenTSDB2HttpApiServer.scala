@@ -134,7 +134,8 @@ class OpenTSDB2HttpApiServerHandler(storage: PointsStorage,
     case msg: Http.ConnectionClosed =>
       info(f"closing connection on message: $msg")
       storageRequestCancellation.tryFailure(
-        new RuntimeException("http connection was closed; storage request cancelled")
+        new RuntimeException(f"http connection was closed; storage request cancelled;" +
+          f" reason: connection was closed: $msg")
       )
 
     case FinalizeRequest(client, response) =>
@@ -143,10 +144,6 @@ class OpenTSDB2HttpApiServerHandler(storage: PointsStorage,
       storageRequestCancellation = Promise()
       client ! response
     case msg => println(msg)
-  }
-
-  private def finalizeRequest(client: ActorRef, response: HttpResponse) = {
-    self ! FinalizeRequest(client, response)
   }
 
   private def parseTsQuery(jsonQuery: JsonNode) = {
