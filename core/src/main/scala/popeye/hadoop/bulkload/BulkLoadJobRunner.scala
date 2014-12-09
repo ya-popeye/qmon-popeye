@@ -1,5 +1,8 @@
 package popeye.hadoop.bulkload
 
+import java.io.File
+
+import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable
 import org.apache.hadoop.hbase.{HBaseConfiguration, HConstants, KeyValue}
 import org.apache.hadoop.hbase.mapreduce.{LoadIncrementalHFiles, HFileOutputFormat2}
@@ -7,14 +10,15 @@ import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.hadoop.mapreduce.Job
 import org.apache.hadoop.hbase.client.HTable
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat
-import org.apache.hadoop.conf.Configuration
 import popeye.javaapi.kafka.hadoop.KafkaInput
 import org.apache.hadoop.mapred.JobConf
 import popeye.hadoop.bulkload.BulkLoadConstants._
 import popeye.Logging
-import popeye.hadoop.bulkload.BulkLoadJobRunner.HBaseStorageConfig
+import popeye.hadoop.bulkload.BulkLoadJobRunner.{JobRunnerConfig, HBaseStorageConfig}
 import com.codahale.metrics.MetricRegistry
 import org.apache.hadoop.fs.permission.{FsAction, FsPermission}
+import popeye.util.KafkaOffsetsTracker.PartitionId
+import popeye.util.{ZkConnect, OffsetRange, KafkaOffsetsTracker, KafkaMetaRequests}
 
 class BulkLoadMetrics(prefix: String, metrics: MetricRegistry) {
   val points = metrics.meter(f"$prefix.points")
@@ -34,42 +38,82 @@ object BulkLoadJobRunner {
     }
   }
 
+  case class ZkClientConfig(zkConnect: ZkConnect, sessionTimeout: Int, connectionTimeout: Int) {
+    def zkConnectString = zkConnect.toZkConnectString
+  }
+
+  case class JobRunnerConfig(kafkaBrokers: Seq[(String, Int)],
+                             topic: String,
+                             outputPath: String,
+                             jarsPath: String,
+                             zkClientConfig: ZkClientConfig,
+                             hadoopConfiguration: Configuration) {
+
+  }
 }
 
-class BulkLoadJobRunner(kafkaBrokers: Seq[(String, Int)],
+class BulkLoadJobRunner(name: String,
                         storageConfig: HBaseStorageConfig,
-                        hadoopConfiguration: Configuration,
-                        outputHdfsPath: String,
-                        jarsHdfsPath: String,
+                        runnerConfig: JobRunnerConfig,
                         metrics: BulkLoadMetrics) extends Logging {
 
+  val hadoopConfiguration = runnerConfig.hadoopConfiguration
   val hdfs: FileSystem = FileSystem.get(hadoopConfiguration)
-  val outputPath = hdfs.makeQualified(new Path(outputHdfsPath))
-  val jarsPath = hdfs.makeQualified(new Path(jarsHdfsPath))
+  val outputPath = hdfs.makeQualified(new Path(runnerConfig.outputPath))
+  val jarsPath = hdfs.makeQualified(new Path(runnerConfig.jarsPath))
+  val offsetsPath = f"/drop/$name/offsets"
 
-  def doBulkload(kafkaInputs: Seq[KafkaInput]) {
+  def doBulkload() = {
+    val kafkaMetaRequests = new KafkaMetaRequests(runnerConfig.kafkaBrokers, runnerConfig.topic)
+    val zkConnectStr = runnerConfig.zkClientConfig.zkConnectString
+    val offsetsTracker = new KafkaOffsetsTracker(kafkaMetaRequests, zkConnectStr, offsetsPath)
+    val offsetRanges = offsetsTracker.fetchOffsetRanges()
+    val kafkaInputs = toKafkaInputs(offsetRanges)
 
-    val success = runHadoopJob(kafkaInputs)
-    if (success) {
-      // hbase needs rw access
-      setPermissionsRecursively(outputPath, new FsPermission(FsAction.ALL, FsAction.ALL, FsAction.ALL))
-      info("hadoop job finished, bulkload starting")
-      val baseConfiguration = storageConfig.hBaseConfiguration
-      val hTable = new HTable(baseConfiguration, storageConfig.pointsTableName)
-      try {
-        new LoadIncrementalHFiles(baseConfiguration).doBulkLoad(outputPath, hTable)
-      } finally {
-        hTable.close()
+    if (kafkaInputs.nonEmpty) {
+      val success = runHadoopJob(kafkaInputs)
+      if (success) {
+        info("hadoop job finished, starting bulk loading")
+        moveHFIlesToHBase()
+        info(f"bulkload finished, saving offsets")
+        offsetsTracker.commitOffsets(offsetRanges)
+        info(f"offsets saved")
       }
     }
   }
 
+  def moveHFIlesToHBase() = {
+    // hbase needs rw access
+    setPermissionsRecursively(outputPath, new FsPermission(FsAction.ALL, FsAction.ALL, FsAction.ALL))
+    val baseConfiguration = storageConfig.hBaseConfiguration
+    val hTable = new HTable(baseConfiguration, storageConfig.pointsTableName)
+    try {
+      new LoadIncrementalHFiles(baseConfiguration).doBulkLoad(outputPath, hTable)
+    } finally {
+      hTable.close()
+    }
+  }
+
+  def toKafkaInputs(offsetRanges: Map[PartitionId, OffsetRange]): List[KafkaInput] = {
+    val kafkaInputs = offsetRanges.toList.map {
+      case (partitionId, OffsetRange(startOffset, stopOffset)) =>
+        KafkaInput(
+          runnerConfig.topic,
+          partitionId,
+          startOffset,
+          stopOffset
+        )
+    }.filterNot(_.isEmpty)
+    kafkaInputs
+  }
+
   private def runHadoopJob(kafkaInputs: Seq[KafkaInput]) = {
-    info(f"inputs: $kafkaInputs, hbase config:$storageConfig, outPath:$outputPath, brokers:$kafkaBrokers")
+    info(f"inputs: $kafkaInputs, hbase config:$storageConfig," +
+      f" outPath:$outputPath, brokers:${ runnerConfig.kafkaBrokers }")
     hdfs.delete(outputPath, true)
     val conf: JobConf = new JobConf(hadoopConfiguration)
     conf.set(KAFKA_INPUTS, KafkaInput.renderInputsString(kafkaInputs))
-    val brokersListString = kafkaBrokers.map {case (host, port) => f"$host:$port"}.mkString(",")
+    val brokersListString = runnerConfig.kafkaBrokers.map { case (host, port) => f"$host:$port" }.mkString(",")
     conf.set(KAFKA_BROKERS, brokersListString)
     conf.setInt(KAFKA_CONSUMER_TIMEOUT, 5000)
     conf.setInt(KAFKA_CONSUMER_BUFFER_SIZE, 100000)
@@ -105,7 +149,7 @@ class BulkLoadJobRunner(kafkaBrokers: Seq[(String, Int)],
       val writtenKeyValues = job.getCounters.findCounter(Counters.MAPPED_KEYVALUES).getValue
       metrics.points.mark(writtenKeyValues)
     } else {
-      warn(f"hadoop job failed, history url: ${job.getHistoryUrl}")
+      error(f"hadoop job failed, history url: ${job.getHistoryUrl}")
     }
     success
   }

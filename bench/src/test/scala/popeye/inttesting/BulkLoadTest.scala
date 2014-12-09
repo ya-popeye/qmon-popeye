@@ -1,30 +1,33 @@
-package popeye.hadoop.bulkload
+package popeye.inttesting
+
+import java.io.{File, PrintStream, StringReader}
+import java.util.Properties
 
 import akka.actor.ActorSystem
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.{Config, ConfigFactory}
-import java.util.Properties
 import kafka.admin.AdminUtils
-import kafka.producer.{ProducerConfig, Producer}
+import kafka.producer.{KeyedMessage, Producer, ProducerConfig}
 import kafka.utils.ZKStringSerializer
-import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.fs.{FileSystem, Path}
-import org.apache.hadoop.hbase.client.{Scan, Result, ResultScanner, HTable}
-import org.apache.hadoop.hbase.{HConstants, HBaseConfiguration}
 import org.I0Itec.zkclient.ZkClient
-import popeye.pipeline.kafka.{KeySerialiser, KeyPartitioner}
-import popeye.proto.Message.Point
-import popeye.proto.{PackedPoints, Message}
-import popeye.storage.hbase.{HBaseStorageConfigured, HBaseStorageConfig, CreateTsdbTables}
-import scala.collection.JavaConverters._
-import scala.util.Random
-import scala.concurrent.ExecutionContext.Implicits.global
-import kafka.producer.KeyedMessage
-import java.io.{PrintStream, File, StringReader}
-import popeye.util.{OffsetRange, KafkaOffsetsTracker, KafkaMetaRequests}
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.hbase.client.{HTable, Result, ResultScanner, Scan}
+import org.apache.hadoop.hbase.{HBaseConfiguration, HBaseTestingUtility, HConstants}
+import org.scalatest.{BeforeAndAfter, Matchers, FlatSpec}
+import popeye.Logging
+import popeye.hadoop.bulkload.{BulkLoadJobRunner, BulkLoadMetrics}
 import popeye.javaapi.kafka.hadoop.KafkaInput
+import popeye.pipeline.kafka.{KeyPartitioner, KeySerialiser}
+import popeye.proto.Message.Point
+import popeye.proto.{Message, PackedPoints}
+import popeye.storage.hbase.{CreateTsdbTables, HBaseStorageConfig, HBaseStorageConfigured}
+import popeye.util.{ZkConnect, KafkaMetaRequests, KafkaOffsetsTracker, OffsetRange}
 
-object BulkLoadTest {
+import scala.collection.JavaConverters._
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.util.Random
+
+class BulkLoadTest extends FlatSpec with Matchers with BeforeAndAfter with Logging {
   val pointsTableName: String = "popeye:tdsb"
   val uIdsTableName: String = "popeye:tsdb-uid"
 
@@ -106,7 +109,7 @@ object BulkLoadTest {
       }
 
     override def toString: String = {
-      f"Point($metric, $timestamp, $attributes, ${value.fold(_.toString + "l", _.toString + "f")})"
+      f"Point($metric, $timestamp, $attributes, ${ value.fold(_.toString + "l", _.toString + "f") })"
     }
 
     override def equals(obj: scala.Any): Boolean = obj.isInstanceOf[HashablePoint] && obj.toString == toString
@@ -140,8 +143,14 @@ object BulkLoadTest {
         .addAllAttributes(attributes.asJava)
       val pointValue = randomValue(random)
       pointValue.fold(
-        longValue => builder.setIntValue(longValue),
-        floatValue => builder.setFloatValue(floatValue)
+        longValue => {
+          builder.setValueType(Message.Point.ValueType.INT)
+          builder.setIntValue(longValue)
+        },
+        floatValue => {
+          builder.setValueType(Message.Point.ValueType.FLOAT)
+          builder.setFloatValue(floatValue)
+        }
       )
       builder.build()
     }
@@ -162,15 +171,19 @@ object BulkLoadTest {
       ("localhost", 9091),
       ("localhost", 9092)
     )
-    val brokersListSting = brokers.map {case (host, port) => f"$host:$port"}.mkString(",")
+    val brokersListSting = brokers.map { case (host, port) => f"$host:$port" }.mkString(",")
 
     val topic = "popeye-points-drop"
+    val hbaseTestingUtility = HBaseTestingUtility.createLocalHTU()
+    hbaseTestingUtility.startMiniCluster()
+    hbaseTestingUtility.startMiniZKCluster()
 
     val hbaseConfiguration = {
-      val conf = HBaseConfiguration.create
-      conf.set(HConstants.ZOOKEEPER_QUORUM, "localhost")
-      conf.setInt(HConstants.ZOOKEEPER_CLIENT_PORT, 2182)
-      conf
+      //      val conf = HBaseConfiguration.create
+      //      conf.set(HConstants.ZOOKEEPER_QUORUM, "localhost")
+      //      conf.setInt(HConstants.ZOOKEEPER_CLIENT_PORT, 2182)
+      //      conf
+      hbaseTestingUtility.getConfiguration
     }
 
     val hadoopConfiguration = {
@@ -207,19 +220,7 @@ object BulkLoadTest {
     loadPointsToKafka(brokersListSting, topic, points)
     createTsdbTables(hbaseConfiguration)
     val kafkaBrokers = Seq("localhost" -> 9091, "localhost" -> 9092)
-    val kafkaMetaRequests = new KafkaMetaRequests(kafkaBrokers, topic)
-    val offsetsTracker = new KafkaOffsetsTracker(kafkaMetaRequests, "localhost:2181", "/offsets")
-    val offsetRanges = offsetsTracker.fetchOffsetRanges()
-    val kafkaInputs = offsetRanges.toList.map {
-      case (partitionId, OffsetRange(startOffset, stopOffset)) =>
-        KafkaInput(
-          topic,
-          partitionId,
-          startOffset,
-          stopOffset
-        )
-    }.filterNot(_.isEmpty)
-
+    val popeyeZkConnect = ZkConnect.parseString("localhost:2181")
     val hbaseConfig = BulkLoadJobRunner.HBaseStorageConfig(
       hBaseZkHostsString = "localhost",
       hBaseZkPort = 2182,
@@ -227,19 +228,23 @@ object BulkLoadTest {
       uidTableName = uIdsTableName
     )
 
+    val bulkloadRunnerConfig = BulkLoadJobRunner.JobRunnerConfig(
+      kafkaBrokers = kafkaBrokers,
+      topic = topic,
+      outputPath = "/bulkload/output",
+      jarsPath = "/popeye/lib",
+      zkClientConfig = BulkLoadJobRunner.ZkClientConfig(popeyeZkConnect, 1000, 1000),
+      hadoopConfiguration = hadoopConfiguration
+    )
+
     val bulkLoadJobRunner = new BulkLoadJobRunner(
-      kafkaBrokers,
-      hbaseConfig,
-      hadoopConfiguration,
-      jarsHdfsPath = "/popeye/lib",
-      outputHdfsPath = "/bulkload/output",
+      name = "test",
+      storageConfig = hbaseConfig,
+      runnerConfig = bulkloadRunnerConfig,
       metrics = new BulkLoadMetrics("bulkload", new MetricRegistry)
     )
 
-    if (kafkaInputs.nonEmpty) {
-      bulkLoadJobRunner.doBulkload(kafkaInputs)
-    }
-    offsetsTracker.commitOffsets(offsetRanges)
+    bulkLoadJobRunner.doBulkload()
 
     val loadedPoints = loadPointsFromHBase(hbaseConfiguration, storageConfig)
 
@@ -256,5 +261,6 @@ object BulkLoadTest {
       }
       out.close()
     }
+    hbaseTestingUtility.shutdownMiniCluster()
   }
 }
