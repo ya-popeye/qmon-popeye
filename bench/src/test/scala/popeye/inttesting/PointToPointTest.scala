@@ -1,13 +1,7 @@
 package popeye.inttesting
 
 import java.io._
-import java.net.{HttpURLConnection, URL}
-import java.nio.file.attribute.BasicFileAttributes
-import java.nio.file._
-import java.util.Properties
 
-import kafka.admin.AdminUtils
-import kafka.server.{KafkaConfig, KafkaServerStartable}
 import org.I0Itec.zkclient.ZkClient
 import org.apache.hadoop.hbase.HBaseTestingUtility
 import org.apache.zookeeper.CreateMode
@@ -16,6 +10,7 @@ import popeye.Logging
 import popeye.pipeline.kafka.KafkaQueueSizeGauge
 import popeye.query.PointsStorage.NameType
 import popeye.test.EmbeddedZookeeper
+import popeye.util.ZkConnect
 
 import scala.concurrent.duration._
 import akka.actor.ActorSystem
@@ -32,7 +27,7 @@ class PointToPointTest extends FlatSpec with Matchers with BeforeAndAfter with L
   behavior of "popeye"
 
   var zookeeper: EmbeddedZookeeper = null
-  var kafka: KafkaServerStartable = null
+  var kafka: EmbeddedKafka = null
   var hbaseTestingUtility: HBaseTestingUtility = null
   var kafkaZkConnect: String = null
   var actorSystem: ActorSystem = null
@@ -42,16 +37,14 @@ class PointToPointTest extends FlatSpec with Matchers with BeforeAndAfter with L
     info("zookeeper started")
     kafkaZkConnect = zookeeper.connectString + "/kafka"
     val popeyeZkConnect = zookeeper.connectString + "/popeye"
-    kafka = configuredKafka(kafkaZkConnect)
-    kafka.startup()
-    info("kafka started")
-    AdminUtils.createTopic(
-      zookeeper.newChrootedClient("/kafka"),
-      "popeye-points",
-      partitions = 2,
-      replicationFactor = 1
+    kafka = EmbeddedKafka.create(
+      logsDir = new File("/tmp/kafka-test"),
+      zkConnect = ZkConnect.parseString(kafkaZkConnect),
+      port = 9092,
+      deleteLogsDirContents = true
     )
-    info("kafka topic created")
+    kafka.start()
+    kafka.createTopic("popeye-points", partitions = 2)
     hbaseTestingUtility = HBaseTestingUtility.createLocalHTU()
     hbaseTestingUtility.startMiniCluster()
     info("hbase minicluster started")
@@ -113,10 +106,10 @@ class PointToPointTest extends FlatSpec with Matchers with BeforeAndAfter with L
       kafkaQueueSizeTry = Try(kafkaQueueSizeGauge.fetchQueueSizes.values.sum)
     }
     info("kafka queue is empty")
-    val suggestions = getSuggestions("s", NameType.MetricType)
-    info(s"suggestions response: $suggestions")
-    suggestions should equal("[\"sin\"]")
     val queryClient = new QueryClient("localhost", 8080)
+    val suggestions = queryClient.getSuggestions("s", NameType.MetricType)
+    info(s"suggestions response: $suggestions")
+    suggestions should equal(Seq("sin"))
     val startTime = firstTimestamp.toInt
     val stopTime = currentTime.toInt + 1
     info(s"startTime: $startTime, stopTime: $stopTime")
@@ -226,35 +219,6 @@ class PointToPointTest extends FlatSpec with Matchers with BeforeAndAfter with L
     zookeeper
   }
 
-  def configuredKafka(kafkaZkConnect: String): KafkaServerStartable = {
-    val logsDir = "/tmp/kafka-test"
-    if (new File(logsDir).exists()) {
-      rmDir(logsDir)
-    }
-    val kafkaProperties = new Properties()
-    kafkaProperties.put("log.dir", logsDir)
-    kafkaProperties.put("zookeeper.connect", kafkaZkConnect)
-    kafkaProperties.put("broker.id", "1")
-    kafkaProperties.put("port", "9092")
-    val kafkaConfig = new KafkaConfig(kafkaProperties)
-    val kafka = new KafkaServerStartable(kafkaConfig)
-    kafka
-  }
-
-  def rmDir(path: String) = {
-    Files.walkFileTree(Paths.get(path), new SimpleFileVisitor[Path] {
-      override def visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult = {
-        Files.delete(file)
-        FileVisitResult.CONTINUE
-      }
-
-      override def postVisitDirectory(dir: Path, exc: IOException): FileVisitResult = {
-        Files.delete(dir)
-        FileVisitResult.CONTINUE
-      }
-    })
-  }
-
   def printZkTree(zkClient: ZkClient, path: String): Unit = {
     info(s"zk dump: $path")
     val children = zkClient.getChildren(path)
@@ -263,20 +227,4 @@ class PointToPointTest extends FlatSpec with Matchers with BeforeAndAfter with L
     }
   }
 
-  def getSuggestions(prefix: String, suggestionType: NameType.NameType) = {
-    import NameType._
-    val typeString = suggestionType match {
-      case MetricType => "metrics"
-      case AttributeNameType => "tagk"
-      case AttributeValueType => "tagv"
-    }
-    val url = new URL(s"http://localhost:8080/api/suggest?type=$typeString&q=$prefix")
-    val connection = url.openConnection().asInstanceOf[HttpURLConnection]
-    connection.setRequestMethod("GET")
-    connection.getResponseCode
-    val httpIn = new BufferedReader(new InputStreamReader(connection.getInputStream))
-    val response = httpIn.readLine()
-    connection.disconnect()
-    response
-  }
 }

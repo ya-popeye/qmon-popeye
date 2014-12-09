@@ -1,11 +1,13 @@
 package popeye.clients
 
-import java.io.PrintWriter
+import java.io.{InputStreamReader, BufferedReader, PrintWriter}
 import java.net.{HttpURLConnection, URL}
 
 import org.codehaus.jackson.JsonNode
 import org.codehaus.jackson.map.ObjectMapper
 import org.codehaus.jackson.node.{JsonNodeFactory, ObjectNode}
+import popeye.query.PointsStorage.NameType
+import popeye.query.PointsStorage.NameType._
 
 import scala.collection.JavaConverters._
 
@@ -13,7 +15,6 @@ case class QueryResult(metric: String, tags: Map[String, String], dps: Seq[(Int,
 
 class QueryClient(host: String, port: Int) {
   val jsonFactory = JsonNodeFactory.instance
-
 
   def queryJson(metricName: String,
                 aggregator: String,
@@ -48,6 +49,7 @@ class QueryClient(host: String, port: Int) {
       queriesArray.add(query)
     }
     request.put("queries", queriesArray)
+    val queryApiUrl = new URL(s"http://$host:$port/api/query")
     val response = doPost(queryApiUrl, request)
     response.asScala.toList.map {
       resultJson =>
@@ -66,7 +68,28 @@ class QueryClient(host: String, port: Int) {
     }
   }
 
-  val queryApiUrl = new URL(s"http://$host:$port/api/query")
+  def getSuggestions(prefix: String, suggestionType: NameType.NameType): List[String] = {
+    import NameType._
+    val typeString = suggestionType match {
+      case MetricType => "metrics"
+      case AttributeNameType => "tagk"
+      case AttributeValueType => "tagv"
+    }
+    val url = new URL(s"http://$host:$port/api/suggest?type=$typeString&q=$prefix")
+    val response = doGet(url)
+    response.asScala.map(_.getTextValue).toList
+  }
+
+  def doGet(url: URL): JsonNode = {
+    val connection = url.openConnection().asInstanceOf[HttpURLConnection]
+    try {
+      connection.setRequestMethod("GET")
+      val objectMapper = new ObjectMapper()
+      objectMapper.readTree(connection.getInputStream)
+    } finally {
+      connection.disconnect()
+    }
+  }
 
   def doPost(url: URL, request: ObjectNode): JsonNode = {
     val connection = url.openConnection().asInstanceOf[HttpURLConnection]
