@@ -77,48 +77,50 @@ class PeriodicGenerationIdSpec extends FlatSpec with Matchers {
   behavior of "PeriodicTimeRangeId.createPeriodConfigs"
 
   it should "create simple config" in {
+    val startTimeAndPeriod = StartTimeAndPeriod("01/01/14", 1)
     createPeriodConfigs(Seq(
-      StartTimeAndPeriod(0, 1)
-    )) should equal(Seq(PeriodConfig(0, 1, 0)))
+      startTimeAndPeriod
+    )) should equal(Seq(PeriodConfig(startTimeAndPeriod.startTimeUnixSeconds, 1, 0)))
   }
 
   it should "create two configs" in {
-    createPeriodConfigs(Seq(
-      StartTimeAndPeriod(0, 1),
-      StartTimeAndPeriod(7200, 10)
-    )) should equal(Seq(
-      PeriodConfig(0, 1, 0),
-      PeriodConfig(7200, 10, 2)
-    ))
-  }
+    val first = StartTimeAndPeriod("01/01/14", 1)
+    val second = StartTimeAndPeriod("02/01/14", 10)
+    val startTimeAndPeriods = Seq(first, second)
 
-  it should "create two configs from not aligned data" in {
-    createPeriodConfigs(Seq(
-      StartTimeAndPeriod(0, 1),
-      StartTimeAndPeriod(7000, 10)
-    )) should equal(Seq(
-      PeriodConfig(0, 1, 0),
-      PeriodConfig(7200, 10, 2)
+    createPeriodConfigs(startTimeAndPeriods) should equal(Seq(
+      PeriodConfig(first.startTimeUnixSeconds, 1, 0),
+      PeriodConfig(second.startTimeUnixSeconds, 10, 24)
     ))
   }
 
   it should "be aware of outlanders" in {
-    createPeriodConfigs(Seq(
-      StartTimeAndPeriod(0, 1),
-      StartTimeAndPeriod(0, 10)
-    )) should equal(Seq(
-      PeriodConfig(0, 1, 0),
-      PeriodConfig(3600 * (outlanderThreshold + 1), 10, 2)
+    val first = StartTimeAndPeriod("01/01/14", 24)
+    val second = StartTimeAndPeriod("01/01/14", 48)
+    val startTimeAndPeriods = Seq(first, second)
+    createPeriodConfigs(startTimeAndPeriods) should equal(Seq(
+      PeriodConfig(first.startTimeUnixSeconds, 24, 0),
+      PeriodConfig(first.startTimeUnixSeconds + 24 * 3600 * (outlanderThreshold + 1), 48, 2)
     ))
   }
 
-  it should "handle non-null start times" in {
-    val periodConfigs = createPeriodConfigs(Seq(
-      StartTimeAndPeriod(3600, 1),
-      StartTimeAndPeriod(3600 * 3, 2)
-    )) should equal(Seq(
-      PeriodConfig(3600, 1, 0),
-      PeriodConfig(3600 * 3, 2, 2)
-    ))
+  behavior of "StartTimeAndPeriod config parsing and rendering"
+
+  it should "roundtrip" in {
+    val startTimeAndPeriods = Seq(
+      StartTimeAndPeriod("01/01/14", 1),
+      StartTimeAndPeriod("02/01/14", 2),
+      StartTimeAndPeriod("03/01/14", 3)
+    )
+    val configList = StartTimeAndPeriod.toConfigList(startTimeAndPeriods)
+    val result = StartTimeAndPeriod.fromConfigList(configList)
+    result should equal(startTimeAndPeriods)
+  }
+
+  it should "empty case" in {
+    val startTimeAndPeriods = Seq()
+    val configList = StartTimeAndPeriod.toConfigList(startTimeAndPeriods)
+    val result = StartTimeAndPeriod.fromConfigList(configList)
+    result should equal(startTimeAndPeriods)
   }
 }

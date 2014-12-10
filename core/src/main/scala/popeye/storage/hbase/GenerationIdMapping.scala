@@ -1,5 +1,9 @@
 package popeye.storage.hbase
 
+import java.text.SimpleDateFormat
+import java.util.TimeZone
+
+import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.hadoop.hbase.util.Bytes
 
 import scala.collection.immutable.SortedMap
@@ -34,7 +38,49 @@ case class PeriodConfig(startTime: Int, periodInTimespans: Int, firstPeriodId: S
   }
 }
 
-case class StartTimeAndPeriod(startTimeUnixSeconds: Int, periodInHours: Int)
+case class StartTimeAndPeriod(startDateString: String, periodInHours: Int) {
+  val startTimeUnixSeconds = {
+    val time = StartTimeAndPeriod.dateFormatter.parse(startDateString).getTime
+    (time / 1000).toInt
+  }
+}
+
+object StartTimeAndPeriod {
+
+  import scala.collection.JavaConverters._
+
+  val dateFormatter = {
+    val df = new SimpleDateFormat("dd/MM/yy")
+    df.setTimeZone(TimeZone.getTimeZone("Etc/UTC"))
+    df
+  }
+
+  val rotationPeriodKey = "rotation-period-hours"
+  val startDateKey = "start-date"
+
+  def toConfigList(startTimeAndPeriods: Seq[StartTimeAndPeriod]) = {
+    startTimeAndPeriods.map {
+      case StartTimeAndPeriod(startDateString, period) =>
+        ConfigFactory.parseString(
+          f"""
+            |{
+            |  $startDateKey = $startDateString
+            |  $rotationPeriodKey = $period
+            |}
+          """.stripMargin
+        )
+    }.asJava
+  }
+
+  def fromConfigList(configs: java.util.List[_ <: Config]) = {
+    configs.asScala.map {
+      genConfig =>
+        val periodInHours = genConfig.getInt("rotation-period-hours")
+        val startDateString = genConfig.getString("start-date")
+        StartTimeAndPeriod(startDateString, periodInHours)
+    }
+  }
+}
 
 object PeriodicGenerationId {
 
@@ -43,13 +89,14 @@ object PeriodicGenerationId {
   def createPeriodConfigs(configs: Seq[StartTimeAndPeriod]) = {
     val startTimeAndPeriods = configs.sortBy { case StartTimeAndPeriod(time, _) => time }
     val firstConfig = {
-      val StartTimeAndPeriod(startTime, period) = startTimeAndPeriods.head
-      PeriodConfig(startTime, period, 0)
+      val startTimeAndPeriod = startTimeAndPeriods.head
+      PeriodConfig(startTimeAndPeriod.startTimeUnixSeconds, startTimeAndPeriod.periodInHours, 0)
     }
     startTimeAndPeriods.tail.scanLeft(firstConfig) {
-      case (previousConfig, StartTimeAndPeriod(startTime, period)) =>
+      case (previousConfig, startTimeAndPeriod) =>
         val earliestPossibleConfigStartTime =
           previousConfig.startTime + previousConfig.periodInSeconds * (outlanderThreshold + 1)
+        val startTime = startTimeAndPeriod.startTimeUnixSeconds
         val nextStartTime =
           if (earliestPossibleConfigStartTime >= startTime) {
             earliestPossibleConfigStartTime
@@ -66,7 +113,7 @@ object PeriodicGenerationId {
         val previousConfigLifespan = nextStartTime - previousConfig.startTime
         val nextFirstPeriodId =
           (previousConfig.firstPeriodId + previousConfigLifespan / previousConfig.periodInSeconds).toShort
-        PeriodConfig(nextStartTime, period, nextFirstPeriodId)
+        PeriodConfig(nextStartTime, startTimeAndPeriod.periodInHours, nextFirstPeriodId)
     }
   }
 

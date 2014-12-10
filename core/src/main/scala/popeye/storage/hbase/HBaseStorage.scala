@@ -569,16 +569,8 @@ class HBaseStorageConfig(val config: Config, val shardAttributeNames: Set[String
   lazy val readChunkSize = config.getInt("read-chunk-size")
   val uidsConfig = config.getConfig("uids")
   val timeRangeIdMapping = {
-    val dateFormatter = new SimpleDateFormat("dd/MM/yy")
-    dateFormatter.setTimeZone(TimeZone.getTimeZone("Etc/UTC"))
-    val generationConfigs = config.getConfigList("generations").asScala.map {
-      genConfig =>
-        val periodInHours = genConfig.getInt("rotation-period-hours")
-        val startDate = dateFormatter.parse(genConfig.getString("start-date"))
-        val startTimeInSeconds = (startDate.getTime / 1000).toInt
-        StartTimeAndPeriod(startTimeInSeconds, periodInHours)
-    }
-    val periodConfigs = PeriodicGenerationId.createPeriodConfigs(generationConfigs)
+    val startTimeAndPeriods = StartTimeAndPeriod.fromConfigList(config.getConfigList("generations"))
+    val periodConfigs = PeriodicGenerationId.createPeriodConfigs(startTimeAndPeriods)
     PeriodicGenerationId(periodConfigs)
   }
 }
