@@ -559,8 +559,6 @@ class HBaseStorage(tableName: String,
 }
 
 class HBaseStorageConfig(val config: Config, val shardAttributeNames: Set[String], val storageName: String = "hbase") {
-  import scala.collection.JavaConverters._
-
   val uidsTableName = config.getString("table.uids")
   val pointsTableName = config.getString("table.points")
   lazy val poolSize = config.getInt("pool.max")
@@ -568,11 +566,11 @@ class HBaseStorageConfig(val config: Config, val shardAttributeNames: Set[String
   val resolveTimeout = new FiniteDuration(config.getMilliseconds(s"uids.resolve-timeout"), TimeUnit.MILLISECONDS)
   lazy val readChunkSize = config.getInt("read-chunk-size")
   val uidsConfig = config.getConfig("uids")
-  val timeRangeIdMapping = {
-    val startTimeAndPeriods = StartTimeAndPeriod.fromConfigList(config.getConfigList("generations"))
-    val periodConfigs = PeriodicGenerationId.createPeriodConfigs(startTimeAndPeriods)
-    PeriodicGenerationId(periodConfigs)
+  val tsdbFormatConfig = {
+    val startTimeAndPeriods = StartTimeAndPeriod.parseConfigList(config.getConfigList("generations"))
+    TsdbFormatConfig(startTimeAndPeriods, shardAttributeNames)
   }
+  val timeRangeIdMapping = tsdbFormatConfig.generationIdMapping
 }
 
 /**
@@ -604,7 +602,7 @@ class HBaseStorageConfigured(config: HBaseStorageConfig, actorSystem: ActorSyste
       config.resolveTimeout
     )
     val metrics: HBaseStorageMetrics = new HBaseStorageMetrics(config.storageName, metricRegistry)
-    val tsdbFormat = new TsdbFormat(config.timeRangeIdMapping, config.shardAttributeNames)
+    val tsdbFormat = config.tsdbFormatConfig.tsdbFormat
     new HBaseStorage(
       config.pointsTableName,
       hTablePool,

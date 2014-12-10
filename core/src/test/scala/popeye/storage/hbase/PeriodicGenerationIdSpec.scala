@@ -112,15 +112,15 @@ class PeriodicGenerationIdSpec extends FlatSpec with Matchers {
       StartTimeAndPeriod("02/01/14", 2),
       StartTimeAndPeriod("03/01/14", 3)
     )
-    val configList = StartTimeAndPeriod.toConfigList(startTimeAndPeriods)
-    val result = StartTimeAndPeriod.fromConfigList(configList)
+    val configList = StartTimeAndPeriod.renderConfigList(startTimeAndPeriods)
+    val result = StartTimeAndPeriod.parseConfigList(configList)
     result should equal(startTimeAndPeriods)
   }
 
   it should "empty case" in {
     val startTimeAndPeriods = Seq()
-    val configList = StartTimeAndPeriod.toConfigList(startTimeAndPeriods)
-    val result = StartTimeAndPeriod.fromConfigList(configList)
+    val configList = StartTimeAndPeriod.renderConfigList(startTimeAndPeriods)
+    val result = StartTimeAndPeriod.parseConfigList(configList)
     result should equal(startTimeAndPeriods)
   }
 }

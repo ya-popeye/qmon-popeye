@@ -3,7 +3,7 @@ package popeye.storage.hbase
 import java.text.SimpleDateFormat
 import java.util.TimeZone
 
-import com.typesafe.config.{Config, ConfigFactory}
+import com.typesafe.config._
 import org.apache.hadoop.hbase.util.Bytes
 
 import scala.collection.immutable.SortedMap
@@ -58,7 +58,7 @@ object StartTimeAndPeriod {
   val rotationPeriodKey = "rotation-period-hours"
   val startDateKey = "start-date"
 
-  def toConfigList(startTimeAndPeriods: Seq[StartTimeAndPeriod]) = {
+  def renderConfigList(startTimeAndPeriods: Seq[StartTimeAndPeriod]) = {
     startTimeAndPeriods.map {
       case StartTimeAndPeriod(startDateString, period) =>
         ConfigFactory.parseString(
@@ -72,7 +72,7 @@ object StartTimeAndPeriod {
     }.asJava
   }
 
-  def fromConfigList(configs: java.util.List[_ <: Config]) = {
+  def parseConfigList(configs: java.util.List[_ <: Config]) = {
     configs.asScala.map {
       genConfig =>
         val periodInHours = genConfig.getInt("rotation-period-hours")
