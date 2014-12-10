@@ -49,7 +49,7 @@ object PipelineCommand extends PopeyeCommand {
     val sinks = Map(
       "hbase-sink" -> new HBasePipelineSinkFactory(storagesConfig, actorSystem, ectx, shardAttributes, metrics),
       "kafka-sink" -> new KafkaSinkFactory(kafkaStarter),
-      "bulkload-sink" -> new BulkloadSinkFactory(bulkloadStarter, storagesConfig),
+      "bulkload-sink" -> new BulkloadSinkFactory(bulkloadStarter, storagesConfig, shardAttributes),
       "blackhole" -> new BlackHolePipelineSinkFactory(actorSystem, ectx),
       "fail" -> new PipelineSinkFactory {
         def startSink(sinkName: String, config: Config): PointsSink = new PointsSink {

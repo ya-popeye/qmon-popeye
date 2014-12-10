@@ -11,6 +11,11 @@ case class ZkConnect(hostAndPorts: Seq[(String, Option[Int])], chroot: Option[St
     }
     serverStrings.mkString(",")
   }
+
+  def withChroot(path: String) = {
+    require(path.charAt(0) == '/', "chroot path should start with '/'")
+    copy(chroot = Some(chroot.getOrElse("") + path))
+  }
 }
 
 object ZkConnect {

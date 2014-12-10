@@ -2,6 +2,7 @@ package popeye.hadoop.bulkload
 
 import java.io.File
 
+import com.typesafe.config.ConfigFactory
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable
 import org.apache.hadoop.hbase.{HBaseConfiguration, HConstants, KeyValue}
@@ -17,6 +18,7 @@ import popeye.Logging
 import popeye.hadoop.bulkload.BulkLoadJobRunner.{JobRunnerConfig, HBaseStorageConfig}
 import com.codahale.metrics.MetricRegistry
 import org.apache.hadoop.fs.permission.{FsAction, FsPermission}
+import popeye.storage.hbase.TsdbFormatConfig
 import popeye.util.KafkaOffsetsTracker.PartitionId
 import popeye.util.{ZkConnect, OffsetRange, KafkaOffsetsTracker, KafkaMetaRequests}
 
@@ -29,7 +31,8 @@ object BulkLoadJobRunner {
   case class HBaseStorageConfig(hBaseZkHostsString: String,
                                 hBaseZkPort: Int,
                                 pointsTableName: String,
-                                uidTableName: String) {
+                                uidTableName: String,
+                                tsdbFormatConfig: TsdbFormatConfig) {
     def hBaseConfiguration = {
       val conf = HBaseConfiguration.create()
       conf.set(HConstants.ZOOKEEPER_QUORUM, hBaseZkHostsString)
@@ -124,6 +127,11 @@ class BulkLoadJobRunner(name: String,
     conf.setInt(HBASE_CONF_QUORUM_PORT, storageConfig.hBaseZkPort)
     conf.set(UNIQUE_ID_TABLE_NAME, storageConfig.uidTableName)
     conf.setInt(UNIQUE_ID_CACHE_SIZE, 100000)
+    val tsdbFormatConfigString = {
+      val config = TsdbFormatConfig.renderConfig(storageConfig.tsdbFormatConfig)
+      config.root().render()
+    }
+    conf.set(TSDB_FORMAT_CONFIG, tsdbFormatConfigString)
 
     val hTable = new HTable(storageConfig.hBaseConfiguration, storageConfig.pointsTableName)
     val job: Job = Job.getInstance(conf)

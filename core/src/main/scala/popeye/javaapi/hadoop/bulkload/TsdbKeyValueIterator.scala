@@ -1,11 +1,16 @@
 package popeye.javaapi.hadoop.bulkload
 
 import com.codahale.metrics.MetricRegistry
-import popeye.storage.hbase.{UniqueIdStorageMetrics, UniqueIdStorage, TsdbFormat}
+import popeye.Logging
+import popeye.proto.Message
+import popeye.storage.hbase.HBaseStorage.QualifiedName
+import popeye.storage.hbase._
 import org.apache.hadoop.hbase.KeyValue
 import scala.collection.JavaConverters._
 import org.apache.hadoop.hbase.client.HTablePool
 import popeye.hadoop.bulkload.{LightweightUniqueId, KafkaPointsIterator}
+
+import scala.collection.mutable.ArrayBuffer
 
 object TsdbKeyValueIterator {
   def create(pointsIterator: KafkaPointsIterator,
@@ -21,14 +26,48 @@ object TsdbKeyValueIterator {
 }
 
 class TsdbKeyValueIterator(pointsIterator: KafkaPointsIterator,
-                           uniqueId: LightweightUniqueId, tsdbFormat: TsdbFormat) extends java.util.Iterator[java.util.List[KeyValue]] {
+                           uniqueId: LightweightUniqueId,
+                           tsdbFormat: TsdbFormat) extends java.util.Iterator[java.util.List[KeyValue]] with Logging {
 
   def hasNext = pointsIterator.hasNext
 
   def next(): java.util.List[KeyValue] = {
     val points = pointsIterator.next()
     val currentTimeInSeconds = (System.currentTimeMillis() / 1000).toInt
-    ???
+
+    val (keyValues, delayedPoints) = convertToKeyValues(points, currentTimeInSeconds)
+    val allQNames: Set[QualifiedName] = delayedPoints.flatMap {
+      point => tsdbFormat.getAllQualifiedNames(point, currentTimeInSeconds)
+    }(scala.collection.breakOut)
+    val loadedIds = uniqueId.findOrRegisterIdsByNames(allQNames)
+    (convertDelayedPoints(delayedPoints, loadedIds, currentTimeInSeconds) ++ keyValues).asJava
+  }
+
+  def convertDelayedPoints(delayedPoints: Seq[Message.Point],
+                           idMap: Map[QualifiedName, BytesKey],
+                           currentTimeInSeconds: Int) = {
+    val keyValues = ArrayBuffer[KeyValue]()
+    delayedPoints.map {
+      point => tsdbFormat.convertToKeyValue(point, idMap.get, currentTimeInSeconds) match {
+        case SuccessfulConversion(keyValue) => keyValues += keyValue
+        case IdCacheMiss => error("some unique id wasn't resolved")
+        case FailedConversion(ex) => error(f"cannot convert delayed point: $point")
+      }
+    }
+    keyValues
+  }
+
+  def convertToKeyValues(points: Seq[Message.Point], currentTimeInSeconds: Int) = {
+    val keyValues = ArrayBuffer[KeyValue]()
+    val delayedPoints = ArrayBuffer[Message.Point]()
+    points.foreach {
+      point => tsdbFormat.convertToKeyValue(point, uniqueId.findByName, currentTimeInSeconds) match {
+        case SuccessfulConversion(keyValue) => keyValues += keyValue
+        case IdCacheMiss => delayedPoints += point
+        case FailedConversion(e) => error(f"cannot convert point: $point")
+      }
+    }
+    (keyValues, delayedPoints)
   }
 
   def getProgress = pointsIterator.getProgress

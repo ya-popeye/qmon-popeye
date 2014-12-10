@@ -1,6 +1,6 @@
 package popeye.inttesting
 
-import java.io.{File, PrintStream, StringReader}
+import java.io.{File, StringReader}
 import java.util.Properties
 
 import akka.actor.ActorSystem
@@ -11,23 +11,22 @@ import kafka.producer.{KeyedMessage, Producer, ProducerConfig}
 import kafka.utils.ZKStringSerializer
 import org.I0Itec.zkclient.ZkClient
 import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.hbase.HBaseTestingUtility
 import org.apache.hadoop.hbase.client.{HTable, Result, ResultScanner, Scan}
-import org.apache.hadoop.hbase.{HBaseConfiguration, HBaseTestingUtility, HConstants}
-import org.scalatest.{BeforeAndAfter, Matchers, FlatSpec}
+import org.apache.zookeeper.CreateMode
 import popeye.Logging
 import popeye.hadoop.bulkload.{BulkLoadJobRunner, BulkLoadMetrics}
-import popeye.javaapi.kafka.hadoop.KafkaInput
 import popeye.pipeline.kafka.{KeyPartitioner, KeySerialiser}
 import popeye.proto.Message.Point
 import popeye.proto.{Message, PackedPoints}
-import popeye.storage.hbase.{CreateTsdbTables, HBaseStorageConfig, HBaseStorageConfigured}
-import popeye.util.{ZkConnect, KafkaMetaRequests, KafkaOffsetsTracker, OffsetRange}
+import popeye.storage.hbase._
+import popeye.util.ZkConnect
 
 import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Random
 
-class BulkLoadTest extends FlatSpec with Matchers with BeforeAndAfter with Logging {
+object BulkLoadTest extends Logging {
   val pointsTableName: String = "popeye:tdsb"
   val uIdsTableName: String = "popeye:tsdb-uid"
 
@@ -66,14 +65,27 @@ class BulkLoadTest extends FlatSpec with Matchers with BeforeAndAfter with Loggi
     AdminUtils.createTopic(zkClient, topic, partitions, replicationFactor = 1)
   }
 
-  def loadPointsFromHBase(hbaseConfiguration: Configuration, storageConfig: Config) = {
+  val shardAttributeNames: Set[String] = Set("dc")
 
+  def loadPointsFromHBase(storageConfig: Config) = {
     val actorSystem = ActorSystem()
-    val baseStorageConfig: HBaseStorageConfig = new HBaseStorageConfig(storageConfig, Set("dc"))
+    val baseStorageConfig: HBaseStorageConfig = new HBaseStorageConfig(storageConfig, shardAttributeNames)
+    info("creating HBaseStorageConfigured")
     val configuredStorage = new HBaseStorageConfigured(baseStorageConfig, actorSystem, new MetricRegistry())
-    val tsdbTable = new HTable(hbaseConfiguration, pointsTableName)
+    info("HBaseStorageConfigured was created")
+    info("creating HTable")
+    val tsdbTable = configuredStorage.hTablePool.getTable(pointsTableName)
+    info("HTable was created")
+    val chunkSize = 1000
+    info("creating scanner")
+    val scanner = tsdbTable.getScanner(new Scan())
+    info("scanner scanner was created")
     //    val tColumn = CreateTsdbTables.tsdbTable.getFamilies.iterator().next()
-    val results = asResultIterator(tsdbTable.getScanner(new Scan())).toList
+    val results = asResultIterator(scanner).grouped(chunkSize).map {
+      kvs =>
+        info(f"loaded $chunkSize results")
+        kvs
+    }.toList.flatten
     val points = for {
       result <- results if !result.isEmpty
       keyValue <- result.raw()
@@ -165,74 +177,87 @@ class BulkLoadTest extends FlatSpec with Matchers with BeforeAndAfter with Loggi
   }
 
   def main(args: Array[String]) {
+    val jarsPath = args(0)
+    val outputPath = args(1)
     val points = createPoints
 
-    val brokers = Seq(
-      ("localhost", 9091),
-      ("localhost", 9092)
-    )
-    val brokersListSting = brokers.map { case (host, port) => f"$host:$port" }.mkString(",")
+    val kafkaBrokerPort = 9091
+    val brokersListSting = f"localhost:$kafkaBrokerPort"
 
     val topic = "popeye-points-drop"
     val hbaseTestingUtility = HBaseTestingUtility.createLocalHTU()
-    hbaseTestingUtility.startMiniCluster()
-    hbaseTestingUtility.startMiniZKCluster()
+    info("creating zookeeper minicluster")
+    val miniZkCluster = hbaseTestingUtility.startMiniZKCluster()
+    info("creating hbase minicluster")
+    val hbaseMiniCluster = hbaseTestingUtility.startMiniCluster()
 
-    val hbaseConfiguration = {
-      //      val conf = HBaseConfiguration.create
-      //      conf.set(HConstants.ZOOKEEPER_QUORUM, "localhost")
-      //      conf.setInt(HConstants.ZOOKEEPER_CLIENT_PORT, 2182)
-      //      conf
-      hbaseTestingUtility.getConfiguration
-    }
+    val rootZkConnect = ZkConnect.parseString(f"localhost:${ miniZkCluster.getClientPort }")
+    createChroots(rootZkConnect, Seq("/popeye", "/kafka"))
+    val popeyeZkConnect = rootZkConnect.withChroot("/popeye")
+    val kafkaZkConnect = rootZkConnect.withChroot("/kafka")
 
-    val hadoopConfiguration = {
-      val conf = new Configuration()
-      for (path <- Seq("/home/quasi/programming/sandbox/hadoop/hadoop-2.3.0-cdh5.0.0/etc/hadoop/mapred-site.xml",
-        "/home/quasi/programming/sandbox/hadoop/hadoop-2.3.0-cdh5.0.0/etc/hadoop/core-site.xml")) {
-        conf.addResource(new File(path).toURI.toURL)
-      }
-      conf
-    }
+    val kafka = EmbeddedKafka.create(
+      logsDir = new File("/tmp/bulkload_test"),
+      zkConnect = kafkaZkConnect,
+      port = kafkaBrokerPort
+    )
+    kafka.start()
+
+    val hbaseConfiguration = hbaseTestingUtility.getConfiguration
+    val hadoopConfiguration = new Configuration()
 
     val storageConfig = ConfigFactory.parseString(
-      """
-        |zk.quorum = "localhost:2182"
+      f"""
+        |zk.quorum = "${ rootZkConnect.toZkConnectString }"
         |pool.max = 25
         |read-chunk-size = 10
         |table {
-        |  points = "popeye:tsdb"
-        |  uids = "popeye:tsdb-uid"
+        |  points = "$pointsTableName"
+        |  uids = "$uIdsTableName"
         |}
         |
         |uids {
         |  resolve-timeout = 10s
-        |  metric { initial-capacity = 1000, max-capacity = 100000 }
-        |  tagk { initial-capacity = 1000, max-capacity = 100000 }
-        |  tagv { initial-capacity = 1000, max-capacity = 100000 }
+        |  cache { initial-capacity = 1000, max-capacity = 100000 }
         |}
+        |
+        |generations = [
+        |  {
+        |    // date format: dd/MM/yy
+        |    start-date = "16/06/14"
+        |    rotation-period-hours = 168 // 24 * 7
+        |  },
+        |  {
+        |    start-date = "01/09/14"
+        |    rotation-period-hours = 24
+        |  }
+        |]
       """.stripMargin)
-
-    val partitions = 10
-    val kafkaZkConnect = "localhost:2181"
-    createKafkaTopic(kafkaZkConnect, topic, partitions)
+    kafka.createTopic(topic, partitions = 10)
     Thread.sleep(1000)
+    info("sending points to kafka")
     loadPointsToKafka(brokersListSting, topic, points)
+    info("points was sent")
     createTsdbTables(hbaseConfiguration)
+    info("tsdb tables was created")
     val kafkaBrokers = Seq("localhost" -> 9091, "localhost" -> 9092)
-    val popeyeZkConnect = ZkConnect.parseString("localhost:2181")
+    val tsdbFormatConfig = {
+      val startTimeAndPeriods = StartTimeAndPeriod.parseConfigList(storageConfig.getConfigList("generations"))
+      TsdbFormatConfig(startTimeAndPeriods, shardAttributeNames)
+    }
     val hbaseConfig = BulkLoadJobRunner.HBaseStorageConfig(
       hBaseZkHostsString = "localhost",
-      hBaseZkPort = 2182,
+      hBaseZkPort = miniZkCluster.getClientPort,
       pointsTableName = pointsTableName,
-      uidTableName = uIdsTableName
+      uidTableName = uIdsTableName,
+      tsdbFormatConfig = tsdbFormatConfig
     )
 
     val bulkloadRunnerConfig = BulkLoadJobRunner.JobRunnerConfig(
       kafkaBrokers = kafkaBrokers,
       topic = topic,
-      outputPath = "/bulkload/output",
-      jarsPath = "/popeye/lib",
+      outputPath = outputPath,
+      jarsPath = jarsPath,
       zkClientConfig = BulkLoadJobRunner.ZkClientConfig(popeyeZkConnect, 1000, 1000),
       hadoopConfiguration = hadoopConfiguration
     )
@@ -244,23 +269,35 @@ class BulkLoadTest extends FlatSpec with Matchers with BeforeAndAfter with Loggi
       metrics = new BulkLoadMetrics("bulkload", new MetricRegistry)
     )
 
+    info("starting bulkload")
     bulkLoadJobRunner.doBulkload()
+    info("bulkload finished")
 
-    val loadedPoints = loadPointsFromHBase(hbaseConfiguration, storageConfig)
+    info("loading points from hbase")
+    val loadedPoints = loadPointsFromHBase(storageConfig)
+    info(f"${ loadedPoints.size } points was loaded")
 
     if (arePointsEqual(points, loadedPoints)) {
-      println("OK")
+      info("OK")
     } else {
-      println(points.size)
-      println(loadedPoints.size)
+      info(f"points count: ${ points.size }")
       val hashable = points.map(new HashablePoint(_))
       val loadedHashable = loadedPoints.map(new HashablePoint(_))
-      val out = new PrintStream(new File("BulkLoadTest.dump"))
       for ((orig, loaded) <- hashable.sortBy(_.toString) zip loadedHashable.sortBy(_.toString)) {
-        out.println(f"$orig!$loaded")
+        info(f"$orig!$loaded")
       }
-      out.close()
     }
+    info("shutting down kafka")
+    kafka.shutdown()
+    info("shutting down hbase minicluster")
     hbaseTestingUtility.shutdownMiniCluster()
+  }
+
+  def createChroots(zkConnect: ZkConnect, roots: Seq[String]) = {
+    val zkClient = new ZkClient(zkConnect.serversString)
+    for (root <- roots) {
+      zkClient.create(s"$root", "", CreateMode.PERSISTENT)
+    }
+    zkClient.close()
   }
 }
