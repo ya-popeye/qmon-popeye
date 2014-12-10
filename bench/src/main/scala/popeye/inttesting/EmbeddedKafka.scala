@@ -1,9 +1,9 @@
 package popeye.inttesting
 
-import java.io.{IOException, File}
-import java.nio.file.attribute.BasicFileAttributes
+import java.io.{File, IOException}
 import java.nio.file._
-import java.util.Properties
+import java.nio.file.attribute.BasicFileAttributes
+import java.util.{Properties, UUID}
 
 import kafka.admin.AdminUtils
 import kafka.server.{KafkaConfig, KafkaServerStartable}
@@ -35,15 +35,12 @@ class EmbeddedKafka(kafka: KafkaServerStartable) extends Logging {
 }
 
 object EmbeddedKafka {
-  def create(logsDir: File,
-             zkConnect: ZkConnect,
-             port: Int,
-             deleteLogsDirContents: Boolean): EmbeddedKafka = {
-    if (deleteLogsDirContents && logsDir.exists()) {
-      rmDir(logsDir)
-    }
+  def create(logsDir: File, zkConnect: ZkConnect, port: Int): EmbeddedKafka = {
+    val randomDirName = UUID.randomUUID().toString.replaceAll("-", "")
+    val randomLogsDir = new File(logsDir, randomDirName)
+    randomLogsDir.mkdirs()
     val kafkaProperties = new Properties()
-    kafkaProperties.put("log.dir", logsDir.getCanonicalPath)
+    kafkaProperties.put("log.dir", randomLogsDir.getCanonicalPath)
     kafkaProperties.put("zookeeper.connect", zkConnect.toZkConnectString)
     kafkaProperties.put("broker.id", "1")
     kafkaProperties.put("port", port.toString)

@@ -40,8 +40,7 @@ class PointToPointTest extends FlatSpec with Matchers with BeforeAndAfter with L
     kafka = EmbeddedKafka.create(
       logsDir = new File("/tmp/kafka-test"),
       zkConnect = ZkConnect.parseString(kafkaZkConnect),
-      port = 9092,
-      deleteLogsDirContents = true
+      port = 9092
     )
     kafka.start()
     kafka.createTopic("popeye-points", partitions = 2)
