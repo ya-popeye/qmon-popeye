@@ -78,14 +78,14 @@ class PeriodicGenerationIdSpec extends FlatSpec with Matchers {
 
   it should "create simple config" in {
     createPeriodConfigs(Seq(
-      (0, 1)
+      StartTimeAndPeriod(0, 1)
     )) should equal(Seq(PeriodConfig(0, 1, 0)))
   }
 
   it should "create two configs" in {
     createPeriodConfigs(Seq(
-      (0, 1),
-      (7200, 10)
+      StartTimeAndPeriod(0, 1),
+      StartTimeAndPeriod(7200, 10)
     )) should equal(Seq(
       PeriodConfig(0, 1, 0),
       PeriodConfig(7200, 10, 2)
@@ -94,8 +94,8 @@ class PeriodicGenerationIdSpec extends FlatSpec with Matchers {
 
   it should "create two configs from not aligned data" in {
     createPeriodConfigs(Seq(
-      (0, 1),
-      (7000, 10)
+      StartTimeAndPeriod(0, 1),
+      StartTimeAndPeriod(7000, 10)
     )) should equal(Seq(
       PeriodConfig(0, 1, 0),
       PeriodConfig(7200, 10, 2)
@@ -104,8 +104,8 @@ class PeriodicGenerationIdSpec extends FlatSpec with Matchers {
 
   it should "be aware of outlanders" in {
     createPeriodConfigs(Seq(
-      (0, 1),
-      (0, 10)
+      StartTimeAndPeriod(0, 1),
+      StartTimeAndPeriod(0, 10)
     )) should equal(Seq(
       PeriodConfig(0, 1, 0),
       PeriodConfig(3600 * (outlanderThreshold + 1), 10, 2)
@@ -114,8 +114,8 @@ class PeriodicGenerationIdSpec extends FlatSpec with Matchers {
 
   it should "handle non-null start times" in {
     val periodConfigs = createPeriodConfigs(Seq(
-      (3600, 1),
-      (3600 * 3, 2)
+      StartTimeAndPeriod(3600, 1),
+      StartTimeAndPeriod(3600 * 3, 2)
     )) should equal(Seq(
       PeriodConfig(3600, 1, 0),
       PeriodConfig(3600 * 3, 2, 2)

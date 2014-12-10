@@ -34,18 +34,20 @@ case class PeriodConfig(startTime: Int, periodInTimespans: Int, firstPeriodId: S
   }
 }
 
+case class StartTimeAndPeriod(startTimeUnixSeconds: Int, periodInHours: Int)
+
 object PeriodicGenerationId {
 
   import GenerationIdMapping._
 
-  def createPeriodConfigs(configs: Seq[(Int, Int)]) = {
-    val startTimeAndPeriods = configs.sortBy { case (time, _) => time }
+  def createPeriodConfigs(configs: Seq[StartTimeAndPeriod]) = {
+    val startTimeAndPeriods = configs.sortBy { case StartTimeAndPeriod(time, _) => time }
     val firstConfig = {
-      val (startTime, period) = startTimeAndPeriods.head
+      val StartTimeAndPeriod(startTime, period) = startTimeAndPeriods.head
       PeriodConfig(startTime, period, 0)
     }
     startTimeAndPeriods.tail.scanLeft(firstConfig) {
-      case (previousConfig, (startTime, period)) =>
+      case (previousConfig, StartTimeAndPeriod(startTime, period)) =>
         val earliestPossibleConfigStartTime =
           previousConfig.startTime + previousConfig.periodInSeconds * (outlanderThreshold + 1)
         val nextStartTime =

@@ -26,11 +26,11 @@ import scala.util.Try
 object PointsStorageBench extends Logging {
 
   val timeRangeIdMapping = PeriodicGenerationId(PeriodicGenerationId.createPeriodConfigs(Seq(
-    (
+    StartTimeAndPeriod(
       1402862400, // 16/06/14
       168 // 1 week
       ),
-    (
+    StartTimeAndPeriod(
       1409515200, // 01/09/14
       24 // 1 day
       )

@@ -576,7 +576,7 @@ class HBaseStorageConfig(val config: Config, val shardAttributeNames: Set[String
         val periodInHours = genConfig.getInt("rotation-period-hours")
         val startDate = dateFormatter.parse(genConfig.getString("start-date"))
         val startTimeInSeconds = (startDate.getTime / 1000).toInt
-        (startTimeInSeconds, periodInHours)
+        StartTimeAndPeriod(startTimeInSeconds, periodInHours)
     }
     val periodConfigs = PeriodicGenerationId.createPeriodConfigs(generationConfigs)
     PeriodicGenerationId(periodConfigs)
