@@ -6,13 +6,13 @@ import akka.actor.Scheduler
 import kafka.utils.ZKStringSerializer
 import org.I0Itec.zkclient.ZkClient
 import popeye.Logging
-import popeye.util.KafkaMetaRequests
+import popeye.util.{ZkConnect, KafkaMetaRequests}
 import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 import scala.util.{Random, Failure, Try}
 
-class KafkaQueueSizeGauge(zkConnect: String,
+class KafkaQueueSizeGauge(zkConnect: ZkConnect,
                           brokers: Seq[(String, Int)],
                           consumerGroupId: String,
                           topic: String) extends Logging {
@@ -76,7 +76,7 @@ class KafkaQueueSizeGauge(zkConnect: String,
 
   private def withZkClient[T](operation: ZkClient => T): T = {
 
-    val zkClient = new ZkClient(zkConnect, 5000, 5000, ZKStringSerializer)
+    val zkClient = new ZkClient(zkConnect.toZkConnectString, 5000, 5000, ZKStringSerializer)
     try {
       operation(zkClient)
     } finally {

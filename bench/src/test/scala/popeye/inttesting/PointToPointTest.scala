@@ -29,17 +29,17 @@ class PointToPointTest extends FlatSpec with Matchers with BeforeAndAfter with L
   var zookeeper: EmbeddedZookeeper = null
   var kafka: EmbeddedKafka = null
   var hbaseTestingUtility: HBaseTestingUtility = null
-  var kafkaZkConnect: String = null
+  var kafkaZkConnect: ZkConnect = null
   var actorSystem: ActorSystem = null
 
   before {
     zookeeper = createZookeeper(roots = Seq("/kafka", "/popeye"))
     info("zookeeper started")
-    kafkaZkConnect = zookeeper.connectString + "/kafka"
+    kafkaZkConnect = zookeeper.zkConnect.withChroot("/kafka")
     val popeyeZkConnect = zookeeper.connectString + "/popeye"
     kafka = EmbeddedKafka.create(
       logsDir = new File("/tmp/kafka-test"),
-      zkConnect = ZkConnect.parseString(kafkaZkConnect),
+      zkConnect = kafkaZkConnect,
       port = 9092
     )
     kafka.start()
@@ -49,7 +49,7 @@ class PointToPointTest extends FlatSpec with Matchers with BeforeAndAfter with L
     info("hbase minicluster started")
     val hbaseZk = hbaseTestingUtility.getZkCluster
     val hbaseZkConnect = s"localhost:${ hbaseZk.getClientPort }"
-    val conf = createPopeyeConf(kafkaZkConnect, hbaseZkConnect, popeyeZkConnect)
+    val conf = createPopeyeConf(kafkaZkConnect.toZkConnectString, hbaseZkConnect, popeyeZkConnect)
     val metrics = new MetricRegistry()
     actorSystem = ActorSystem("popeye", conf)
     PipelineCommand.run(actorSystem, metrics, conf)

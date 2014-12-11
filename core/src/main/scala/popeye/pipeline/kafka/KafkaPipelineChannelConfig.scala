@@ -3,6 +3,7 @@ package popeye.pipeline.kafka
 import com.typesafe.config.Config
 import kafka.producer.ProducerConfig
 import kafka.consumer.ConsumerConfig
+import popeye.util.ZkConnect
 
 import scala.concurrent.duration._
 
@@ -16,7 +17,7 @@ abstract class KafkaPipelineChannelConfig(val producerDispatcher: String,
                                           val popeyeProducerConfig: KafkaPointsProducerConfig,
                                           val topic: String,
                                           val brokersList: Seq[(String, Int)],
-                                          val zkConnect: String,
+                                          val zkConnect: ZkConnect,
                                           val consumerWorkers: Int,
                                           val queueSizePollInterval: FiniteDuration) {
   def createConsumerConfig(kafkaGroup: String): ConsumerConfig
@@ -35,7 +36,7 @@ object KafkaPipelineChannelConfig {
         val Array(host, port) = brokerStr.split(":")
         (host, port.toInt)
     }
-    val zkConnect = consumerConfig.getString("zk.quorum")
+    val zkConnect = ZkConnect.parseString(consumerConfig.getString("zk.quorum"))
     val queueSizePollInterval = FiniteDuration(config.getMilliseconds("queue.size.poll.interval"), MILLISECONDS)
     new KafkaPipelineChannelConfig(
       producerDispatcher = config.getString("producer.dispatcher"),
@@ -54,7 +55,7 @@ object KafkaPipelineChannelConfig {
         consumerTimeout = pointsConsumerConfig.tick,
         kafkaConfig = consumerConfig,
         brokerList = brokersListString,
-        zkConnect = zkConnect
+        zkConnect = zkConnect.toZkConnectString
       )
     }
   }
