@@ -1,27 +1,38 @@
 package popeye.util
 
+import java.util.concurrent.{ExecutorService, Executors}
+
+import akka.dispatch.ExecutionContexts
+import com.google.common.util.concurrent.ThreadFactoryBuilder
 import org.scalatest.{BeforeAndAfter, Matchers, FlatSpec}
-import scala.concurrent.{Await, Promise}
-import popeye.test.{TestExecContext, EmbeddedZookeeper}
-import org.I0Itec.zkclient.ZkClient
+import scala.concurrent.{ExecutionContext, Await, Promise}
+import popeye.test.EmbeddedZookeeper
 import akka.actor.ActorSystem
 import scala.concurrent.duration._
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
-import scala.collection.mutable
-import scala.util.Try
 
-class PeriodicExclusiveTaskSpec extends FlatSpec with Matchers with BeforeAndAfter with TestExecContext {
+class PeriodicExclusiveTaskSpec extends FlatSpec with Matchers with BeforeAndAfter {
+
+  var executorService: ExecutorService = null
+  var executionContext: ExecutionContext = null
 
   var zookeeper: EmbeddedZookeeper = null
   var actorSystem: ActorSystem = null
   before {
+    executorService = {
+      val threadFactory = new ThreadFactoryBuilder().setDaemon(true).build()
+      Executors.newScheduledThreadPool(10, threadFactory)
+    }
+    executionContext = ExecutionContexts.fromExecutor(executorService)
     zookeeper = new EmbeddedZookeeper()
     actorSystem = ActorSystem()
   }
 
   after {
+    executorService.shutdownNow()
     zookeeper.shutdown()
     actorSystem.shutdown()
+    actorSystem.awaitTermination()
   }
 
   behavior of "PeriodicExclusiveTask"
@@ -31,8 +42,13 @@ class PeriodicExclusiveTaskSpec extends FlatSpec with Matchers with BeforeAndAft
   it should "run task periodically" in {
     val testCompletion = Promise[Unit]()
     val runCount = new AtomicInteger(0)
-    val zkClient = zookeeper.newClient
-    PeriodicExclusiveTask.run(zkClient, lockPath, actorSystem.scheduler, executionContext, 10 millis) {
+    PeriodicExclusiveTask.run(
+      zookeeper.zkClientConfiguration,
+      lockPath,
+      actorSystem.scheduler,
+      executionContext,
+      10 millis
+    ) {
       if (runCount.getAndIncrement == 10) {
         testCompletion.success(())
       }
@@ -43,8 +59,13 @@ class PeriodicExclusiveTaskSpec extends FlatSpec with Matchers with BeforeAndAft
   it should "handle long tasks" in {
     val testCompletion = Promise[Unit]()
     val runCount = new AtomicInteger(0)
-    val zkClient = zookeeper.newClient
-    PeriodicExclusiveTask.run(zkClient, lockPath, actorSystem.scheduler, executionContext, 10 millis) {
+    PeriodicExclusiveTask.run(
+      zookeeper.zkClientConfiguration,
+      lockPath,
+      actorSystem.scheduler,
+      executionContext,
+      10 millis
+    ) {
       runCount.getAndIncrement match {
         case 1 =>
           Thread.sleep(500)
@@ -59,36 +80,57 @@ class PeriodicExclusiveTaskSpec extends FlatSpec with Matchers with BeforeAndAft
   it should "run operations exclusively" in {
     val testCompletion = Promise[Unit]()
     val runCount = new AtomicInteger(0)
-    PeriodicExclusiveTask.run(zookeeper.newClient, lockPath, actorSystem.scheduler, executionContext, 10 millis) {
-      if (runCount.getAndIncrement == 10) {
-        testCompletion.success(())
+    val taskIsRunning = new AtomicBoolean(false)
+    def startPeriodicTask() = {
+      PeriodicExclusiveTask.run(
+        zookeeper.zkClientConfiguration,
+        lockPath,
+        actorSystem.scheduler,
+        executionContext,
+        10 millis
+      ) {
+        if (taskIsRunning.compareAndSet(false, true)) {
+          if (runCount.getAndIncrement == 10) {
+            testCompletion.success(())
+          }
+        } else {
+          testCompletion.failure(new AssertionError("fail"))
+        }
+        Thread.sleep(20)
+        taskIsRunning.set(false)
       }
     }
-    PeriodicExclusiveTask.run(zookeeper.newClient, lockPath, actorSystem.scheduler, executionContext, 10 millis) {
-      testCompletion.failure(new AssertionError("fail"))
-    }
+    startPeriodicTask()
+    startPeriodicTask()
     Await.result(testCompletion.future, 1 second)
   }
 
   it should "run operations exclusively in case of a failure" in {
     val testCompletion = Promise[Unit]()
-    val firstOperationExecuted = new AtomicBoolean(false)
-    val zkClient: ZkClient = zookeeper.newClient
     val runCount = new AtomicInteger(0)
-    PeriodicExclusiveTask.run(zkClient, lockPath, actorSystem.scheduler, executionContext, 10 millis) {
-      if (firstOperationExecuted.get) {
-        testCompletion.failure(new AssertionError("fail"))
-      }
-      if (runCount.getAndIncrement == 10) {
-        firstOperationExecuted.set(true)
-        zkClient.close()
+    val taskIsRunning = new AtomicBoolean(false)
+    def startPeriodicTask() = {
+      PeriodicExclusiveTask.run(
+        zookeeper.zkClientConfiguration,
+        lockPath,
+        actorSystem.scheduler,
+        executionContext,
+        10 millis
+      ) {
+        if (taskIsRunning.compareAndSet(false, true)) {
+          if (runCount.getAndIncrement == 10) {
+            testCompletion.success(())
+          }
+        } else {
+          testCompletion.failure(new AssertionError("fail"))
+        }
+        Thread.sleep(20)
+        taskIsRunning.set(false)
+        throw new RuntimeException
       }
     }
-    PeriodicExclusiveTask.run(zookeeper.newClient, lockPath, actorSystem.scheduler, executionContext, 10 millis) {
-      testCompletion.complete(Try {
-        firstOperationExecuted.get() should be(true)
-      })
-    }
+    startPeriodicTask()
+    startPeriodicTask()
     Await.result(testCompletion.future, 1 second)
   }
 

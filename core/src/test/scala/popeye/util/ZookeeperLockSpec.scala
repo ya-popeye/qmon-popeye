@@ -1,62 +1,69 @@
 package popeye.util
 
+import java.util.concurrent.{Executors, ExecutorService}
+
+import akka.dispatch.ExecutionContexts
+import com.google.common.util.concurrent.ThreadFactoryBuilder
 import org.scalatest.{BeforeAndAfter, Matchers, FlatSpec}
-import popeye.test.{TestExecContext, EmbeddedZookeeper}
-import org.I0Itec.zkclient.ZkClient
-import scala.collection.mutable
+import popeye.Logging
+import popeye.test.EmbeddedZookeeper
 import java.util.concurrent.atomic.AtomicBoolean
-import scala.concurrent.{Await, Promise, Future}
+import scala.concurrent.{ExecutionContext, Await, Promise, Future}
 import scala.concurrent.duration._
 import scala.util.Try
 
-class ZookeeperLockSpec extends FlatSpec with Matchers with BeforeAndAfter with TestExecContext {
+class ZookeeperLockSpec extends FlatSpec with Matchers with BeforeAndAfter with Logging {
   var zookeeper: EmbeddedZookeeper = null
+  var executorService: ExecutorService = null
+  var executionContext: ExecutionContext = null
+
   before {
+    executorService = {
+      val threadFactory = new ThreadFactoryBuilder().setDaemon(true).build()
+      Executors.newScheduledThreadPool(10, threadFactory)
+    }
+    executionContext = ExecutionContexts.fromExecutor(executorService)
     zookeeper = new EmbeddedZookeeper()
   }
 
   after {
+    executorService.shutdownNow()
     zookeeper.shutdown()
   }
 
   behavior of "ZookeeperLock"
 
   it should "create lock path" in {
-    val zkClient = zookeeper.newClient
-    val lock = ZookeeperLock.acquireLock(zkClient, "/parent/lock")
-    zkClient.readData("/parent/lock"): String
+    val zkClientConfig = zookeeper.zkClientConfiguration
+    val lock = ZookeeperLock.tryAcquireLockAndRunTask(zkClientConfig, "/parent/lock") {}
+    zookeeper.newClient.readData("/parent/lock"): String
   }
 
   it should "not fail if lock path exists" in {
-    val zkClient = zookeeper.newClient
-    val lock1 = ZookeeperLock.acquireLock(zkClient, "/parent/lock")
-    val lock2 = ZookeeperLock.acquireLock(zkClient, "/parent/lock")
+    val zkClientConfig = zookeeper.zkClientConfiguration
+    ZookeeperLock.tryAcquireLockAndRunTask(zkClientConfig, "/parent/lock") {}
+    ZookeeperLock.tryAcquireLockAndRunTask(zkClientConfig, "/parent/lock") {}
   }
 
   it should "be exclusive" in {
-    val zkClient1 = zookeeper.newClient
-    val lock1 = ZookeeperLock.acquireLock(zkClient1, "/lock")
-    val zkClient2 = zookeeper.newClient
-    val lock2 = ZookeeperLock.acquireLock(zkClient2, "/lock")
+    val zkClientConfig = zookeeper.zkClientConfiguration
     val testCompletion = Promise[Unit]()
-    val atomicBool = new AtomicBoolean(false)
-    Future {
-      Thread.sleep(100)
-      if (lock1.acquired()) {
-        atomicBool.set(true)
-      } else {
-        testCompletion.failure(new AssertionError("lock1.acquired() must return true"))
+    val lockIsOwned = new AtomicBoolean(false)
+    def testLock() = Future {
+      for (_ <- 0 to 10) {
+        ZookeeperLock.tryAcquireLockAndRunTask(zkClientConfig, "/lock") {
+          if (lockIsOwned.compareAndSet(false, true)) {
+            Thread.sleep(10)
+            lockIsOwned.set(false)
+          } else {
+            testCompletion.failure(new AssertionError("lock is not exclusive"))
+          }
+        }
       }
-      lock1.unlock()
-    }
-    Future {
-      while(!lock2.acquired()) {
-        Thread.sleep(100)
-      }
-      testCompletion.complete(Try {
-        atomicBool.get() should be(true)
-      })
-    }
+      testCompletion.trySuccess(())
+    }(executionContext)
+    testLock()
+    testLock()
     Await.result(testCompletion.future, 5 seconds)
   }
 

@@ -1,38 +1,37 @@
 package popeye.util
 
+import kafka.utils.ZKStringSerializer
 import org.I0Itec.zkclient.ZkClient
-import scala.collection.JavaConverters._
+import org.I0Itec.zkclient.exception.ZkNodeExistsException
+import popeye.Logging
 
-object ZookeeperLock {
-  val numberOfDigitsInSequenceString: Int = 10
+import scala.util.Try
 
-  def acquireLock(zkClient: ZkClient, lockPath: String) = {
-    val createParents = true
-    zkClient.createPersistent(lockPath, createParents)
-    val ephNodePath = zkClient.createEphemeralSequential(f"$lockPath/lock", "")
-    new ZookeeperLock(zkClient, lockPath, ephNodePath)
-  }
-}
+object ZookeeperLock extends Logging {
 
-class ZookeeperLock(zkClient: ZkClient, lockPath: String, ephemeralNodePath: String) {
-
-  def acquired(): Boolean = synchronized {
-    val lockNodes = zkClient.getChildren(lockPath).asScala
-    val lockSequenceIndex = getSequenceIndex(ephemeralNodePath)
-
-    val thisNodeIndexIsNotLowest = lockNodes.map(getSequenceIndex).exists {
-      otherSeqNumber =>
-        otherSeqNumber < lockSequenceIndex
+  def tryAcquireLockAndRunTask[A](zkClientConfig: ZkClientConfiguration,
+                                  lockPath: String)
+                                 (task: => A): Option[Try[A]] = {
+    val ephemeralNodePath = f"$lockPath/lock"
+    val zkClient = new ZkClient(
+      zkClientConfig.zkConnectString,
+      zkClientConfig.sessionTimeout,
+      zkClientConfig.connectionTimeout,
+      ZKStringSerializer)
+    try {
+      val createParents = true
+      zkClient.createPersistent(lockPath, createParents)
+      zkClient.createEphemeral(ephemeralNodePath, "")
+      Some(Try(task))
+    } catch {
+      case e: ZkNodeExistsException =>
+        info("failed to acquire lock", e)
+        None
+      case e: Throwable =>
+        error("failed to acquire lock", e)
+        None
+    } finally {
+      zkClient.close()
     }
-
-    !thisNodeIndexIsNotLowest
-  }
-
-  def unlock() = {
-    zkClient.delete(ephemeralNodePath)
-  }
-
-  private def getSequenceIndex(path: String): Long = {
-    path.drop(path.length - ZookeeperLock.numberOfDigitsInSequenceString).toLong
   }
 }

@@ -6,6 +6,7 @@ import java.net.InetSocketAddress
 import org.I0Itec.zkclient.ZkClient
 import kafka.utils.ZKStringSerializer
 import popeye.pipeline.AtomicList
+import popeye.util.{ZkConnect, ZkClientConfiguration}
 
 class EmbeddedZookeeper(maxConnections: Int = 100) {
   val tmpPath = FileSystems.getDefault.getPath(System.getProperty("java.io.tmpdir"))
@@ -19,6 +20,14 @@ class EmbeddedZookeeper(maxConnections: Int = 100) {
   val clients = new AtomicList[ZkClient]
 
   def connectString = f"127.0.0.1:${factory.getLocalPort}"
+
+  def zkConnect = ZkConnect.parseString(connectString)
+
+  def zkClientConfiguration = ZkClientConfiguration(
+    zkConnect = zkConnect,
+    sessionTimeout = zkSessionTimeout,
+    connectionTimeout = zkConnectionTimeout
+  )
 
   val zkConnectionTimeout = 6000
   val zkSessionTimeout = 6000

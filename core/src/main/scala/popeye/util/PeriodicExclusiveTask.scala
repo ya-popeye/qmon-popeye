@@ -7,21 +7,21 @@ import popeye.Logging
 import scala.concurrent.ExecutionContext
 
 object PeriodicExclusiveTask extends Logging {
-  def run(zookeeperConnection: ZkClient,
+  def run(zkClientConfig: ZkClientConfiguration,
           lockPath: String,
           scheduler: Scheduler,
           executionContext: ExecutionContext,
           period: FiniteDuration)
          (task: => Unit) = {
-    val zooLock = ZookeeperLock.acquireLock(zookeeperConnection, lockPath)
     scheduler.schedule(period, period) {
-      if (zooLock.acquired()) try {
-        task
-      } catch {
-        case e: Exception =>
-          warn("periodic task failed", e)
+      ZookeeperLock.tryAcquireLockAndRunTask(zkClientConfig, lockPath) {
+        try {
+          task
+        } catch {
+          case e: Exception =>
+            warn("periodic task failed", e)
+        }
       }
     }(executionContext)
   }
-
 }

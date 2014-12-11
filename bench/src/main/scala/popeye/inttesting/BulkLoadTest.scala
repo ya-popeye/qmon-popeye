@@ -20,7 +20,7 @@ import popeye.pipeline.kafka.{KeyPartitioner, KeySerialiser}
 import popeye.proto.Message.Point
 import popeye.proto.{Message, PackedPoints}
 import popeye.storage.hbase._
-import popeye.util.ZkConnect
+import popeye.util.{ZkClientConfiguration, ZkConnect}
 
 import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -258,7 +258,7 @@ object BulkLoadTest extends Logging {
       topic = topic,
       outputPath = outputPath,
       jarsPath = jarsPath,
-      zkClientConfig = BulkLoadJobRunner.ZkClientConfig(popeyeZkConnect, 1000, 1000),
+      zkClientConfig = ZkClientConfiguration(popeyeZkConnect, 1000, 1000),
       hadoopConfiguration = hadoopConfiguration
     )
 

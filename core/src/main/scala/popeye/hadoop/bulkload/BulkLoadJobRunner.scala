@@ -20,7 +20,7 @@ import com.codahale.metrics.MetricRegistry
 import org.apache.hadoop.fs.permission.{FsAction, FsPermission}
 import popeye.storage.hbase.TsdbFormatConfig
 import popeye.util.KafkaOffsetsTracker.PartitionId
-import popeye.util.{ZkConnect, OffsetRange, KafkaOffsetsTracker, KafkaMetaRequests}
+import popeye.util._
 
 class BulkLoadMetrics(prefix: String, metrics: MetricRegistry) {
   val points = metrics.meter(f"$prefix.points")
@@ -41,18 +41,14 @@ object BulkLoadJobRunner {
     }
   }
 
-  case class ZkClientConfig(zkConnect: ZkConnect, sessionTimeout: Int, connectionTimeout: Int) {
-    def zkConnectString = zkConnect.toZkConnectString
-  }
 
   case class JobRunnerConfig(kafkaBrokers: Seq[(String, Int)],
                              topic: String,
                              outputPath: String,
                              jarsPath: String,
-                             zkClientConfig: ZkClientConfig,
-                             hadoopConfiguration: Configuration) {
+                             zkClientConfig: ZkClientConfiguration,
+                             hadoopConfiguration: Configuration)
 
-  }
 }
 
 class BulkLoadJobRunner(name: String,

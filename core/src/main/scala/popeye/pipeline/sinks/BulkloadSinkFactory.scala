@@ -42,7 +42,7 @@ class BulkloadSinkFactory(sinkFactory: BulkloadSinkStarter,
 
     val zkClientConfig = {
       val conf = config.getConfig("zk")
-      BulkLoadJobRunner.ZkClientConfig(
+      ZkClientConfiguration(
         zkConnect = ZkConnect.parseString(conf.getString("zk.quorum")),
         sessionTimeout = conf.getMilliseconds("zk.connection.timeout").toInt,
         connectionTimeout = conf.getMilliseconds("zk.connection.timeout").toInt
@@ -96,17 +96,12 @@ class BulkloadSinkStarter(kafkaSinkFactory: KafkaSinkStarter,
     val BulkloadSinkConfig(kafkaConfig, hBaseConfig, jobConfig, taskPeriod) = config
 
     val zkClientConfig = jobConfig.zkClientConfig
-    val lockZkClient = new ZkClient(
-      zkClientConfig.zkConnectString,
-      zkClientConfig.sessionTimeout,
-      zkClientConfig.connectionTimeout,
-      ZKStringSerializer)
 
     val lockPath = f"/drop/$name/lock"
     val bulkLoadMetrics = new BulkLoadMetrics("bulkload", metrics)
     val bulkLoadJobRunner = new BulkLoadJobRunner(name, hBaseConfig, jobConfig, bulkLoadMetrics)
 
-    PeriodicExclusiveTask.run(lockZkClient, lockPath, scheduler, execContext, taskPeriod) {
+    PeriodicExclusiveTask.run(zkClientConfig, lockPath, scheduler, execContext, taskPeriod) {
       bulkLoadJobRunner.doBulkload()
     }
 
