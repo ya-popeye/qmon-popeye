@@ -29,7 +29,7 @@ class PointToPointTest extends FlatSpec with Matchers with BeforeAndAfter with L
   var actorSystem: ActorSystem = null
 
   before {
-    zookeeper = createZookeeper(roots = Seq("/kafka", "/popeye"))
+    zookeeper = PopeyeIntTestingUtils.createZookeeper(roots = Seq("/kafka", "/popeye"))
     info("zookeeper started")
     kafkaZkConnect = zookeeper.zkConnect.withChroot("/kafka")
     val popeyeZkConnect = zookeeper.connectString + "/popeye"
@@ -85,7 +85,7 @@ class PointToPointTest extends FlatSpec with Matchers with BeforeAndAfter with L
   }
 
   def createPopeyeConf(kafkaZkConnect: String, hbaseZkConnect: String, popeyeZkConnect: String) = {
-    val userConfig = ConfigFactory.parseResources("int_test_1.conf")
+    val userConfig = ConfigFactory.parseResources("point-to-point-test.conf")
     userConfig
       .withFallback(ConfigFactory.load("reference"))
       .withFallback(ConfigFactory.load())
@@ -96,15 +96,5 @@ class PointToPointTest extends FlatSpec with Matchers with BeforeAndAfter with L
           |popeye.popeye.zk.quorum = "$popeyeZkConnect"
         """.stripMargin))
       .resolve()
-  }
-
-  def createZookeeper(roots: Seq[String]): EmbeddedZookeeper = {
-    val zookeeper = new EmbeddedZookeeper()
-    val zkClient = zookeeper.newClient
-    for (root <- roots) {
-      zkClient.create(s"$root", "", CreateMode.PERSISTENT)
-    }
-    zkClient.close()
-    zookeeper
   }
 }

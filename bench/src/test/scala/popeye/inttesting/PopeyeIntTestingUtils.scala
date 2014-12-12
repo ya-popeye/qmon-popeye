@@ -1,9 +1,11 @@
 package popeye.inttesting
 
+import org.apache.zookeeper.CreateMode
 import popeye.Logging
 import popeye.pipeline.kafka.KafkaQueueSizeGauge
+import popeye.test.EmbeddedZookeeper
 
-import scala.util.{Success, Failure, Try}
+import scala.util.{Failure, Success, Try}
 
 object PopeyeIntTestingUtils extends Logging {
   def waitWhileKafkaQueueIsNotEmpty(kafkaQueueSizeGauge: KafkaQueueSizeGauge) = {
@@ -14,5 +16,15 @@ object PopeyeIntTestingUtils extends Logging {
       kafkaQueueSizeTry = Try(kafkaQueueSizeGauge.fetchQueueSizes.values.sum)
     }
     info("kafka queue is empty")
+  }
+
+  def createZookeeper(roots: Seq[String]): EmbeddedZookeeper = {
+    val zookeeper = new EmbeddedZookeeper()
+    val zkClient = zookeeper.newClient
+    for (root <- roots) {
+      zkClient.create(s"$root", "", CreateMode.PERSISTENT)
+    }
+    zkClient.close()
+    zookeeper
   }
 }
