@@ -17,6 +17,9 @@ import popeye.javaapi.kafka.hadoop.KafkaInput;
 import popeye.kafka.KafkaSimpleConsumerFactory;
 import popeye.storage.hbase.TsdbFormat;
 import popeye.storage.hbase.TsdbFormatConfig$;
+import popeye.util.ZkConnect;
+import popeye.util.ZkConnect$;
+import popeye.util.hbase.HBaseConfigured;
 
 import static popeye.hadoop.bulkload.BulkLoadConstants.*;
 
@@ -42,13 +45,11 @@ public class PopeyePointsKafkaTopicRecordReader extends RecordReader<NullWritabl
     SimpleConsumer consumer = consumerFactory.startConsumer(kafkaInput.topic(), kafkaInput.partition());
     pointsIterator = new KafkaPointsIterator(consumer, kafkaInput, fetchSize, clientId);
 
-    Configuration hbaseConf = HBaseConfiguration.create();
-    String hbaseQuorum = conf.get(HBASE_CONF_QUORUM);
-    int hbaseQuorumPort = conf.getInt(HBASE_CONF_QUORUM_PORT, 2181);
     String uniqueIdTableName = conf.get(UNIQUE_ID_TABLE_NAME);
     int cacheCapacity = conf.getInt(UNIQUE_ID_CACHE_SIZE, 100000);
-    hbaseConf.set(HConstants.ZOOKEEPER_QUORUM, hbaseQuorum);
-    hbaseConf.setInt(HConstants.ZOOKEEPER_CLIENT_PORT, hbaseQuorumPort);
+    String hbaseZkConnectString = conf.get(HBASE_ZK_CONNECT);
+    ZkConnect hbaseZkConnect = ZkConnect$.MODULE$.parseString(hbaseZkConnectString);
+    Configuration hbaseConf = new HBaseConfigured(ConfigFactory.empty(), hbaseZkConnect).hbaseConfiguration();
     hTablePool = new HTablePool(hbaseConf, 1);
     Config tsdbFormatConfig = ConfigFactory.parseString(conf.get(TSDB_FORMAT_CONFIG));
     TsdbFormat tsdbFormat = TsdbFormatConfig$.MODULE$.parseConfig(tsdbFormatConfig).tsdbFormat();

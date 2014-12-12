@@ -246,8 +246,7 @@ object BulkLoadTest extends Logging {
       TsdbFormatConfig(startTimeAndPeriods, shardAttributeNames)
     }
     val hbaseConfig = BulkLoadJobRunner.HBaseStorageConfig(
-      hBaseZkHostsString = "localhost",
-      hBaseZkPort = miniZkCluster.getClientPort,
+      hBaseZkConnect = rootZkConnect,
       pointsTableName = pointsTableName,
       uidTableName = uIdsTableName,
       tsdbFormatConfig = tsdbFormatConfig

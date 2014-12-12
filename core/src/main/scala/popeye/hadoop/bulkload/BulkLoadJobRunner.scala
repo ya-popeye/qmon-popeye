@@ -21,6 +21,7 @@ import org.apache.hadoop.fs.permission.{FsAction, FsPermission}
 import popeye.storage.hbase.TsdbFormatConfig
 import popeye.util.KafkaOffsetsTracker.PartitionId
 import popeye.util._
+import popeye.util.hbase.HBaseConfigured
 
 class BulkLoadMetrics(prefix: String, metrics: MetricRegistry) {
   val points = metrics.meter(f"$prefix.points")
@@ -28,16 +29,13 @@ class BulkLoadMetrics(prefix: String, metrics: MetricRegistry) {
 
 object BulkLoadJobRunner {
 
-  case class HBaseStorageConfig(hBaseZkHostsString: String,
-                                hBaseZkPort: Int,
+  case class HBaseStorageConfig(hBaseZkConnect: ZkConnect,
                                 pointsTableName: String,
                                 uidTableName: String,
                                 tsdbFormatConfig: TsdbFormatConfig) {
     def hBaseConfiguration = {
       val conf = HBaseConfiguration.create()
-      conf.set(HConstants.ZOOKEEPER_QUORUM, hBaseZkHostsString)
-      conf.setInt(HConstants.ZOOKEEPER_CLIENT_PORT, hBaseZkPort)
-      conf
+      new HBaseConfigured(ConfigFactory.empty(), hBaseZkConnect).hbaseConfiguration
     }
   }
 
@@ -119,8 +117,7 @@ class BulkLoadJobRunner(name: String,
     conf.setInt(KAFKA_CONSUMER_FETCH_SIZE, 2000000)
     conf.set(KAFKA_CLIENT_ID, "drop")
 
-    conf.set(HBASE_CONF_QUORUM, storageConfig.hBaseZkHostsString)
-    conf.setInt(HBASE_CONF_QUORUM_PORT, storageConfig.hBaseZkPort)
+    conf.set(HBASE_ZK_CONNECT, storageConfig.hBaseZkConnect.toZkConnectString)
     conf.set(UNIQUE_ID_TABLE_NAME, storageConfig.uidTableName)
     conf.setInt(UNIQUE_ID_CACHE_SIZE, 100000)
     val tsdbFormatConfigString = {

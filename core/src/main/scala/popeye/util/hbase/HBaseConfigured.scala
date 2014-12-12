@@ -12,16 +12,15 @@ import popeye.Logging
 /**
  * @author Andrey Stepachev
  */
-class HBaseConfigured(config: Config, zkQuorum: String) extends Logging {
+class HBaseConfigured(config: Config, zkConnect: ZkConnect) extends Logging {
   val hbaseConfiguration = {
     val conf = makeHBaseConfig(config)
-    log.info("using quorum: {}", zkQuorum)
-    val zkConnect = ZkConnect.parseString(zkQuorum)
+    log.info("using quorum: {}", zkConnect)
     val (hosts, portOptions) = zkConnect.hostAndPorts.unzip
     val portsSet = portOptions.toSet
     require(
       portsSet.size == 1,
-      s"Found more than one zk port, hbase doesn't understand different zk ports for different servers: $zkQuorum"
+      s"Found more than one zk port, hbase doesn't understand different zk ports for different servers: $zkConnect"
     )
     conf.set(HConstants.ZOOKEEPER_QUORUM, hosts.mkString(","))
     val portOption = portsSet.head

@@ -31,8 +31,7 @@ class BulkloadSinkFactory(sinkFactory: BulkloadSinkStarter,
     }
     val storageConfig = storagesConfig.getConfig(config.getString("storage"))
     val hBaseConfig = BulkLoadJobRunner.HBaseStorageConfig(
-      hBaseZkHostsString = config.getString("hbase.zk.quorum.hosts"),
-      hBaseZkPort = config.getInt("hbase.zk.quorum.port"),
+      hBaseZkConnect = ZkConnect.parseString(config.getString("hbase.zk.quorum")),
       pointsTableName = storageConfig.getString("table.points"),
       uidTableName = storageConfig.getString("table.uids"),
       tsdbFormatConfig = tsdbFormatConfig

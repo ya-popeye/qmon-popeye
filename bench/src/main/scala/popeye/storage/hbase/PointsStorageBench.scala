@@ -16,6 +16,7 @@ import popeye.bench.BenchUtils
 import popeye.pipeline.MetricGenerator
 import popeye.proto.Message
 import popeye.storage.hbase.HBaseStorage.{PointsGroups, ValueNameFilterCondition}
+import popeye.util.ZkConnect
 import popeye.util.hbase.HBaseConfigured
 
 import scala.collection.JavaConverters._
@@ -58,7 +59,7 @@ object PointsStorageBench extends Logging {
                      numberOfPointsPerSeries: Int = 1000,
                      numberOfTagValues: (Int, Int) = (10, 10),
                      timeStep: Int = 300) = {
-    val hBaseConfigured = new HBaseConfigured(ConfigFactory.empty(), zkQuorum)
+    val hBaseConfigured = new HBaseConfigured(ConfigFactory.empty(), ZkConnect.parseString(zkQuorum))
     val hTablePool = hBaseConfigured.getHTablePool(2)
     for {
       actorSystem <- actorSystemResource

@@ -10,6 +10,7 @@ import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.util.Bytes
 import popeye.proto.{Message, PackedPoints}
 import popeye._
+import popeye.util.ZkConnect
 import scala.collection.JavaConversions._
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration._
@@ -562,7 +563,7 @@ class HBaseStorageConfig(val config: Config, val shardAttributeNames: Set[String
   val uidsTableName = config.getString("table.uids")
   val pointsTableName = config.getString("table.points")
   lazy val poolSize = config.getInt("pool.max")
-  val zkQuorum = config.getString("zk.quorum")
+  val zkQuorum = ZkConnect.parseString(config.getString("zk.quorum"))
   val resolveTimeout = new FiniteDuration(config.getMilliseconds(s"uids.resolve-timeout"), TimeUnit.MILLISECONDS)
   lazy val readChunkSize = config.getInt("read-chunk-size")
   val uidsConfig = config.getConfig("uids")
