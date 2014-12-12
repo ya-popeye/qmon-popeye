@@ -2,23 +2,16 @@ package popeye.util
 
 import org.I0Itec.zkclient.ZkClient
 import kafka.utils.ZKStringSerializer
-import popeye.util.KafkaOffsetsTracker.PartitionId
 
 case class OffsetRange(startOffset: Long, stopOffset: Long) {
   require(startOffset <= stopOffset, "startOffset > stopOffset")
 }
 
-object KafkaOffsetsTracker {
-  type PartitionId = Int
-}
-
 class KafkaOffsetsTracker(kafkaMetaRequests: IKafkaMetaRequests,
-                          zkConnect: String,
-                          offsetsPath: String,
-                          zkSessionTimeout: Int = 2000,
-                          zkConnectionTimeout: Int = 1000) {
+                          zkClientConfig: ZkClientConfiguration,
+                          offsetsPath: String) {
 
-  def fetchOffsetRanges(): Map[PartitionId, OffsetRange] = {
+  def fetchOffsetRanges(): Map[Int, OffsetRange] = {
     val latestOffsets = kafkaMetaRequests.fetchLatestOffsets()
     val earliestOffsets = kafkaMetaRequests.fetchEarliestOffsets()
     val consumedOffsets = withZkClient(loadOffsets)
@@ -31,7 +24,7 @@ class KafkaOffsetsTracker(kafkaMetaRequests: IKafkaMetaRequests,
     }.toMap
   }
 
-  def commitOffsets(offsetRanges: Map[PartitionId, OffsetRange]) = withZkClient {
+  def commitOffsets(offsetRanges: Map[Int, OffsetRange]) = withZkClient {
     zkClient =>
       val oldOffsets = loadOffsets(zkClient)
       checkModifications(offsetRanges, oldOffsets)
@@ -43,7 +36,7 @@ class KafkaOffsetsTracker(kafkaMetaRequests: IKafkaMetaRequests,
       }
   }
 
-  private def checkModifications(offsetRanges: Map[PartitionId, OffsetRange], oldOffsets: Map[Int, Long]) = {
+  private def checkModifications(offsetRanges: Map[Int, OffsetRange], oldOffsets: Map[Int, Long]) = {
     for ((partitionId, oldOffset) <- oldOffsets) {
       val offsetRange =
         offsetRanges.getOrElse(partitionId, throw new RuntimeException(f"stale offsets ranges: unknown partition $partitionId"))
@@ -59,7 +52,7 @@ class KafkaOffsetsTracker(kafkaMetaRequests: IKafkaMetaRequests,
     }
   }
 
-  private def loadOffsets(zkClient: ZkClient): Map[PartitionId, Long] = {
+  private def loadOffsets(zkClient: ZkClient): Map[Int, Long] = {
     if (!zkClient.exists(offsetsPath)) {
       val createParents = true
       zkClient.createPersistent(offsetsPath, createParents)
@@ -69,7 +62,7 @@ class KafkaOffsetsTracker(kafkaMetaRequests: IKafkaMetaRequests,
     parseOffsets(offsetsString)
   }
 
-  private def parseOffsets(offsetsString: String): Map[PartitionId, Long] = {
+  private def parseOffsets(offsetsString: String): Map[Int, Long] = {
     offsetsString.split(",").filter(_.nonEmpty).map {
       partitionAndOffset =>
         val tokens = partitionAndOffset.split(":")
@@ -77,7 +70,7 @@ class KafkaOffsetsTracker(kafkaMetaRequests: IKafkaMetaRequests,
     }.toMap
   }
 
-  private def serializeOffsets(offsets: Map[PartitionId, Long]) = {
+  private def serializeOffsets(offsets: Map[Int, Long]) = {
     offsets.toList.map {
       case (partition, offset) => f"$partition:$offset"
     }.mkString(",")
@@ -85,7 +78,7 @@ class KafkaOffsetsTracker(kafkaMetaRequests: IKafkaMetaRequests,
 
   private def withZkClient[T](operation: ZkClient => T): T = {
 
-    val zkClient = new ZkClient(zkConnect, zkSessionTimeout, zkConnectionTimeout, ZKStringSerializer)
+    val zkClient = zkClientConfig.createClient
     try {
       operation(zkClient)
     } finally {

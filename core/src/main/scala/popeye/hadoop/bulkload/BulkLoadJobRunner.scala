@@ -19,7 +19,6 @@ import popeye.hadoop.bulkload.BulkLoadJobRunner.{JobRunnerConfig, HBaseStorageCo
 import com.codahale.metrics.MetricRegistry
 import org.apache.hadoop.fs.permission.{FsAction, FsPermission}
 import popeye.storage.hbase.TsdbFormatConfig
-import popeye.util.KafkaOffsetsTracker.PartitionId
 import popeye.util._
 import popeye.util.hbase.HBaseConfigured
 
@@ -62,8 +61,7 @@ class BulkLoadJobRunner(name: String,
 
   def doBulkload() = {
     val kafkaMetaRequests = new KafkaMetaRequests(runnerConfig.kafkaBrokers, runnerConfig.topic)
-    val zkConnectStr = runnerConfig.zkClientConfig.zkConnectString
-    val offsetsTracker = new KafkaOffsetsTracker(kafkaMetaRequests, zkConnectStr, offsetsPath)
+    val offsetsTracker = new KafkaOffsetsTracker(kafkaMetaRequests, runnerConfig.zkClientConfig, offsetsPath)
     val offsetRanges = offsetsTracker.fetchOffsetRanges()
     val kafkaInputs = toKafkaInputs(offsetRanges)
 
@@ -91,7 +89,7 @@ class BulkLoadJobRunner(name: String,
     }
   }
 
-  def toKafkaInputs(offsetRanges: Map[PartitionId, OffsetRange]): List[KafkaInput] = {
+  def toKafkaInputs(offsetRanges: Map[Int, OffsetRange]): List[KafkaInput] = {
     val kafkaInputs = offsetRanges.toList.map {
       case (partitionId, OffsetRange(startOffset, stopOffset)) =>
         KafkaInput(

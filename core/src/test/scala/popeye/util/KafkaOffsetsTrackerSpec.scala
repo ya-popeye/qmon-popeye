@@ -23,7 +23,7 @@ class KafkaOffsetsTrackerSpec extends FlatSpec with Matchers with BeforeAndAfter
     val kafkaMeta = mock[IKafkaMetaRequests]
     kafkaMeta.fetchLatestOffsets() answers ((_) => Map(0 -> 1l))
     kafkaMeta.fetchEarliestOffsets() answers ((_) => Map(0 -> 1l))
-    val tracker = new KafkaOffsetsTracker(kafkaMeta, zookeeper.connectString, offsetsPath)
+    val tracker = new KafkaOffsetsTracker(kafkaMeta, zookeeper.zkClientConfiguration, offsetsPath)
     tracker.fetchOffsetRanges()
     val data: String = zookeeper.newClient.readData(offsetsPath)
     data should equal("")
@@ -33,7 +33,7 @@ class KafkaOffsetsTrackerSpec extends FlatSpec with Matchers with BeforeAndAfter
     val kafkaMeta = mock[IKafkaMetaRequests]
     kafkaMeta.fetchLatestOffsets() answers ((_) => Map(0 -> 1l))
     kafkaMeta.fetchEarliestOffsets() answers ((_) => Map(0 -> 0l))
-    val tracker = new KafkaOffsetsTracker(kafkaMeta, zookeeper.connectString, offsetsPath)
+    val tracker = new KafkaOffsetsTracker(kafkaMeta, zookeeper.zkClientConfiguration, offsetsPath)
     val offsetRanges = tracker.fetchOffsetRanges()
     tracker.commitOffsets(offsetRanges)
     val data: String = zookeeper.newClient.readData(offsetsPath)
@@ -46,7 +46,7 @@ class KafkaOffsetsTrackerSpec extends FlatSpec with Matchers with BeforeAndAfter
     val kafkaMeta = mock[IKafkaMetaRequests]
     kafkaMeta.fetchLatestOffsets() answers ((_) => Map(0 -> 100l, 1 -> 10l))
     kafkaMeta.fetchEarliestOffsets() answers ((_) => Map(0 -> 10l, 1 -> 0l))
-    val tracker = new KafkaOffsetsTracker(kafkaMeta, zookeeper.connectString, offsetsPath)
+    val tracker = new KafkaOffsetsTracker(kafkaMeta, zookeeper.zkClientConfiguration, offsetsPath)
     val offsetRanges = tracker.fetchOffsetRanges()
     offsetRanges(0) should equal(OffsetRange(10, 100))
     offsetRanges(1) should equal(OffsetRange(0, 10))
@@ -58,7 +58,7 @@ class KafkaOffsetsTrackerSpec extends FlatSpec with Matchers with BeforeAndAfter
     val kafkaMeta = mock[IKafkaMetaRequests]
     kafkaMeta.fetchLatestOffsets() answers ((_) => Map(0 -> 100l, 1 -> 10l, 2 -> 10))
     kafkaMeta.fetchEarliestOffsets() answers ((_) => Map(0 -> 10l, 1 -> 0l, 2 -> 1))
-    val tracker = new KafkaOffsetsTracker(kafkaMeta, zookeeper.connectString, offsetsPath)
+    val tracker = new KafkaOffsetsTracker(kafkaMeta, zookeeper.zkClientConfiguration, offsetsPath)
     val offsetRanges = tracker.fetchOffsetRanges()
     offsetRanges(2) should equal(OffsetRange(1, 10))
   }
