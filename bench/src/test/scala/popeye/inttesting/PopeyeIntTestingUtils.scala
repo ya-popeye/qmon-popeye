@@ -1,9 +1,12 @@
 package popeye.inttesting
 
+import org.I0Itec.zkclient.ZkClient
 import org.apache.zookeeper.CreateMode
 import popeye.Logging
 import popeye.pipeline.kafka.KafkaQueueSizeGauge
 import popeye.test.EmbeddedZookeeper
+import popeye.util.ZkClientConfiguration
+import scala.collection.JavaConverters._
 
 import scala.util.{Failure, Success, Try}
 
@@ -26,5 +29,21 @@ object PopeyeIntTestingUtils extends Logging {
     }
     zkClient.close()
     zookeeper
+  }
+
+  def printZkTree(zkClientConf: ZkClientConfiguration, path: String): Unit = {
+    def printZkTreeInner(zkClient: ZkClient, path: String): Unit = {
+      info(s"zk dump: $path")
+      val children = zkClient.getChildren(path)
+      for (child <- children.asScala) {
+        printZkTreeInner(zkClient, s"$path/$child")
+      }
+    }
+    val zkClient = zkClientConf.createClient
+    try {
+      printZkTreeInner(zkClient, path)
+    } finally {
+      zkClient.close()
+    }
   }
 }
