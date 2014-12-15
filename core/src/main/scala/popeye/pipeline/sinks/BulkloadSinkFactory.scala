@@ -7,8 +7,6 @@ import popeye.util._
 import com.typesafe.config.Config
 import akka.actor.Scheduler
 import scala.concurrent.ExecutionContext
-import org.I0Itec.zkclient.ZkClient
-import kafka.utils.ZKStringSerializer
 import scala.concurrent.duration._
 import org.apache.hadoop.conf.Configuration
 import popeye.hadoop.bulkload.{BulkLoadMetrics, BulkLoadJobRunner}
@@ -23,32 +21,31 @@ class BulkloadSinkFactory(sinkFactory: BulkloadSinkStarter,
                           shardAttributeNames: Set[String]) extends PipelineSinkFactory with Logging {
   override def startSink(sinkName: String, config: Config): PointsSink = {
     val kafkaConfig = KafkaPointsSinkConfigParser.parse(config.getConfig("kafka"))
+    val storageName = config.getString("storage")
+    val storageConfig = config.getConfig("hbase").withFallback(storagesConfig.getConfig(storageName))
     val tsdbFormatConfig = {
-      val storageName = config.getString("storage")
-      val storageConfig = config.withFallback(storagesConfig.getConfig(storageName))
       val startTimeAndPeriods = StartTimeAndPeriod.parseConfigList(storageConfig.getConfigList("generations"))
       TsdbFormatConfig(startTimeAndPeriods, shardAttributeNames)
     }
-    val storageConfig = storagesConfig.getConfig(config.getString("storage"))
     val hBaseConfig = BulkLoadJobRunner.HBaseStorageConfig(
-      hBaseZkConnect = ZkConnect.parseString(config.getString("hbase.zk.quorum")),
+      hBaseZkConnect = ZkConnect.parseString(storageConfig.getString("zk.quorum")),
       pointsTableName = storageConfig.getString("table.points"),
       uidTableName = storageConfig.getString("table.uids"),
       tsdbFormatConfig = tsdbFormatConfig
     )
 
-    val jobRunnerConfig = config.getConfig("jobRunner")
-
     val zkClientConfig = {
-      val conf = config.getConfig("zk")
+      val zkConf = config.getConfig("zk")
       ZkClientConfiguration(
-        zkConnect = ZkConnect.parseString(conf.getString("zk.quorum")),
-        sessionTimeout = conf.getMilliseconds("zk.connection.timeout").toInt,
-        connectionTimeout = conf.getMilliseconds("zk.connection.timeout").toInt
+        zkConnect = ZkConnect.parseString(zkConf.getString("quorum")),
+        sessionTimeout = zkConf.getMilliseconds("session.timeout").toInt,
+        connectionTimeout = zkConf.getMilliseconds("connection.timeout").toInt
       )
     }
+
     val brokerListString = kafkaConfig.producerConfig.brokerList
     val kafkaBrokers = parseBrokerList(brokerListString)
+    val jobRunnerConfig = config.getConfig("job")
 
     val hadoopConfiguration = {
       val conf = new Configuration()
