@@ -24,6 +24,7 @@ import popeye.util.hbase.HBaseConfigured
 
 class BulkLoadMetrics(prefix: String, metrics: MetricRegistry) {
   val points = metrics.meter(f"$prefix.points")
+  val runningJobs = metrics.counter(f"$prefix.jobs")
 }
 
 object BulkLoadJobRunner {
@@ -33,7 +34,6 @@ object BulkLoadJobRunner {
                                 uidTableName: String,
                                 tsdbFormatConfig: TsdbFormatConfig) {
     def hBaseConfiguration = {
-      val conf = HBaseConfiguration.create()
       new HBaseConfigured(ConfigFactory.empty(), hBaseZkConnect).hbaseConfiguration
     }
   }
@@ -60,16 +60,18 @@ class BulkLoadJobRunner(name: String,
   val offsetsPath = f"/drop/$name/offsets"
 
   def doBulkload() = {
+    info("initiating bulk loading")
     val kafkaMetaRequests = new KafkaMetaRequests(runnerConfig.kafkaBrokers, runnerConfig.topic)
     val offsetsTracker = new KafkaOffsetsTracker(kafkaMetaRequests, runnerConfig.zkClientConfig, offsetsPath)
     val offsetRanges = offsetsTracker.fetchOffsetRanges()
+    info(f"kafka offset fetched: $offsetRanges")
     val kafkaInputs = toKafkaInputs(offsetRanges)
-
+    info(f"input data: $kafkaInputs")
     if (kafkaInputs.nonEmpty) {
       val success = runHadoopJob(kafkaInputs)
       if (success) {
         info("hadoop job finished, starting bulk loading")
-        moveHFIlesToHBase()
+        moveHFilesToHBase()
         info(f"bulkload finished, saving offsets")
         offsetsTracker.commitOffsets(offsetRanges)
         info(f"offsets saved")
@@ -77,13 +79,17 @@ class BulkLoadJobRunner(name: String,
     }
   }
 
-  def moveHFIlesToHBase() = {
+  def moveHFilesToHBase() = {
     // hbase needs rw access
+    info("setting file permissions: granting rw access")
     setPermissionsRecursively(outputPath, new FsPermission(FsAction.ALL, FsAction.ALL, FsAction.ALL))
     val baseConfiguration = storageConfig.hBaseConfiguration
+    info("connecting to HBase")
     val hTable = new HTable(baseConfiguration, storageConfig.pointsTableName)
     try {
+      info("calling LoadIncrementalHFiles.doBulkLoad")
       new LoadIncrementalHFiles(baseConfiguration).doBulkLoad(outputPath, hTable)
+      info("bulk loading finished ")
     } finally {
       hTable.close()
     }
@@ -142,8 +148,13 @@ class BulkLoadJobRunner(name: String,
     // HFileOutputFormat2.configureIncrementalLoad abuses tmpjars
     job.getConfiguration.unset("tmpjars")
     FileOutputFormat.setOutputPath(job, outputPath)
-
-    val success = job.waitForCompletion(true)
+    info("starting job")
+    val success = try {
+      metrics.runningJobs.inc()
+      job.waitForCompletion(true)
+    } finally {
+      metrics.runningJobs.dec()
+    }
     if (success) {
       val writtenKeyValues = job.getCounters.findCounter(Counters.MAPPED_KEYVALUES).getValue
       metrics.points.mark(writtenKeyValues)
