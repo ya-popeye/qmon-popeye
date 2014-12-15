@@ -22,7 +22,6 @@ import java.util.concurrent.atomic.AtomicInteger
 class DispatcherConfig(config: Config) {
   val batchWaitTimeout: FiniteDuration = toFiniteDuration(
     config.getMilliseconds("tick"))
-  val maxQueued = config.getInt("max-queued")
   val numOfWorkers = config.getInt("workers")
   val highWatermark = config.getInt("high-watermark")
   val lowWatermark = config.getInt("low-watermark")
