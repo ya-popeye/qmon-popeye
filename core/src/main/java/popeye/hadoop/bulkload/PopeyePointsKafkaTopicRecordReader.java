@@ -47,6 +47,7 @@ public class PopeyePointsKafkaTopicRecordReader extends RecordReader<NullWritabl
 
     String uniqueIdTableName = conf.get(UNIQUE_ID_TABLE_NAME);
     int cacheCapacity = conf.getInt(UNIQUE_ID_CACHE_SIZE, 100000);
+    int maxDelayedPoints = conf.getInt(MAX_DELAYED_POINTS, 100000);
     String hbaseZkConnectString = conf.get(HBASE_ZK_CONNECT);
     ZkConnect hbaseZkConnect = ZkConnect$.MODULE$.parseString(hbaseZkConnectString);
     Configuration hbaseConf = new HBaseConfigured(ConfigFactory.empty(), hbaseZkConnect).hbaseConfiguration();
@@ -58,7 +59,8 @@ public class PopeyePointsKafkaTopicRecordReader extends RecordReader<NullWritabl
       tsdbFormat,
       uniqueIdTableName,
       hTablePool,
-      cacheCapacity
+      cacheCapacity,
+      maxDelayedPoints
     );
   }
 
