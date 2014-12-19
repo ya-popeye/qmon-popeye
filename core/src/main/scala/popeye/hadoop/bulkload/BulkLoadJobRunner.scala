@@ -124,6 +124,7 @@ class BulkLoadJobRunner(name: String,
     conf.set(HBASE_ZK_CONNECT, storageConfig.hBaseZkConnect.toZkConnectString)
     conf.set(UNIQUE_ID_TABLE_NAME, storageConfig.uidTableName)
     conf.setInt(UNIQUE_ID_CACHE_SIZE, 100000)
+    conf.setInt(MAX_DELAYED_POINTS, 100000)
     val tsdbFormatConfigString = {
       val config = TsdbFormatConfig.renderConfig(storageConfig.tsdbFormatConfig)
       config.root().render()
@@ -148,9 +149,13 @@ class BulkLoadJobRunner(name: String,
     // HFileOutputFormat2.configureIncrementalLoad abuses tmpjars
     job.getConfiguration.unset("tmpjars")
     FileOutputFormat.setOutputPath(job, outputPath)
-    info("starting job")
+    job.setJobName("popeye-bulkload")
     val success = try {
+      info("submitting job")
       metrics.runningJobs.inc()
+      job.submit()
+      val trackingUrl = getTrackingUrlWithReties(job, retries = 3)
+      info(f"job submitted, tracking url: '$trackingUrl'")
       job.waitForCompletion(true)
     } finally {
       metrics.runningJobs.dec()
@@ -162,6 +167,20 @@ class BulkLoadJobRunner(name: String,
       error(f"hadoop job failed, history url: ${job.getHistoryUrl}")
     }
     success
+  }
+
+  def getTrackingUrlWithReties(job: Job, retries: Int): String = {
+    val noUrl = "N/A"
+    for (_ <- 0 to retries) {
+      val trackingUrl = job.getStatus.getTrackingUrl
+      info(f"trying to get tracking url, got: $trackingUrl")
+      if (trackingUrl != noUrl) {
+        return trackingUrl
+      }
+      Thread.sleep(500)
+      info("retrying to get tracking url")
+    }
+    noUrl
   }
 
   def setPermissionsRecursively(path: Path, permission: FsPermission): Unit = {
