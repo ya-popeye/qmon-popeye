@@ -13,13 +13,17 @@ object PeriodicExclusiveTask extends Logging {
           executionContext: ExecutionContext,
           period: FiniteDuration)
          (task: => Unit) = {
+    info(f"task was scheduled: zk.quorum: ${zkClientConfig.zkConnectString}, " +
+      f"lock path: $lockPath, period (seconds): ${period.toSeconds}")
     scheduler.schedule(period, period) {
       ZookeeperLock.tryAcquireLockAndRunTask(zkClientConfig, lockPath) {
         try {
+          info(f"starting task")
           task
+          info(f"task finished")
         } catch {
           case e: Exception =>
-            warn("periodic task failed", e)
+            error("periodic task failed", e)
         }
       }
     }(executionContext)
