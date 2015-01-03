@@ -3,6 +3,7 @@ package popeye.storage.hbase
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import akka.dispatch.ExecutionContexts
+import org.apache.hadoop.hbase.DaemonThreadFactory
 import org.kiji.testing.fakehtable.FakeHTable
 import org.apache.hadoop.hbase.client.{HTableInterface, HTableInterfaceFactory, HTablePool}
 import org.apache.hadoop.conf.Configuration
@@ -16,8 +17,7 @@ object PointsStorageStub {
 }
 
 class PointsStorageStub(timeRangeIdMapping: GenerationIdMapping = PointsStorageStub.timeRangeIdMapping,
-                        shardAttrs: Set[String] = Set("host"),
-                        inMemoryUniqueId: Boolean = true)
+                        shardAttrs: Set[String] = Set("host"))
                        (implicit val actorSystem: ActorSystem,
                         implicit val executionContext: ExecutionContext) {
   private val metricRegistry = new MetricRegistry()
@@ -30,14 +30,16 @@ class PointsStorageStub(timeRangeIdMapping: GenerationIdMapping = PointsStorageS
   val hTablePool = createHTablePool(pointsTable)
   val uIdHTablePool = createHTablePool(uIdHTable)
 
-  def uniqActorProps =
-    if (inMemoryUniqueId) {
-      Props.apply(new InMemoryUniqueIdActor())
-    } else {
-      val metrics = new UniqueIdStorageMetrics("uid", metricRegistry)
-      val uniqueIdStorage = new UniqueIdStorage(uidTableName, uIdHTablePool, metrics)
-      Props.apply(UniqueIdActor(uniqueIdStorage, ExecutionContexts.fromExecutor(Executors.newSingleThreadExecutor())))
-    }
+  val uniqueIdStorage = {
+    val metrics = new UniqueIdStorageMetrics("uid", metricRegistry)
+    new UniqueIdStorage(uidTableName, uIdHTablePool, metrics)
+  }
+
+  def uniqActorProps = {
+    val executor = Executors.newSingleThreadExecutor(new DaemonThreadFactory("unique id actor"))
+    val executionContext = ExecutionContexts.fromExecutor(executor)
+    Props.apply(UniqueIdActor(uniqueIdStorage, executionContext))
+  }
 
   def uniqActor: TestActorRef[Actor] = TestActorRef(uniqActorProps)
 

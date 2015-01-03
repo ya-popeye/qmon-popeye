@@ -189,6 +189,7 @@ object PopeyeBuild extends Build {
     settings = defaultSettings ++ FindBugs.settings ++ HBase.settings)
     .settings(
       libraryDependencies ++= Version.slf4jDependencies ++ Seq(
+        "org.apache.hadoop" % "hadoop-common" % Version.Hadoop % "provided",
         "nl.grons" %% "metrics-scala" % Version.Metrics,
         "com.codahale.metrics" % "metrics-jvm" % "3.0.0",
         "com.googlecode.concurrentlinkedhashmap" % "concurrentlinkedhashmap-lru" % "1.4",
@@ -269,7 +270,8 @@ object PopeyeBuild extends Build {
     settings = defaultSettings ++ HBase.settings ++ assemblySettings).dependsOn(popeyeCore % "compile->compile;test->test")
     .settings(
       libraryDependencies ++= Seq(
-        "org.apache.hadoop" % "hadoop-common" % Version.Hadoop % "provided"
+        "org.apache.hadoop" % "hadoop-common" % Version.Hadoop % "provided",
+        "org.apache.hadoop" % "hadoop-client" % Version.Hadoop % "provided"
       ).excluding(Version.commonExclusions: _*)
         .excluding(Version.slf4jExclusions: _*)
     )

@@ -29,10 +29,17 @@ object TsdbFormatConfig {
       .withValue(shardAttributesKey, ConfigValueFactory.fromIterable(config.shardAttributes.asJava))
   }
 
+  def renderString(config: TsdbFormatConfig) = {
+    val typesafeConf = renderConfig(config)
+    typesafeConf.root().render()
+  }
+
   def parseConfig(config: Config) = {
     val generationsConfigList = config.getConfigList(generationsKey)
     val startTimeAndPeriods = StartTimeAndPeriod.parseConfigList(generationsConfigList)
     val shardAttributes = config.getStringList(shardAttributesKey).asScala.toSet
     TsdbFormatConfig(startTimeAndPeriods, shardAttributes)
   }
+
+  def parseString(string: String) = parseConfig(ConfigFactory.parseString(string))
 }
