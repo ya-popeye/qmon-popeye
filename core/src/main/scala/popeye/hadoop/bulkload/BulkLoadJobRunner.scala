@@ -29,6 +29,8 @@ class BulkLoadMetrics(prefix: String, metrics: MetricRegistry) {
 
 object BulkLoadJobRunner {
 
+  val jobName = "popeye_bulkload"
+
   case class HBaseStorageConfig(hBaseZkConnect: ZkConnect,
                                 pointsTableName: String,
                                 uidTableName: String,
@@ -149,7 +151,7 @@ class BulkLoadJobRunner(name: String,
     // HFileOutputFormat2.configureIncrementalLoad abuses tmpjars
     job.getConfiguration.unset("tmpjars")
     FileOutputFormat.setOutputPath(job, outputPath)
-    job.setJobName("popeye-bulkload")
+    job.setJobName(BulkLoadJobRunner.jobName)
     val success = try {
       info("submitting job")
       metrics.runningJobs.inc()
