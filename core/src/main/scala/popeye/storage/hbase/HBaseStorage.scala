@@ -559,20 +559,49 @@ class HBaseStorage(tableName: String,
 
 }
 
-class HBaseStorageConfig(val config: Config, val shardAttributeNames: Set[String], val storageName: String = "hbase") {
-  val uidsTableName = config.getString("table.uids")
-  val pointsTableName = config.getString("table.points")
-  lazy val poolSize = config.getInt("pool.max")
-  val zkQuorum = ZkConnect.parseString(config.getString("zk.quorum"))
-  val resolveTimeout = new FiniteDuration(config.getMilliseconds(s"uids.resolve-timeout"), TimeUnit.MILLISECONDS)
-  lazy val readChunkSize = config.getInt("read-chunk-size")
-  val uidsConfig = config.getConfig("uids")
-  val tsdbFormatConfig = {
-    val startTimeAndPeriods = StartTimeAndPeriod.parseConfigList(config.getConfigList("generations"))
-    TsdbFormatConfig(startTimeAndPeriods, shardAttributeNames)
+object HBaseStorageConfig {
+  def apply(config: Config, shardAttributeNames: Set[String], storageName: String = "hbase"): HBaseStorageConfig = {
+    val uidsTableName = config.getString("table.uids")
+    val pointsTableName = config.getString("table.points")
+    val poolSize = config.getInt("pool.max")
+    val zkQuorum = ZkConnect.parseString(config.getString("zk.quorum"))
+    val uidsConfig = config.getConfig("uids")
+    val resolveTimeout = new FiniteDuration(uidsConfig.getMilliseconds(s"resolve-timeout"), TimeUnit.MILLISECONDS)
+    val readChunkSize = config.getInt("read-chunk-size")
+    val tsdbFormatConfig = {
+      val startTimeAndPeriods = StartTimeAndPeriod.parseConfigList(config.getConfigList("generations"))
+      TsdbFormatConfig(startTimeAndPeriods, shardAttributeNames)
+    }
+    val uidsCacheInitialCapacity = uidsConfig.getInt("cache.initial-capacity")
+    val uidsCacheMaxCapacity = uidsConfig.getInt("cache.max-capacity")
+
+    HBaseStorageConfig(
+      config,
+      uidsTableName,
+      pointsTableName,
+      poolSize,
+      zkQuorum,
+      readChunkSize,
+      resolveTimeout,
+      uidsCacheInitialCapacity,
+      uidsCacheMaxCapacity,
+      tsdbFormatConfig,
+      storageName
+    )
   }
-  val timeRangeIdMapping = tsdbFormatConfig.generationIdMapping
 }
+
+case class HBaseStorageConfig(hbaseConfig: Config,
+                              uidsTableName: String,
+                              pointsTableName: String,
+                              poolSize: Int,
+                              zkQuorum: ZkConnect,
+                              readChunkSize: Int,
+                              resolveTimeout: FiniteDuration,
+                              uidsCacheInitialCapacity: Int,
+                              uidsCacheMaxCapacity: Int,
+                              tsdbFormatConfig: TsdbFormatConfig,
+                              storageName: String)
 
 /**
  * Encapsulates configured hbase client and points storage actors.
@@ -581,7 +610,7 @@ class HBaseStorageConfig(val config: Config, val shardAttributeNames: Set[String
 class HBaseStorageConfigured(config: HBaseStorageConfig, actorSystem: ActorSystem, metricRegistry: MetricRegistry)
                             (implicit val eCtx: ExecutionContext) extends Logging {
 
-  val hbase = new HBaseConfigured(config.config, config.zkQuorum)
+  val hbase = new HBaseConfigured(config.hbaseConfig, config.zkQuorum)
   val hTablePool: HTablePool = hbase.getHTablePool(config.poolSize)
 
   CreateTsdbTables.createTables(hbase.hbaseConfiguration, config.pointsTableName, config.uidsTableName)
@@ -598,8 +627,8 @@ class HBaseStorageConfigured(config: HBaseStorageConfig, actorSystem: ActorSyste
     val uniqueId = new UniqueIdImpl(
       uniqIdResolver,
       new UniqueIdMetrics("uniqueid", metricRegistry),
-      config.uidsConfig.getInt("cache.initial-capacity"),
-      config.uidsConfig.getInt("cache.max-capacity"),
+      config.uidsCacheInitialCapacity,
+      config.uidsCacheMaxCapacity,
       config.resolveTimeout
     )
     val metrics: HBaseStorageMetrics = new HBaseStorageMetrics(config.storageName, metricRegistry)

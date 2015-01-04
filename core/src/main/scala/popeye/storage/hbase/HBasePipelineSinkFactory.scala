@@ -16,7 +16,7 @@ class HBasePipelineSinkFactory(storagesConfig: Config,
   def startSink(sinkName: String, config: Config): PointsSink = {
     info("starting sink...")
     val storageName = config.getString("storage")
-    val storageConfig: HBaseStorageConfig = new HBaseStorageConfig(
+    val storageConfig: HBaseStorageConfig = HBaseStorageConfig(
       config.withFallback(storagesConfig.getConfig(storageName)),
       shardAttributes,
       sinkName

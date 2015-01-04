@@ -69,7 +69,7 @@ object BulkLoadTest extends Logging {
 
   def loadPointsFromHBase(storageConfig: Config) = {
     val actorSystem = ActorSystem()
-    val baseStorageConfig: HBaseStorageConfig = new HBaseStorageConfig(storageConfig, shardAttributeNames)
+    val baseStorageConfig: HBaseStorageConfig = HBaseStorageConfig(storageConfig, shardAttributeNames)
     info("creating HBaseStorageConfigured")
     val configuredStorage = new HBaseStorageConfigured(baseStorageConfig, actorSystem, new MetricRegistry())
     info("HBaseStorageConfigured was created")

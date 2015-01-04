@@ -39,13 +39,17 @@ object PrepareStorageCommand extends PopeyeCommand with Logging {
     val retryInterval = prepareStorageConfig.getMilliseconds("retry-interval").toInt.millis
     val lockZkConnect = ZkConnect.parseString(lockConfig.getString("zk.quorum"))
     val lockPath = lockConfig.getString("path")
-    val storageConfig = new HBaseStorageConfig(hBaseConfig, shardAttributeNames)
-    val hBase = new HBaseConfigured(storageConfig.config, storageConfig.zkQuorum)
+
+    val storageConfig = HBaseStorageConfig(hBaseConfig, shardAttributeNames)
+    val hBase = new HBaseConfigured(storageConfig.hbaseConfig, storageConfig.zkQuorum)
     val currentTimeInSeconds = (System.currentTimeMillis() / 1000).toInt
-    val currentGenerationPeriod = storageConfig.timeRangeIdMapping.backwardIterator(currentTimeInSeconds).next()
-    val nextGenerationId =
-      storageConfig.timeRangeIdMapping.backwardIterator(currentGenerationPeriod.stop).next().id
+
+    val generationIdMapping = storageConfig.tsdbFormatConfig.generationIdMapping
+    val currentGenerationPeriod = generationIdMapping.backwardIterator(currentTimeInSeconds).next()
+    val nextGenerationId = generationIdMapping.backwardIterator(currentGenerationPeriod.stop).next().id
+
     val pointsTableName = TableName.valueOf(storageConfig.pointsTableName)
+
     info("connecting to hbase...")
     val hBaseAdmin = new HBaseAdmin(hBase.hbaseConfiguration)
     info("connected to hbase")
@@ -105,10 +109,10 @@ class PrepareCommandUtils(hBaseAdmin: HBaseAdmin,
     val currentSplitPoints = generationRegions.map {
       regionInfo => new BytesKey(regionInfo.getStartKey)
     }.toSet
-    info(s"current splits: ${ prettyPrintByteKeys(currentSplitPoints.toList) }")
+    info(s"current splits: ${prettyPrintByteKeys(currentSplitPoints.toList)}")
     val splits = createSplits(generationPrefix, nSplits)
     val splitsSet = splits.map(array => new BytesKey(array)).toSet
-    info(s"required splits: ${ prettyPrintByteKeys(splitsSet.toList) }")
+    info(s"required splits: ${prettyPrintByteKeys(splitsSet.toList)}")
     val isPreviousSplitOperationFailed =
       currentSplitPoints.forall(split => splitsSet.contains(split)) && currentSplitPoints.size != splitsSet.size
     if (isPreviousSplitOperationFailed || generationRegions.size < nSplits) {
@@ -121,7 +125,7 @@ class PrepareCommandUtils(hBaseAdmin: HBaseAdmin,
   }
 
   def doSplit(split: Array[Byte]): Unit = {
-    info(s"splitting on ${ Bytes.toStringBinary(split) }")
+    info(s"splitting on ${Bytes.toStringBinary(split)}")
     doAndRetryIfRegionIsNotServing {
       hBaseAdmin.split(pointsTableName.getName, split)
     }

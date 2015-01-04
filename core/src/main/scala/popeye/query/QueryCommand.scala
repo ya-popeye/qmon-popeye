@@ -40,13 +40,13 @@ object QueryCommand extends PopeyeCommand with Logging {
     val serverConfig = queryConfig.getConfig("server")
     val serverTypeKey = serverConfig.getString("type")
     val ectx = ExecutionContext.global
-    val storageConfig = new HBaseStorageConfig(hbaseConfig, shardAttributeNames)
+    val storageConfig = HBaseStorageConfig(hbaseConfig, shardAttributeNames)
     val hbaseStorage = new HBaseStorageConfigured(storageConfig, actorSystem, metrics)(ectx)
     hbaseStorage.storage.ping()
     val pointsStorage = PointsStorage.createPointsStorage(
       hbaseStorage.storage,
       hbaseStorage.uniqueIdStorage,
-      storageConfig.timeRangeIdMapping,
+      storageConfig.tsdbFormatConfig.generationIdMapping,
       ectx
     )
     val serverFactoriesMap = getServerFactoriesMap(metrics)
