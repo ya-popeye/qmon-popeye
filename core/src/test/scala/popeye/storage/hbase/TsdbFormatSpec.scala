@@ -249,6 +249,35 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     new TsdbFormat(prefixMapping, shardAttributes)
   }
 
+  it should "parse packed row" in {
+    val tsdbFormat = createTsdbFormat()
+    val timeAndValues: Seq[(Long, Either[Long, Float])] = Seq(
+      (100l, Left(1l)),
+      (200l, Right(1.0f)),
+      (300l, Left(2l))
+    )
+    val points = timeAndValues.map {
+      case (time, value) =>
+        createPoint(
+          metric = "test",
+          timestamp = time,
+          attributes = Seq(defaultShardAttributeName -> "value"),
+          value = value
+        )
+    }
+    val keyValues = points.map {
+      point => tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0).asInstanceOf[SuccessfulConversion].keyValue
+    }
+    val packedRow = TsdbFormat.rowPacker.packRow(keyValues)
+    val parsedRowResult = tsdbFormat.parseSingleValueRowResult(Result.create(List(packedRow).asJava))
+    val expectedPoints = timeAndValues.map {
+      case (time, value) =>
+        Point(time.toInt, value.fold(_.toDouble, _.toDouble))
+    }
+    val timeseriesId = parsedRowResult.timeseriesId
+    parsedRowResult.points.iterator.toList should equal(expectedPoints)
+  }
+
   behavior of "TsdbFormat.getScanNames"
 
   it should "get qualified names" in {

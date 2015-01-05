@@ -3,7 +3,7 @@ package popeye.paking
 import java.io.ByteArrayOutputStream
 
 import org.apache.hadoop.hbase.util.Bytes
-import org.apache.hadoop.hbase.KeyValue
+import org.apache.hadoop.hbase.{Cell, KeyValue}
 import popeye.paking.RowPacker.{RowPackerException, QualifierAndValueOrdering, QualifierAndValue}
 import popeye.util.CollectionsUtils
 
@@ -20,7 +20,8 @@ object RowPacker {
     def areQualifiersEqual(left: QualifierAndValue, right: QualifierAndValue) = {
       Bytes.equals(
         left.qualifierArray, left.qualifierOffset, left.qualifierLength,
-        right.qualifierArray, right.qualifierOffset, right.qualifierLength)
+        right.qualifierArray, right.qualifierOffset, right.qualifierLength
+      )
     }
   }
 
@@ -47,7 +48,7 @@ object RowPacker {
 }
 
 class RowPacker(qualifierLength: Int, valueTypeDescriptor: ValueTypeDescriptor) {
-  def packRow(keyValues: Seq[KeyValue]): KeyValue = {
+  def packRow(keyValues: Seq[Cell]): Cell = {
     if (keyValues.size == 1) {
       return keyValues.head
     }
@@ -73,7 +74,7 @@ class RowPacker(qualifierLength: Int, valueTypeDescriptor: ValueTypeDescriptor) 
       valArray, 0, valArray.length)
   }
 
-  def unpackRow(keyValues: Seq[KeyValue]): Iterable[QualifierAndValue] = {
+  def unpackRow(keyValues: Seq[Cell]): Iterable[QualifierAndValue] = {
     if (keyValues.size == 1) {
       return unpackKeyValue(keyValues.head)
     }
@@ -85,7 +86,7 @@ class RowPacker(qualifierLength: Int, valueTypeDescriptor: ValueTypeDescriptor) 
     )
   }
 
-  private def checkEqualRowsAndFamilies(keyValues: Seq[KeyValue]) = {
+  private def checkEqualRowsAndFamilies(keyValues: Seq[Cell]) = {
     val firstKeyValue = keyValues.head
     for (keyValue <- keyValues) {
       val rowsAreEqual = Bytes.equals(
@@ -126,7 +127,7 @@ class RowPacker(qualifierLength: Int, valueTypeDescriptor: ValueTypeDescriptor) 
     }
   }
 
-  private def unpackKeyValue(keyValue: KeyValue): Iterable[QualifierAndValue] = {
+  private def unpackKeyValue(keyValue: Cell): Iterable[QualifierAndValue] = {
     if (keyValue.getQualifierLength % qualifierLength != 0) {
       val qual = Bytes.toStringBinary(
         keyValue.getQualifierArray,
@@ -157,7 +158,7 @@ class RowPacker(qualifierLength: Int, valueTypeDescriptor: ValueTypeDescriptor) 
     }
   }
 
-  private def meaningfulException(message: String, keyValue: KeyValue) = {
+  private def meaningfulException(message: String, keyValue: Cell) = {
     val qualCount = keyValue.getQualifierLength / qualifierLength
     val qualOffsets = (0 until qualCount).map {
       i =>
@@ -174,7 +175,7 @@ class RowPacker(qualifierLength: Int, valueTypeDescriptor: ValueTypeDescriptor) 
     new RowPackerException(fullMessage)
   }
 
-  private def countQualSizes(keyValues: Seq[KeyValue]): Int = {
+  private def countQualSizes(keyValues: Seq[Cell]): Int = {
     var sum = 0
     for (keyValue <- keyValues) {
       sum += keyValue.getQualifierLength
@@ -182,7 +183,7 @@ class RowPacker(qualifierLength: Int, valueTypeDescriptor: ValueTypeDescriptor) 
     sum
   }
 
-  private def countValueSizes(keyValues: Seq[KeyValue]): Int = {
+  private def countValueSizes(keyValues: Seq[Cell]): Int = {
     var sum = 0
     for (keyValue <- keyValues) {
       sum += keyValue.getValueLength
@@ -190,7 +191,7 @@ class RowPacker(qualifierLength: Int, valueTypeDescriptor: ValueTypeDescriptor) 
     sum
   }
 
-  private def getMaxTimestamp(keyValues: Seq[KeyValue]): Long = {
+  private def getMaxTimestamp(keyValues: Seq[Cell]): Long = {
     var max = 0l
     for (keyValue <- keyValues) {
       max = math.max(max, keyValue.getTimestamp)

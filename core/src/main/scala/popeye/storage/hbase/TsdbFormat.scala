@@ -1,5 +1,7 @@
 package popeye.storage.hbase
 
+import popeye.paking.RowPacker.QualifierAndValue
+import popeye.paking.{RowPacker, ValueTypeDescriptor}
 import popeye.proto.Message
 import popeye.storage.hbase.HBaseStorage._
 import org.apache.hadoop.hbase.KeyValue
@@ -16,8 +18,6 @@ import org.apache.hadoop.hbase.filter.{CompareFilter, RowFilter, RegexStringComp
 import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.{AllValueNames, MultipleValueNames, SingleValueName}
 import popeye.storage.hbase.HBaseStorage.ValueIdFilterCondition.{SingleValueId, MultipleValueIds, AllValueIds}
 import popeye.proto.Message.Attribute
-
-import scala.util.{Success, Failure, Try}
 
 object TsdbFormat {
 
@@ -54,6 +54,8 @@ object TsdbFormat {
 
   val ROW_REGEX_FILTER_ENCODING = Charset.forName("ISO-8859-1")
 
+  val rowPacker = new RowPacker(qualifierLength = 2, valueTypeDescriptor = ValueTypes.TsdbValueTypeDescriptor)
+
   trait ValueType {
     def mkQualifiedValue(point: Message.Point): (Array[Byte], Array[Byte])
 
@@ -61,6 +63,21 @@ object TsdbFormat {
   }
 
   object ValueTypes {
+
+    object TsdbValueTypeDescriptor extends ValueTypeDescriptor {
+      override def getValueLength(qualifierArray: Array[Byte],
+                                  qualifierOffset: Int,
+                                  qualifierLength: Int): Int = {
+        val qualifier = Bytes.toShort(qualifierArray, qualifierOffset, qualifierLength)
+        val floatFlag: Int = TsdbFormat.FLAG_FLOAT | 0x3.toShort
+        val isFloatValue = (qualifier & floatFlag) == floatFlag
+        if (isFloatValue) {
+          4
+        } else {
+          8
+        }
+      }
+    }
 
     val SingleValueTypeStructureId: Byte = 0
     val ListValueTypeStructureId: Byte = 1
@@ -75,12 +92,14 @@ object TsdbFormat {
       }
     }
 
-    def parseQualifier(qualifierBytes: Array[Byte]) = {
+    def parseQualifier(qualifierBytes: Array[Byte]) = parseQualifierFromSlice(qualifierBytes, 0, qualifierBytes.length)
+
+    def parseQualifierFromSlice(qualifierArray: Array[Byte], qualifierOffset: Int, qualifierLength: Int) = {
       require(
-        qualifierBytes.length == Bytes.SIZEOF_SHORT,
-        s"Expected qualifier length was ${ Bytes.SIZEOF_SHORT }, got ${ qualifierBytes.length }"
+        qualifierLength == Bytes.SIZEOF_SHORT,
+        s"Expected qualifier length was ${Bytes.SIZEOF_SHORT}, got $qualifierLength"
       )
-      val qualifier = Bytes.toShort(qualifierBytes)
+      val qualifier = Bytes.toShort(qualifierArray, qualifierOffset, qualifierLength)
       val deltaShort = ((qualifier & 0xFFFF) >>> FLAG_BITS).toShort
       val floatFlag: Int = FLAG_FLOAT | 0x3.toShort
       val isFloatValue = (qualifier & floatFlag) == floatFlag
@@ -91,11 +110,25 @@ object TsdbFormat {
       (deltaShort, isFloatValue)
     }
 
-    def parseSingleValue(valueBytes: Array[Byte], isFloatValue: Boolean): Either[Long, Float] = {
+    def parseSingleValue(valueBytes: Array[Byte], isFloat: Boolean) =
+      parseSingleValueFromSlice(valueBytes, 0, valueBytes.length, isFloat)
+
+    def parseSingleValueFromSlice(valueArray: Array[Byte],
+                                  valueOffset: Int,
+                                  valueLength: Int,
+                                  isFloatValue: Boolean): Either[Long, Float] = {
       if (isFloatValue) {
-        Right(Bytes.toFloat(valueBytes))
+        require(
+          valueLength == Bytes.SIZEOF_FLOAT,
+          s"Expected value length was ${Bytes.SIZEOF_FLOAT}, got $valueLength"
+        )
+        Right(Bytes.toFloat(valueArray, valueOffset))
       } else {
-        Left(Bytes.toLong(valueBytes))
+        require(
+          valueLength == Bytes.SIZEOF_LONG,
+          s"Expected value length was ${Bytes.SIZEOF_LONG}, got $valueLength"
+        )
+        Left(Bytes.toLong(valueArray, valueOffset))
       }
     }
 
@@ -349,11 +382,15 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
   def parseSingleValueRowResult(result: Result): ParsedSingleValueRowResult = {
     val row = result.getRow
     val (timeseriesId, baseTime) = parseTimeseriesIdAndBaseTime(row)
-    val columns = result.getFamilyMap(HBaseStorage.PointsFamily).asScala.iterator
-    val points = columns.map {
-      case (qualifierBytes, valueBytes) =>
-        val (delta, isFloat) = ValueTypes.parseQualifier(qualifierBytes)
-        val value = ValueTypes.parseSingleValue(valueBytes, isFloat)
+    val cells = result.rawCells()
+    val qualiierAndValues = rowPacker.unpackRow(cells)
+    val points = qualiierAndValues.iterator.map {
+      case QualifierAndValue(
+      qualifierArray, qualifierOffset, qualifierLength,
+      valueArray, valueOffset, valueLength,
+      timestamp) =>
+        val (delta, isFloat) = ValueTypes.parseQualifierFromSlice(qualifierArray, qualifierOffset, qualifierLength)
+        val value = ValueTypes.parseSingleValueFromSlice(valueArray, valueOffset, valueLength, isFloat)
         Point(baseTime + delta, value.fold(_.toDouble, _.toDouble))
     }
     ParsedSingleValueRowResult(timeseriesId, PointRope.fromIterator(points))
@@ -636,24 +673,6 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
     val delta = (timestamp - baseTime).toShort
     trace(s"Made point: ts=$timestamp, basets=$baseTime, delta=$delta")
     new KeyValue(row, HBaseStorage.PointsFamily, value._1, keyValueTimestamp, value._2)
-  }
-
-  /**
-   * Produce tuple with qualifier and value represented as byte arrays
-   * @param point point to pack
-   * @return packed (qualifier, value)
-   */
-  private def mkQualifiedValue(point: Message.Point): (Array[Byte], Array[Byte]) = {
-    val delta: Short = (point.getTimestamp % MAX_TIMESPAN).toShort
-    val ndelta = delta << FLAG_BITS
-    if (point.hasFloatValue)
-      (Bytes.toBytes(((0xffff & (FLAG_FLOAT | 0x3)) | ndelta).toShort),
-        Bytes.toBytes(point.getFloatValue))
-    else if (point.hasIntValue)
-      (Bytes.toBytes((0xffff & ndelta).toShort), Bytes.toBytes(point.getIntValue))
-    else
-      throw new IllegalArgumentException("Neither int nor float values set on point")
-
   }
 
   @inline
