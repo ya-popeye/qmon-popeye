@@ -34,7 +34,7 @@ class TsdbKeyValueIterator(pointsIterator: KafkaPointsIterator,
 
   val delayedPointsBuffer = mutable.Buffer[Message.Point]()
 
-  def hasNext = pointsIterator.hasNext
+  def hasNext = pointsIterator.hasNext || delayedPointsBuffer.nonEmpty
 
   def next(): java.util.List[KeyValue] = {
     val currentTimeInSeconds = (System.currentTimeMillis() / 1000).toInt
