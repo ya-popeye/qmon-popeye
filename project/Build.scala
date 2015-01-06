@@ -240,7 +240,9 @@ object PopeyeBuild extends Build {
         "org.mockito" % "mockito-core" % Version.Mockito % "test",
         "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test"
       ).excluding(Version.commonExclusions: _*)
-        .excluding(Version.slf4jExclusions: _*)
+        .excluding(Version.slf4jExclusions: _*),
+      fork in test := true,
+      javaOptions in test ++= Seq("-Xmx2g", "-Xms1g", "-XX:MaxPermSize=512m")
   )
 
   lazy val popeye = Project(
