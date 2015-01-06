@@ -137,13 +137,10 @@ class RowPacker(qualifierLength: Int, valueTypeDescriptor: ValueTypeDescriptor) 
       throw new RowPackerException(f"bad qualifier size: $qual")
     }
     val qualCount = keyValue.getQualifierLength / qualifierLength
-    val qualOffsets = (0 until qualCount).map {
-      i =>
-        keyValue.getQualifierOffset + i * qualifierLength
-    }
     val maxValueByteIndex = keyValue.getValueOffset + keyValue.getValueLength
     var nextValueOffset = keyValue.getValueOffset
-    for (qualOffset <- qualOffsets) yield {
+    for (i <- (0 until qualCount).view) yield {
+      val qualOffset = keyValue.getQualifierOffset + i * qualifierLength
       val valueLength = valueTypeDescriptor.getValueLength(keyValue.getQualifierArray, qualOffset, qualifierLength)
       val valueOffset = nextValueOffset
       nextValueOffset += valueLength
