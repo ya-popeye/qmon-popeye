@@ -4,6 +4,7 @@ import org.I0Itec.zkclient.ZkClient
 import org.apache.zookeeper.CreateMode
 import popeye.Logging
 import popeye.pipeline.kafka.KafkaQueueSizeGauge
+import popeye.proto.Message
 import popeye.test.EmbeddedZookeeper
 import popeye.util.ZkClientConfiguration
 import scala.collection.JavaConverters._
@@ -11,6 +12,33 @@ import scala.collection.JavaConverters._
 import scala.util.{Failure, Success, Try}
 
 object PopeyeIntTestingUtils extends Logging {
+
+  def createPoint(metric: String,
+                  timestamp: Long,
+                  attributes: Seq[(String, String)],
+                  value: Either[Long, Float]) = {
+    val builder = Message.Point.newBuilder()
+    builder.setMetric(metric)
+    builder.setTimestamp(timestamp)
+
+    val messageAttributes = attributes.map {
+      case (attrName, attrValue) =>
+        Message.Attribute.newBuilder().setName(attrName).setValue(attrValue).build()
+    }
+    builder.addAllAttributes(messageAttributes.asJava)
+    value.fold(
+      longVal => {
+        builder.setValueType(Message.Point.ValueType.INT)
+        builder.setIntValue(longVal)
+      },
+      floatVal => {
+        builder.setValueType(Message.Point.ValueType.FLOAT)
+        builder.setFloatValue(floatVal)
+      }
+    )
+    builder.build()
+  }
+
   def waitWhileKafkaQueueIsNotEmpty(kafkaQueueSizeGauge: KafkaQueueSizeGauge) = {
     var kafkaQueueSizeTry: Try[Long] = Failure(new Exception("hasn't run yet"))
     while(kafkaQueueSizeTry != Success(0l)) {
