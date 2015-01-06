@@ -55,8 +55,25 @@ class BulkLoadJobRunner(name: String,
                         runnerConfig: JobRunnerConfig,
                         metrics: BulkLoadMetrics) extends Logging {
 
+  def doBulkload() = {
+    val hadoopConfiguration = runnerConfig.hadoopConfiguration
+    val hdfs: FileSystem = FileSystem.newInstance(hadoopConfiguration)
+    try {
+      val context = new BulkLoadContext(hdfs, name, storageConfig, runnerConfig, metrics)
+      context.doBulkload()
+    } finally {
+      hdfs.close()
+    }
+  }
+}
+
+class BulkLoadContext(hdfs: FileSystem,
+                      name: String,
+                      storageConfig: HBaseStorageConfig,
+                      runnerConfig: JobRunnerConfig,
+                      metrics: BulkLoadMetrics) extends Logging {
+
   val hadoopConfiguration = runnerConfig.hadoopConfiguration
-  val hdfs: FileSystem = FileSystem.get(hadoopConfiguration)
   val outputPath = hdfs.makeQualified(new Path(runnerConfig.outputPath))
   val jarsPath = hdfs.makeQualified(new Path(runnerConfig.jarsPath))
   val offsetsPath = f"/drop/$name/offsets"
