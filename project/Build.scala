@@ -188,6 +188,18 @@ object PopeyeBuild extends Build {
     base = file("core"),
     settings = defaultSettings ++ FindBugs.settings ++ HBase.settings)
     .settings(
+      libraryDependencies ++= Version.slf4jDependencies ++ Seq(
+        "com.typesafe" % "config" % "1.0.2",
+        "org.scalatest" %% "scalatest" % Version.ScalaTest % "test"
+      ).excluding(Version.slf4jExclusions: _*)
+        .excluding(Version.commonExclusions: _*)
+    )
+
+  lazy val popeyeApp = Project(
+    id = "popeye-app",
+    base = file("app"),
+    settings = defaultSettings ++ FindBugs.settings ++ HBase.settings)
+    .settings(
     libraryDependencies ++= Version.slf4jDependencies ++ Seq(
       "org.apache.hadoop" % "hadoop-common" % Version.Hadoop,
       "org.apache.hadoop" % "hadoop-client" % Version.Hadoop,
@@ -211,12 +223,12 @@ object PopeyeBuild extends Build {
       "org.apache.avro" % "avro" % Version.Avro % "test"
     ).excluding(Version.slf4jExclusions :_*)
      .excluding(Version.commonExclusions :_*)
-  )
+    ).dependsOn(popeyeCore)
 
   lazy val popeyeBench = Project(
     id = "popeye-bench",
     base = file("bench"),
-    settings = defaultSettings).dependsOn(popeyeCore % "compile->compile;test->test")
+    settings = defaultSettings).dependsOn(popeyeApp % "compile->compile;test->test", popeyeHadoopJar)
     .settings(
       libraryDependencies ++= Seq(
         "org.apache.hadoop" % "hadoop-common" % Version.Hadoop,
@@ -243,7 +255,17 @@ object PopeyeBuild extends Build {
         .excluding(Version.slf4jExclusions: _*),
       fork in test := true,
       javaOptions in test ++= Seq("-Xmx2g", "-Xms1g", "-XX:MaxPermSize=512m")
-  )
+    ).dependsOn(popeyeCore)
+
+  lazy val popeyeHadoopJar = Project(
+    id = "popeye-hadoop-jar",
+    base = file("hadoop-jar"),
+    settings = defaultSettings).dependsOn(popeyeCore % "compile->compile;test->test")
+    .settings(
+      libraryDependencies ++= Seq(
+      ).excluding(Version.commonExclusions: _*)
+        .excluding(Version.slf4jExclusions: _*)
+    )
 
   lazy val popeye = Project(
     id = "popeye",
@@ -262,8 +284,8 @@ object PopeyeBuild extends Build {
       cleanFiles <+= baseDirectory { b => b / "dist"},
       zipArtifact <<= name(Artifact(_, "zip", "zip"))
     ) ++ addArtifact(zipArtifact, packageDist).settings)
-    .aggregate(popeyeCore, popeyeBench)
-    .dependsOn(popeyeCore, popeyeBench)
+    .aggregate(popeyeApp, popeyeBench, popeyeHadoopJar)
+    .dependsOn(popeyeApp, popeyeBench, popeyeHadoopJar)
 
 
 }

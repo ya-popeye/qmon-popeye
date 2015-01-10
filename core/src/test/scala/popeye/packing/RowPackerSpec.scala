@@ -1,10 +1,10 @@
 package popeye.packing
 
-import org.apache.hadoop.hbase.{CellUtil, KeyValue}
 import org.apache.hadoop.hbase.util.Bytes
-import org.scalatest.{Matchers, FlatSpec}
+import org.apache.hadoop.hbase.{CellUtil, KeyValue}
+import org.scalatest.{FlatSpec, Matchers}
 import popeye.paking.RowPacker.RowPackerException
-import popeye.paking.{ValueTypeDescriptor, RowPacker}
+import popeye.paking.{RowPacker, ValueTypeDescriptor}
 
 class RowPackerSpec extends FlatSpec with Matchers {
 

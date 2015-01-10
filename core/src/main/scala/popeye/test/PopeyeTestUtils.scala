@@ -1,13 +1,11 @@
 package popeye.test
 
-import popeye.proto.Message.{Attribute, Point}
+import popeye.proto.Message.Point
 import java.util.concurrent.atomic.AtomicLong
 import java.util.Random
 import java.text.SimpleDateFormat
 import popeye.proto.Message
 import scala.collection.JavaConversions.iterableAsScalaIterable
-import org.mockito.invocation.InvocationOnMock
-import org.mockito.stubbing.Answer
 import popeye.storage.hbase.{TimeRangeAndId, GenerationIdMapping, BytesKey}
 
 import scala.collection.JavaConverters._
@@ -120,33 +118,6 @@ object PopeyeTestUtils {
       .setTimestamp(timestamp)
       .addAllAttributes(attrs)
     builder
-  }
-
-  class MockAnswer[T](function: Any => T) extends Answer[T] {
-    def answer(invocation: InvocationOnMock): T = {
-      val args = invocation.getArguments
-      val mock = invocation.getMock
-      if (args.size == 0) {
-        function match {
-          case f: Function0[_] => return f()
-          case f: Function1[_,_] => return f(mock)
-        }
-      } else if (args.size == 1) {
-        function match {
-          case f: Function1[_, _] => return f(args(0))
-        }
-        function match {
-          case f2: Function2[_, _, _] => return f2(args(0), mock)
-        }
-      } else {
-        function match {
-          case f: Function1[_, _] => return f(args)
-        }
-        function match {
-          case f2: Function2[_, _, _] => return f2(args, mock)
-        }
-      }
-    }
   }
 
   def time[T](body: => Unit) = {
