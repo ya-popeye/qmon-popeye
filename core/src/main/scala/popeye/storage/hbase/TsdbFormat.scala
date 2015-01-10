@@ -3,6 +3,7 @@ package popeye.storage.hbase
 import popeye.paking.RowPacker.QualifierAndValue
 import popeye.paking.{RowPacker, ValueTypeDescriptor}
 import popeye.proto.Message
+import popeye.storage.{QualifiedId, QualifiedName}
 import popeye.storage.hbase.HBaseStorage._
 import org.apache.hadoop.hbase.KeyValue
 import org.apache.hadoop.hbase.util.Bytes

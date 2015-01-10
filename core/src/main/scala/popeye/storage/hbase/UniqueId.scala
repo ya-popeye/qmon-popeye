@@ -10,7 +10,7 @@ import popeye.storage.hbase.UniqueIdProtocol._
 import scala.concurrent._
 import scala.concurrent.duration._
 import scala.util.Success
-import HBaseStorage._
+import popeye.storage.{QualifiedId, QualifiedName}
 
 trait UniqueId {
 

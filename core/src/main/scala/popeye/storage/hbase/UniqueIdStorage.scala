@@ -6,8 +6,7 @@ import org.apache.hadoop.hbase.util.Bytes
 import popeye.{Instrumented, Logging}
 import popeye.storage.hbase.HBaseStorage._
 import scala.collection.JavaConversions._
-import popeye.storage.hbase.HBaseStorage.QualifiedId
-import popeye.storage.hbase.HBaseStorage.QualifiedName
+import popeye.storage.{QualifiedId, QualifiedName, ResolvedName}
 import scala.Some
 import popeye.util.hbase.HBaseUtils
 import java.util

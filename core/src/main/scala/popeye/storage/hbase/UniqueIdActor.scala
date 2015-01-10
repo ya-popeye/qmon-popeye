@@ -2,11 +2,10 @@ package popeye.storage.hbase
 
 import akka.actor._
 import akka.actor.SupervisorStrategy.Restart
-import popeye.storage.hbase.BytesKey._
 import popeye.storage.hbase.UniqueIdActor.RequestsServed
 import popeye.storage.hbase.UniqueIdProtocol._
 
-import HBaseStorage._
+import popeye.storage.{QualifiedId, QualifiedName, ResolvedName}
 
 import scala.collection.immutable.Queue
 import scala.concurrent.{ExecutionContext, Future}

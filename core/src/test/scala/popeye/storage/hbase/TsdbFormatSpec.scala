@@ -5,6 +5,7 @@ import popeye.Point
 import popeye.proto.Message
 import scala.collection.JavaConverters._
 import popeye.storage.hbase.HBaseStorage._
+import popeye.storage.QualifiedName
 import org.apache.hadoop.hbase.util.Bytes
 import org.apache.hadoop.hbase.client.Result
 import popeye.test.PopeyeTestUtils._

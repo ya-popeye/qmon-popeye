@@ -1,15 +1,14 @@
 package popeye.storage.hbase
 
-import java.util
 import java.util.Random
 import java.util.concurrent.Executors
 import com.codahale.metrics.MetricRegistry
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.client._
-import org.apache.hadoop.hbase.util.Bytes
 import org.kiji.testing.fakehtable.FakeHTable
 import org.scalatest.{Matchers, FlatSpec}
 import popeye.test.MockitoStubs
+import popeye.storage.QualifiedName
 import popeye.storage.hbase.HBaseStorage._
 import org.scalatest.OptionValues._
 import popeye.test.PopeyeTestUtils.bytesKey

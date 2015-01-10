@@ -1,7 +1,7 @@
 package popeye.hadoop.bulkload
 
-import popeye.storage.hbase.HBaseStorage.{ResolvedName, QualifiedName}
-import popeye.storage.hbase.{HBaseStorage, UniqueIdStorage, UniqueIdStorageException, BytesKey}
+import popeye.storage.{QualifiedName, ResolvedName}
+import popeye.storage.hbase.{UniqueIdStorage, UniqueIdStorageException, BytesKey}
 import scala.util.Try
 import java.util
 import scala.collection.mutable
@@ -35,10 +35,10 @@ class LightweightUniqueId(idStorage: UniqueIdStorage, maxCacheSize: Int) {
     }.get
   }
 
-  private def createIdCache(capacity: Int): mutable.Map[HBaseStorage.QualifiedName, BytesKey] = {
+  private def createIdCache(capacity: Int): mutable.Map[QualifiedName, BytesKey] = {
     import scala.collection.JavaConverters._
-    val javaMap = new util.LinkedHashMap[HBaseStorage.QualifiedName, BytesKey] {
-      protected override def removeEldestEntry(eldest: java.util.Map.Entry[HBaseStorage.QualifiedName, BytesKey]): Boolean = {
+    val javaMap = new util.LinkedHashMap[QualifiedName, BytesKey] {
+      protected override def removeEldestEntry(eldest: java.util.Map.Entry[QualifiedName, BytesKey]): Boolean = {
         size > capacity + 1
       }
     }

@@ -1,8 +1,5 @@
 package popeye.storage.hbase
 
-import java.text.SimpleDateFormat
-import java.util.TimeZone
-
 import com.codahale.metrics.MetricRegistry
 import java.util
 import org.apache.hadoop.hbase.{CellUtil, KeyValue}
@@ -24,6 +21,7 @@ import HBaseStorage._
 import scala.collection.immutable.SortedMap
 import popeye.util.hbase.HBaseUtils.ChunkedResultsMetrics
 import popeye.pipeline.PointsSink
+import popeye.storage.{QualifiedId, QualifiedName}
 
 object HBaseStorage {
   final val Encoding = Charset.forName("UTF-8")
@@ -50,27 +48,6 @@ object HBaseStorage {
   )
 
   final val UniqueIdGenerationWidth = 2
-
-  sealed case class ResolvedName(kind: String, generationId: BytesKey, name: String, id: BytesKey) {
-    def this(qname: QualifiedName, id: BytesKey) = this(qname.kind, qname.generationId, qname.name, id)
-
-    def this(qid: QualifiedId, name: String) = this(qid.kind, qid.generationId, name, qid.id)
-
-    def toQualifiedName = QualifiedName(kind, generationId, name)
-
-    def toQualifiedId = QualifiedId(kind, generationId, id)
-  }
-
-  object ResolvedName {
-    def apply(qname: QualifiedName, id: BytesKey) = new ResolvedName(qname.kind, qname.generationId, qname.name, id)
-
-    def apply(qid: QualifiedId, name: String) = new ResolvedName(qid.kind, qid.generationId, name, qid.id)
-  }
-
-  sealed case class QualifiedName(kind: String, generationId: BytesKey, name: String)
-
-  sealed case class QualifiedId(kind: String, generationId: BytesKey, id: BytesKey)
-
 
   type PointsGroup = Map[PointAttributes, PointRope]
 

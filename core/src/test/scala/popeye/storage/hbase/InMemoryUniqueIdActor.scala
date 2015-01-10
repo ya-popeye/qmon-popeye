@@ -1,19 +1,15 @@
 package popeye.storage.hbase
 
-import akka.actor.{OneForOneStrategy, SupervisorStrategy, Actor}
+import akka.actor.{SupervisorStrategy, Actor}
 import popeye.Logging
 import akka.actor.SupervisorStrategy.Restart
-import popeye.storage.hbase.HBaseStorage.{QualifiedName, QualifiedId, ResolvedName}
+import popeye.storage.{QualifiedId, QualifiedName, ResolvedName}
 import scala.collection.mutable
 import popeye.storage.hbase.UniqueIdProtocol._
 import org.apache.hadoop.hbase.util.Bytes
 import popeye.storage.hbase.UniqueIdProtocol.FindName
 import popeye.storage.hbase.UniqueIdProtocol.FindId
-import popeye.storage.hbase.HBaseStorage.QualifiedId
-import popeye.storage.hbase.HBaseStorage.QualifiedName
 import popeye.storage.hbase.UniqueIdProtocol.Resolved
-import scala.Some
-import popeye.storage.hbase.UniqueIdProtocol.ResolutionFailed
 import akka.actor.OneForOneStrategy
 
 class InMemoryUniqueIdActor extends Actor with Logging {

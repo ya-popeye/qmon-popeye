@@ -7,13 +7,12 @@ import popeye.Logging
 import popeye.storage.hbase.UniqueIdProtocol._
 import popeye.pipeline.test.AkkaTestKitSpec
 import scala.concurrent.Await
-import scala.concurrent.Future
 import scala.concurrent.duration._
 import popeye.storage.hbase.UniqueIdProtocol.FindName
 import popeye.storage.hbase.UniqueIdProtocol.Race
 import popeye.storage.hbase.UniqueIdProtocol.Resolved
 import popeye.storage.hbase.UniqueIdProtocol.ResolutionFailed
-import popeye.storage.hbase.HBaseStorage.{ResolvedName, QualifiedId, QualifiedName}
+import popeye.storage.{QualifiedId, QualifiedName, ResolvedName}
 import java.util.NoSuchElementException
 
 /**

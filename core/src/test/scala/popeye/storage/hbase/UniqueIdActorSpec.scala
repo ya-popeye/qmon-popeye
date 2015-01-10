@@ -10,7 +10,7 @@ import org.mockito.Mockito._
 import akka.testkit.TestActorRef
 import akka.actor.Props
 import popeye.storage.hbase.UniqueIdProtocol.{FindId, ResolutionFailed, Resolved, FindName}
-import popeye.storage.hbase.HBaseStorage.{QualifiedId, ResolvedName, QualifiedName}
+import popeye.storage.{QualifiedId, ResolvedName, QualifiedName}
 import akka.pattern.ask
 import scala.concurrent.{Promise, Future, Await}
 import scala.concurrent.duration._
