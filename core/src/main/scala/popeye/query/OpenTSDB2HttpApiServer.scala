@@ -4,8 +4,8 @@ import com.codahale.metrics.MetricRegistry
 import org.codehaus.jackson.JsonNode
 import org.codehaus.jackson.node.{ObjectNode, JsonNodeFactory}
 import popeye.storage.hbase.HBaseStorage._
-import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.{SingleValueName, MultipleValueNames, AllValueNames}
-
+import popeye.storage.ValueNameFilterCondition
+import popeye.storage.ValueNameFilterCondition.{SingleValueName, MultipleValueNames, AllValueNames}
 import scala.collection.JavaConverters._
 import akka.actor.{Props, ActorRef, ActorSystem, Actor}
 import org.codehaus.jackson.map.ObjectMapper

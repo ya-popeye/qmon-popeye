@@ -12,7 +12,7 @@ import nl.grons.metrics.scala.Meter
 import scala.util.Random
 import popeye.storage.hbase.HBaseStorage._
 import scala.collection.immutable.SortedMap
-import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition._
+import popeye.storage.ValueNameFilterCondition._
 
 /**
  * @author Andrey Stepachev

@@ -6,7 +6,8 @@ import com.typesafe.config.ConfigFactory
 import popeye.{PointRope, Point}
 import popeye.query.PointsStorage.NameType
 import popeye.query.PointsStorage.NameType.NameType
-import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.{MultipleValueNames, AllValueNames, SingleValueName}
+import popeye.storage.ValueNameFilterCondition.{MultipleValueNames, AllValueNames, SingleValueName}
+import popeye.storage.ValueNameFilterCondition
 import popeye.storage.hbase.HBaseStorage._
 
 import scala.collection.immutable.SortedMap

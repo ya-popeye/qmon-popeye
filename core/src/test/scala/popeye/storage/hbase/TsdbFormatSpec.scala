@@ -11,15 +11,12 @@ import org.apache.hadoop.hbase.client.Result
 import popeye.test.PopeyeTestUtils._
 import scala.collection.immutable.SortedMap
 import org.apache.hadoop.hbase.{CellUtil, KeyValue}
-import popeye.storage.hbase.HBaseStorage.ValueIdFilterCondition._
-import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition._
 import java.nio.CharBuffer
 import java.util.regex.Pattern
 import scala.util.Random
-import popeye.storage.hbase.HBaseStorage.ValueIdFilterCondition.SingleValueId
-import popeye.storage.hbase.HBaseStorage.ValueIdFilterCondition.MultipleValueIds
-import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.MultipleValueNames
-import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.SingleValueName
+import popeye.storage.ValueIdFilterCondition
+import popeye.storage.ValueIdFilterCondition.{AllValueIds, SingleValueId, MultipleValueIds}
+import popeye.storage.ValueNameFilterCondition.{AllValueNames, SingleValueName, MultipleValueNames}
 import popeye.storage.hbase.TsdbFormat._
 
 class TsdbFormatSpec extends FlatSpec with Matchers {

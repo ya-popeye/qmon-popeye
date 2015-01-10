@@ -1,7 +1,8 @@
 package popeye.query
 
 import org.apache.hadoop.hbase.util.Bytes
-import popeye.storage.hbase.HBaseStorage.{PointsGroups, ValueNameFilterCondition}
+import popeye.storage.hbase.HBaseStorage.PointsGroups
+import popeye.storage.ValueNameFilterCondition
 import scala.concurrent.{ExecutionContext, Future}
 import popeye.storage.hbase._
 import popeye.query.PointsStorage.NameType.NameType

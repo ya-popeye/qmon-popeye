@@ -7,7 +7,7 @@ import spray.http.HttpMethods._
 import spray.can.Http
 import scala.concurrent.{Promise, ExecutionContext}
 import popeye.storage.hbase.HBaseStorage._
-import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition
+import popeye.storage.ValueNameFilterCondition
 import scala.util.Try
 import java.io.{PrintWriter, StringWriter}
 import HttpQueryServer._

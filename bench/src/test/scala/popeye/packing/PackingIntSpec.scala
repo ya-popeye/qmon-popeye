@@ -11,8 +11,7 @@ import org.scalatest.{BeforeAndAfter, Matchers, FlatSpec}
 import popeye.{Point, Logging}
 import popeye.inttesting.PopeyeIntTestingUtils
 import popeye.paking.TsdbRegionObserver
-import popeye.proto.Message
-import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.SingleValueName
+import popeye.storage.ValueNameFilterCondition.SingleValueName
 import popeye.storage.hbase._
 import popeye.util.ZkConnect
 import scala.collection.JavaConverters._
@@ -20,7 +19,6 @@ import scala.collection.immutable.SortedMap
 import scala.concurrent.Await
 
 import scala.concurrent.duration._
-import scala.util.Try
 
 class PackingIntSpec extends FlatSpec with Matchers with BeforeAndAfter with Logging {
 

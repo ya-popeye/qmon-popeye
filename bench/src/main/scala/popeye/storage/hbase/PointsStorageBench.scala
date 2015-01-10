@@ -15,9 +15,10 @@ import popeye.Logging
 import popeye.bench.BenchUtils
 import popeye.pipeline.MetricGenerator
 import popeye.proto.Message
-import popeye.storage.hbase.HBaseStorage.{PointsGroups, ValueNameFilterCondition}
+import popeye.storage.hbase.HBaseStorage.PointsGroups
 import popeye.util.ZkConnect
 import popeye.util.hbase.HBaseConfigured
+import popeye.storage.ValueNameFilterCondition
 
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Await, Future}
@@ -87,7 +88,7 @@ object PointsStorageBench extends Logging {
       info("waiting for points to be written")
       Await.result(eventialWrite, Duration.Inf)
       info("write succeeded")
-      val tags = Map(shardAttr -> HBaseStorage.ValueNameFilterCondition.SingleValueName(shardAttrValue))
+      val tags = Map(shardAttr -> ValueNameFilterCondition.SingleValueName(shardAttrValue))
 
       val benchResult = BenchUtils.bench(10, 1) {
         val pointsGroupsIterator = storage.getPoints(metric, (minTimestamp, maxTimestamp + 1), tags)

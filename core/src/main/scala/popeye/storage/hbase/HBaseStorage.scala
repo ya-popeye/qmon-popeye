@@ -21,7 +21,7 @@ import HBaseStorage._
 import scala.collection.immutable.SortedMap
 import popeye.util.hbase.HBaseUtils.ChunkedResultsMetrics
 import popeye.pipeline.PointsSink
-import popeye.storage.{QualifiedId, QualifiedName}
+import popeye.storage.{QualifiedId, QualifiedName, ValueNameFilterCondition}
 
 object HBaseStorage {
   final val Encoding = Charset.forName("UTF-8")
@@ -109,50 +109,6 @@ object HBaseStorage {
       cancellation
     )
   }
-
-  sealed trait ValueIdFilterCondition {
-    def isGroupByAttribute: Boolean
-  }
-
-  object ValueIdFilterCondition {
-
-    case class SingleValueId(id: BytesKey) extends ValueIdFilterCondition {
-      def isGroupByAttribute: Boolean = false
-    }
-
-    case class MultipleValueIds(ids: Seq[BytesKey]) extends ValueIdFilterCondition {
-      require(ids.size > 1, "must be more than one value id")
-
-      def isGroupByAttribute: Boolean = true
-    }
-
-    case object AllValueIds extends ValueIdFilterCondition {
-      def isGroupByAttribute: Boolean = true
-    }
-
-  }
-
-  sealed trait ValueNameFilterCondition {
-    def isGroupByAttribute: Boolean
-  }
-
-  object ValueNameFilterCondition {
-
-    case class SingleValueName(name: String) extends ValueNameFilterCondition {
-      def isGroupByAttribute: Boolean = false
-    }
-
-    case class MultipleValueNames(names: Seq[String]) extends ValueNameFilterCondition {
-      require(names.size > 1, "must be more than one value name")
-
-      def isGroupByAttribute: Boolean = true
-    }
-
-    case object AllValueNames extends ValueNameFilterCondition {
-      def isGroupByAttribute: Boolean = true
-    }
-  }
-
 }
 
 class HBasePointsSink(storage: HBaseStorage)(implicit eCtx: ExecutionContext) extends PointsSink {

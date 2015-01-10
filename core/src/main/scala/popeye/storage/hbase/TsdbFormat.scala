@@ -16,8 +16,9 @@ import scala.collection.immutable.SortedMap
 import java.nio.ByteBuffer
 import java.nio.charset.Charset
 import org.apache.hadoop.hbase.filter.{CompareFilter, RowFilter, RegexStringComparator}
-import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition.{AllValueNames, MultipleValueNames, SingleValueName}
-import popeye.storage.hbase.HBaseStorage.ValueIdFilterCondition.{SingleValueId, MultipleValueIds, AllValueIds}
+import popeye.storage.{ValueNameFilterCondition, ValueIdFilterCondition}
+import popeye.storage.ValueNameFilterCondition.{AllValueNames, MultipleValueNames, SingleValueName}
+import popeye.storage.ValueIdFilterCondition.{SingleValueId, MultipleValueIds, AllValueIds}
 import popeye.proto.Message.Attribute
 
 object TsdbFormat {

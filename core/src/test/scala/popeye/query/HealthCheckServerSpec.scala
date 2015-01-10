@@ -49,7 +49,7 @@ class HealthCheckServerSpec extends AkkaTestKitSpec("http-query") with MockitoSu
 
   def testHealth(numberOfDistinctTagValuesInFirstTimeInterval: Int,
                  numberOfDistinctTagValuesInSecondTimeInterval: Int) = {
-    import popeye.storage.hbase.HBaseStorage.ValueNameFilterCondition._
+    import popeye.storage.ValueNameFilterCondition._
     implicit val ectx = newExecutionContext
     val metricName = "test"
     val fixedAttrs = Seq("name" -> "value")
