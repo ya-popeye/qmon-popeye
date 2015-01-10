@@ -1,6 +1,6 @@
 package popeye.storage.hbase
 
-import popeye.{AsyncIterator, Point}
+import popeye.{AsyncIterator, Point, ListPoint}
 import popeye.test.PopeyeTestUtils._
 import popeye.test.{PopeyeTestUtils, MockitoStubs}
 import popeye.pipeline.test.AkkaTestKitSpec
@@ -38,7 +38,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
     }
     val point = messagePoint(metric, timestamp = 0, 0, attributes)
     Await.ready(storageStub.storage.writeMessagePoints(point), 5 seconds)
-    val points = storageStub.pointsTable.getScanner(HBaseStorage.PointsFamily).map(_.raw).flatMap {
+    val points = storageStub.pointsTable.getScanner(TsdbFormat.PointsFamily).map(_.raw).flatMap {
       kv =>
         kv.map(storageStub.storage.keyValueToPoint)
     }
@@ -59,7 +59,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
     val future = storageStub.storage.writeMessagePoints(events :_*)
     val written = Await.result(future, 5 seconds)
     written should be(events.size)
-    val points = storageStub.pointsTable.getScanner(HBaseStorage.PointsFamily).map(_.raw).flatMap {
+    val points = storageStub.pointsTable.getScanner(TsdbFormat.PointsFamily).map(_.raw).flatMap {
       kv =>
         kv.map(storageStub.storage.keyValueToPoint)
     }

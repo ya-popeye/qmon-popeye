@@ -16,7 +16,6 @@ import com.typesafe.config.Config
 import akka.actor.{Props, ActorSystem}
 import java.util.concurrent.TimeUnit
 import popeye.util.hbase.{HBaseUtils, HBaseConfigured}
-import java.nio.charset.Charset
 import HBaseStorage._
 import scala.collection.immutable.SortedMap
 import popeye.util.hbase.HBaseUtils.ChunkedResultsMetrics
@@ -24,35 +23,10 @@ import popeye.pipeline.PointsSink
 import popeye.storage.{QualifiedId, QualifiedName, ValueNameFilterCondition}
 
 object HBaseStorage {
-  final val Encoding = Charset.forName("UTF-8")
-
-  /**
-   * Array containing the hexadecimal characters (0 to 9, A to F).
-   * This array is read-only, changing its contents leads to an undefined
-   * behavior.
-   */
-  final val HEX: Array[Byte] = Array[Byte]('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F')
-
-  final val PointsFamily = "t".getBytes(Encoding)
-
-  final val MetricKind: String = "metric"
-  final val AttrNameKind: String = "tagk"
-  final val AttrValueKind: String = "tagv"
-  final val ShardKind: String = "shard"
-
-  final val UniqueIdMapping = Map[String, Short](
-    MetricKind -> 3.toShort,
-    AttrNameKind -> 3.toShort,
-    AttrValueKind -> 3.toShort,
-    ShardKind -> 3.toShort
-  )
-
-  final val UniqueIdGenerationWidth = 2
 
   type PointsGroup = Map[PointAttributes, PointRope]
 
   type PointAttributes = SortedMap[String, String]
-
 
   object PointsGroups {
     def empty = PointsGroups(Map.empty)
@@ -83,22 +57,6 @@ object HBaseStorage {
   case class PointsGroups(groupsMap: Map[PointAttributes, PointsGroup])
 
   case class ListPointTimeseries(tags: SortedMap[String, String], lists: Seq[ListPoint])
-
-  case class ListPoint(timestamp: Int, value: Either[Seq[Long], Seq[Float]]) {
-    def isFloatList = value.isRight
-
-    def getFloatListValue = value.right.get
-
-    def getLongListValue = value.left.get
-
-    def doubleListValue = {
-      if (isFloatList) {
-        getFloatListValue.map(_.toDouble)
-      } else {
-        getLongListValue.map(_.toDouble)
-      }
-    }
-  }
 
   def collectAllGroups(groupsIterator: AsyncIterator[PointsGroups], cancellation: Future[Nothing] = Promise().future)
                       (implicit eCtx: ExecutionContext): Future[PointsGroups] = {
@@ -147,7 +105,7 @@ class HBaseStorage(tableName: String,
                    resolveTimeout: Duration = 15 seconds,
                    readChunkSize: Int) extends Logging {
 
-  val tableBytes = tableName.getBytes(Encoding)
+  val tableBytes = tableName.getBytes(TsdbFormat.Encoding)
 
   def getPoints(metric: String,
                 timeRange: (Int, Int),
@@ -295,7 +253,7 @@ class HBaseStorage(tableName: String,
   }
 
   def ping(): Unit = {
-    val qName = QualifiedName(MetricKind, new BytesKey(Array[Byte](0, 0)), "_.ping")
+    val qName = QualifiedName(TsdbFormat.MetricKind, new BytesKey(Array[Byte](0, 0)), "_.ping")
     val future = uniqueId.resolveIdByName(qName, create = true)(resolveTimeout)
     Await.result(future, resolveTimeout)
   }

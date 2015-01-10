@@ -1,10 +1,9 @@
 package popeye.storage.hbase
 
 import org.scalatest.{Matchers, FlatSpec}
-import popeye.Point
+import popeye.{ListPoint, Point}
 import popeye.proto.Message
 import scala.collection.JavaConverters._
-import popeye.storage.hbase.HBaseStorage._
 import popeye.storage.QualifiedName
 import org.apache.hadoop.hbase.util.Bytes
 import org.apache.hadoop.hbase.client.Result
@@ -14,7 +13,6 @@ import org.apache.hadoop.hbase.{CellUtil, KeyValue}
 import java.nio.CharBuffer
 import java.util.regex.Pattern
 import scala.util.Random
-import popeye.storage.ValueIdFilterCondition
 import popeye.storage.ValueIdFilterCondition.{AllValueIds, SingleValueId, MultipleValueIds}
 import popeye.storage.ValueNameFilterCondition.{AllValueNames, SingleValueName, MultipleValueNames}
 import popeye.storage.hbase.TsdbFormat._
@@ -121,7 +119,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val SuccessfulConversion(keyValue) = tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0)
     val timestamp = point.getTimestamp.toInt
     val result = new Result(List(keyValue).asJava)
-    tsdbFormat.parseListValueRowResult(result).lists.head should equal(HBaseStorage.ListPoint(timestamp, Left(Seq(1, 2, 3))))
+    tsdbFormat.parseListValueRowResult(result).lists.head should equal(ListPoint(timestamp, Left(Seq(1, 2, 3))))
   }
 
   it should "handle float list values" in {
@@ -130,7 +128,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val SuccessfulConversion(keyValue) = tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0)
     val timestamp = point.getTimestamp.toInt
     val result = new Result(List(keyValue).asJava)
-    tsdbFormat.parseListValueRowResult(result).lists.head should equal(HBaseStorage.ListPoint(timestamp, Right(Seq(1, 2, 3))))
+    tsdbFormat.parseListValueRowResult(result).lists.head should equal(ListPoint(timestamp, Right(Seq(1, 2, 3))))
   }
 
   ignore should "have good performance" in {
@@ -233,7 +231,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
   it should "throw meaningful exception if row size is illegal" in {
     val tsdbFormat = createTsdbFormat()
     val row = Array[Byte](0)
-    val keyValue = new KeyValue(row, HBaseStorage.PointsFamily, Array[Byte](0, 0, 0), Array[Byte](0, 0, 0))
+    val keyValue = new KeyValue(row, PointsFamily, Array[Byte](0, 0, 0), Array[Byte](0, 0, 0))
     val ex = intercept[IllegalArgumentException] {
       tsdbFormat.parseSingleValueRowResult(new Result(Seq(keyValue).asJava))
     }

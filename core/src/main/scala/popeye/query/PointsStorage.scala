@@ -44,9 +44,9 @@ object PointsStorage {
 
       import NameType._
       val kind = nameType match {
-        case MetricType => HBaseStorage.MetricKind
-        case AttributeNameType => HBaseStorage.AttrNameKind
-        case AttributeValueType => HBaseStorage.AttrValueKind
+        case MetricType => TsdbFormat.MetricKind
+        case AttributeNameType => TsdbFormat.AttrNameKind
+        case AttributeValueType => TsdbFormat.AttrValueKind
       }
       val currentTimeInSeconds = System.currentTimeMillis() / 1000
       val currentBaseTime = currentTimeInSeconds - currentTimeInSeconds % TsdbFormat.MAX_TIMESPAN

@@ -4,10 +4,9 @@ import com.codahale.metrics.MetricRegistry
 import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.util.Bytes
 import popeye.{Instrumented, Logging}
-import popeye.storage.hbase.HBaseStorage._
+import popeye.storage.hbase.TsdbFormat._
 import scala.collection.JavaConversions._
 import popeye.storage.{QualifiedId, QualifiedName, ResolvedName}
-import scala.Some
 import popeye.util.hbase.HBaseUtils
 import java.util
 

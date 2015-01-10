@@ -138,7 +138,7 @@ object PeriodicGenerationId {
 class PeriodicGenerationId(periodConfigs: SortedMap[Int, PeriodConfig]) extends GenerationIdMapping {
 
   val earliestStartTime = periodConfigs.firstKey
-  require(HBaseStorage.UniqueIdGenerationWidth == 2, "PeriodicTimeRangeId depends on generation id width")
+  require(TsdbFormat.UniqueIdGenerationWidth == 2, "PeriodicTimeRangeId depends on generation id width")
 
 
   override def getGenerationId(timestampInSeconds: Int, currentTimeInSeconds: Int): Short = {

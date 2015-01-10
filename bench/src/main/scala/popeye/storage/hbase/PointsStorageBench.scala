@@ -133,7 +133,7 @@ object PointsStorageBench extends Logging {
         kv => new Put(kv.getRow).add(kv)
       }
       pointsTable.put(new util.ArrayList(puts.asJavaCollection))
-      val results = pointsTable.getScanner(HBaseStorage.PointsFamily).asScala.toBuffer
+      val results = pointsTable.getScanner(TsdbFormat.PointsFamily).asScala.toBuffer
       val benchResult = BenchUtils.bench(20, 10) {
         results.map(tsdbFormat.parseSingleValueRowResult)
       }

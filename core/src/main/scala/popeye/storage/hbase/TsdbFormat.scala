@@ -4,10 +4,10 @@ import popeye.paking.RowPacker.QualifierAndValue
 import popeye.paking.{RowPacker, ValueTypeDescriptor}
 import popeye.proto.Message
 import popeye.storage.{QualifiedId, QualifiedName}
-import popeye.storage.hbase.HBaseStorage._
+import popeye.storage.hbase.TsdbFormat._
 import org.apache.hadoop.hbase.KeyValue
 import org.apache.hadoop.hbase.util.Bytes
-import popeye.{PointRope, Point, Logging}
+import popeye.{ListPoint, PointRope, Point, Logging}
 import scala.collection.JavaConverters._
 import org.apache.hadoop.hbase.client.{Scan, Result}
 import scala.collection.mutable
@@ -23,7 +23,23 @@ import popeye.proto.Message.Attribute
 
 object TsdbFormat {
 
-  import HBaseStorage._
+  final val Encoding = Charset.forName("UTF-8")
+
+  final val PointsFamily = "t".getBytes(Encoding)
+
+  final val MetricKind: String = "metric"
+  final val AttrNameKind: String = "tagk"
+  final val AttrValueKind: String = "tagv"
+  final val ShardKind: String = "shard"
+
+  final val UniqueIdMapping = Map[String, Short](
+    MetricKind -> 3.toShort,
+    AttrNameKind -> 3.toShort,
+    AttrValueKind -> 3.toShort,
+    ShardKind -> 3.toShort
+  )
+
+  final val UniqueIdGenerationWidth = 2
 
   /** Number of bytes on which a timestamp is encoded.  */
   final val TIMESTAMP_BYTES: Short = 4
@@ -305,7 +321,7 @@ case class TimeseriesId(generationId: BytesKey,
 
 case class ParsedSingleValueRowResult(timeseriesId: TimeseriesId, points: PointRope)
 
-case class ParsedListValueRowResult(timeseriesId: TimeseriesId, lists: Seq[HBaseStorage.ListPoint])
+case class ParsedListValueRowResult(timeseriesId: TimeseriesId, lists: Seq[ListPoint])
 
 sealed trait ConversionResult
 
@@ -401,12 +417,12 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
   def parseListValueRowResult(result: Result): ParsedListValueRowResult = {
     val row = result.getRow
     val (timeseriesId, baseTime) = parseTimeseriesIdAndBaseTime(row)
-    val columns = result.getFamilyMap(HBaseStorage.PointsFamily).asScala.toList
+    val columns = result.getFamilyMap(PointsFamily).asScala.toList
     val listPoints = columns.map {
       case (qualifierBytes, valueBytes) =>
         val (delta, isFloat) = ValueTypes.parseQualifier(qualifierBytes)
         val value = ValueTypes.parseListValue(valueBytes, isFloat)
-        HBaseStorage.ListPoint(baseTime + delta, value)
+        ListPoint(baseTime + delta, value)
     }
     ParsedListValueRowResult(timeseriesId, listPoints)
   }
@@ -674,7 +690,7 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
     }
     val delta = (timestamp - baseTime).toShort
     trace(s"Made point: ts=$timestamp, basets=$baseTime, delta=$delta")
-    new KeyValue(row, HBaseStorage.PointsFamily, value._1, keyValueTimestamp, value._2)
+    new KeyValue(row, PointsFamily, value._1, keyValueTimestamp, value._2)
   }
 
   @inline

@@ -9,7 +9,7 @@ import org.kiji.testing.fakehtable.FakeHTable
 import org.scalatest.{Matchers, FlatSpec}
 import popeye.test.MockitoStubs
 import popeye.storage.QualifiedName
-import popeye.storage.hbase.HBaseStorage._
+import TsdbFormat._
 import org.scalatest.OptionValues._
 import popeye.test.PopeyeTestUtils.bytesKey
 import scala.concurrent.ExecutionContext
@@ -96,7 +96,6 @@ class UniqueIdStorageSpec extends FlatSpec with Matchers with MockitoStubs {
 
   it should "find name suggestions" in {
     val storage = createStorage(hTablePool)
-    import HBaseStorage.MetricKind
     val names = Seq(
       ("aaa", MetricKind),
       ("aab", MetricKind)
@@ -110,7 +109,6 @@ class UniqueIdStorageSpec extends FlatSpec with Matchers with MockitoStubs {
 
   it should "be aware of generations" in {
     val storage = createStorage(hTablePool)
-    import HBaseStorage.MetricKind
     val names = Seq(
       ("aaa", bytesKey(0), MetricKind),
       ("aab", bytesKey(1), MetricKind)
@@ -124,7 +122,6 @@ class UniqueIdStorageSpec extends FlatSpec with Matchers with MockitoStubs {
 
   it should "filter kinds" in {
     val storage = createStorage(hTablePool)
-    import HBaseStorage.{MetricKind, AttrNameKind}
     val names = Seq(
       ("aaa", MetricKind),
       ("aab", MetricKind),
@@ -138,7 +135,6 @@ class UniqueIdStorageSpec extends FlatSpec with Matchers with MockitoStubs {
 
   it should "return no more than 'limit' suggestions" in {
     val storage = createStorage(hTablePool)
-    import HBaseStorage.MetricKind
     val names = Seq(
       ("aaa", MetricKind),
       ("aab", MetricKind),
