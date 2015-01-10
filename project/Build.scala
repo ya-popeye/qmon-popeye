@@ -6,6 +6,7 @@ import net.virtualvoid.sbt.graph.{Plugin => Dep}
 import de.johoop.findbugs4sbt.FindBugs._
 import de.johoop.findbugs4sbt.ReportType
 import de.johoop.findbugs4sbt.Effort
+import sbtassembly.Plugin._
 import scala._
 
 object Util {
@@ -68,7 +69,7 @@ object FindBugs {
 }
 
 object Version {
-  val Scala = "2.10.3"
+  val Scala = "2.10.4"
   val Akka = "2.2.3"
   val Spray = "1.2-RC2"
   val ScalaTest = "2.0"
@@ -110,7 +111,6 @@ object HBase {
 
   val settings = Seq(
     libraryDependencies ++= Seq(
-      "org.apache.hadoop" % "hadoop-common" % Version.Hadoop,
       "org.apache.hbase" % "hbase-common" % Version.HBase,
       "org.apache.hbase" % "hbase-client" % Version.HBase,
       "org.apache.hbase" % "hbase-server" % Version.HBase,
@@ -260,9 +260,10 @@ object PopeyeBuild extends Build {
   lazy val popeyeHadoopJar = Project(
     id = "popeye-hadoop-jar",
     base = file("hadoop-jar"),
-    settings = defaultSettings).dependsOn(popeyeCore % "compile->compile;test->test")
+    settings = defaultSettings ++ HBase.settings ++ assemblySettings).dependsOn(popeyeCore % "compile->compile;test->test")
     .settings(
       libraryDependencies ++= Seq(
+        "org.apache.hadoop" % "hadoop-common" % Version.Hadoop % "provided"
       ).excluding(Version.commonExclusions: _*)
         .excluding(Version.slf4jExclusions: _*)
     )
