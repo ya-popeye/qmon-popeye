@@ -72,10 +72,30 @@ object QueryBench extends Logging with Instrumented {
     }
   }
 
+  case class SendPointsConfig(slicerAddress: (String, Int),
+                              currentTime: Int,
+                              metricNamePrefix: String)
+
+  val sendPointsConfigParser = new scopt.OptionParser[SendPointsConfig]("popeye-run-class.sh popeye.query.QueryBench") {
+    head("popeye query load test tool", "0.1")
+    opt[String]("address") valueName "<query address>" action {
+      (param, config) =>
+        val List(host, port) = param.split(":").toList
+        config.copy(slicerAddress = (host, port.toInt))
+    }
+    opt[Int]("time") required() valueName "<current time>" action {
+      (param, config) => config.copy(currentTime = param)
+    }
+    opt[String]("metric_prefix") valueName "<metric prefix>" action {
+      (param, config) => config.copy(metricNamePrefix = param)
+    }
+  }
+
   def sendPointsToSlicer(args: Array[String]) = {
-    val Array(slicerHost, slicerPort) = args(0).split(":")
-    val currentTime = args(1).toInt
-    val metricNamePrefix = args(2)
+    val config = sendPointsConfigParser.parse(args, SendPointsConfig(("localhost", 4444), -1, "")).get
+    val (slicerHost, slicerPort) = config.slicerAddress
+    val currentTime = config.currentTime
+    val metricNamePrefix = config.metricNamePrefix
     val chunks = timeseriesIds.grouped(10000)
     implicit val executionContext = ExecutionContexts.fromExecutor(
       Executors.newFixedThreadPool(30, new DaemonThreadFactory("SlicerClient"))
@@ -106,10 +126,11 @@ object QueryBench extends Logging with Instrumented {
       }
       sendTime.time {
         slicerClient.putPoints(points)
-        assert(slicerClient.commit(), "commit failed")
       }
       sentPoints.mark(points.size)
     }
+    assert(slicerClient.commit(), "commit failed")
+    info(f"${pointsPerSeries * timeseriesIds.size} were commited")
   }
 
   case class QueryBenchConfig(host: String,
@@ -126,7 +147,7 @@ object QueryBench extends Logging with Instrumented {
         val List(host, port) = param.split(":").toList
         config.copy(host = host, port = port.toInt)
     }
-    opt[Int]("time") valueName "<current time>" action {
+    opt[Int]("time") required() valueName "<current time>" action {
       (param, config) => config.copy(currentTime = param)
     }
     opt[String]("metric_prefix") valueName "<metric prefix>" action {
