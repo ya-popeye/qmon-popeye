@@ -1,5 +1,7 @@
 package popeye.util.hbase
 
+import java.util.concurrent.TimeUnit
+
 import com.codahale.metrics.MetricRegistry
 import org.apache.hadoop.hbase.client.{Result, Scan, HTablePool, HTableInterface}
 import popeye.{ImmutableIterator, Instrumented, Logging}
@@ -41,6 +43,8 @@ object HBaseUtils {
     val dummyNextCallTime = metrics.timer(s"$name.dummy.next.call.time")
     val dataNextCallTime = metrics.timer(s"$name.data.next.call.time")
     val scanCount = metrics.histogram(s"$name.scan.count")
+    val scanTime = metrics.timer(s"$name.scan.time")
+    val totalScanTimeMillis = metrics.histogram(s"$name.scan.total.time.millis")
   }
 
   case class ChunkedResults(metrics: ChunkedResultsMetrics,
@@ -48,21 +52,24 @@ object HBaseUtils {
                             readChunkSize: Int,
                             scans: List[Scan],
                             skipFirstRow: Boolean = false,
-                            totalScanCount: Int = 0) extends ImmutableIterator[Array[Result]] with Logging {
+                            totalScanCount: Int = 0,
+                            totalScanTimeMillis: Long = 0) extends ImmutableIterator[Array[Result]] with Logging {
 
     def next: Option[(Array[Result], ImmutableIterator[Array[Result]])] = {
       if (scans.isEmpty) {
         metrics.scanCount.update(totalScanCount)
+        metrics.totalScanTimeMillis.update(totalScanTimeMillis)
       }
       scans.headOption.map {
         scan =>
+          val scanTimer = metrics.scanTime.timerContext()
           val results = fetchResults(scan)
-          val nextChunkedResults =
+          val scanTime = TimeUnit.NANOSECONDS.toMillis(scanTimer.stop())
+          val nextChunkedResultsWithoutTotals =
             if (results.length < readChunkSize) {
               copy(
                 scans = scans.tail,
-                skipFirstRow = false,
-                totalScanCount = totalScanCount + 1
+                skipFirstRow = false
               )
             } else {
               val lastRow = results.last.getRow
@@ -70,10 +77,13 @@ object HBaseUtils {
               nextScan.setStartRow(lastRow)
               copy(
                 scans = nextScan :: scans.tail,
-                skipFirstRow = true,
-                totalScanCount = totalScanCount + 1
+                skipFirstRow = true
               )
             }
+          val nextChunkedResults = nextChunkedResultsWithoutTotals.copy(
+            totalScanCount = totalScanCount + 1,
+            totalScanTimeMillis = totalScanTimeMillis + scanTime
+          )
           (results, nextChunkedResults)
       }
     }
