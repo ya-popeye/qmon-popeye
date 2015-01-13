@@ -276,8 +276,8 @@ object OpenTSDB2HttpApiServer {
       group =>
         val graphPointIterators = group.values.map(toGraphPointIterator).toSeq
         val aggregated = PointSeriesUtils.interpolateAndAggregate(graphPointIterators, interpolationAggregator)
-        aggregated.toList
-    }
+        aggregated.toBuffer
+    }.view.force
   }
 }
 
