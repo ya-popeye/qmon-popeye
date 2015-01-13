@@ -1,14 +1,20 @@
 package popeye.storage.hbase
 
+import org.apache.hadoop.fs.{Path, FileSystem}
 import org.apache.hadoop.hbase._
 import org.apache.hadoop.hbase.client.HBaseAdmin
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.io.encoding.DataBlockEncoding
 import popeye.Logging
+import popeye.paking.TsdbRegionObserver
+import scala.collection.JavaConverters._
 
-object CreateTsdbTables extends Logging{
+object TsdbTables extends Logging {
 
-  def createTables(hbaseConfiguration: Configuration, pointsTableName: String, uidsTableName: String) {
+  def createTables(hbaseConfiguration: Configuration,
+                   pointsTableName: String,
+                   uidsTableName: String,
+                   coprocessorJarPathOption: Option[Path]) {
     def getNamespace(tableName: String) = TableName.valueOf(tableName).getNamespaceAsString
 
     val namespaces = Seq(pointsTableName, uidsTableName).map(getNamespace)
@@ -18,6 +24,14 @@ object CreateTsdbTables extends Logging{
       val tsdbColumn = new HColumnDescriptor("t")
       tsdbColumn.setDataBlockEncoding(DataBlockEncoding.FAST_DIFF)
       tableDescriptor.addFamily(tsdbColumn)
+      for (coprocessorJarPath <- coprocessorJarPathOption) {
+        tableDescriptor.addCoprocessor(
+          classOf[TsdbRegionObserver].getCanonicalName,
+          coprocessorJarPath,
+          Coprocessor.PRIORITY_USER,
+          Map.empty.asJava
+        )
+      }
       tableDescriptor
     }
 
@@ -59,6 +73,5 @@ object CreateTsdbTables extends Logging{
       hBaseAdmin.close()
     }
   }
-
 }
 

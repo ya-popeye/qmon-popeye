@@ -52,8 +52,10 @@ class PackingIntSpec extends FlatSpec with Matchers with BeforeAndAfter with Log
     val tsdbFormatConfig = TsdbFormatConfig(Seq(StartTimeAndPeriod("15/01/05", 336)), Set("cluster"))
     val hbaseStorageConfig = HBaseStorageConfig(
       hbaseConfig = ConfigFactory.empty(),
+      hbaseTestingUtility.getConfiguration,
       uidsTableName = uidTableName,
       pointsTableName = pointsTableName,
+      pointsTableCoprocessorJarPathOption = None,
       poolSize = 10,
       zkQuorum = hbaseZkConnect,
       readChunkSize = 100,

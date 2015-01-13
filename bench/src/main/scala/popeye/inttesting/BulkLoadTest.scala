@@ -57,7 +57,7 @@ object BulkLoadTest extends Logging {
   }
 
   def createTsdbTables(hbaseConfiguration: Configuration) = {
-    CreateTsdbTables.createTables(hbaseConfiguration, pointsTableName, uIdsTableName)
+    TsdbTables.createTables(hbaseConfiguration, pointsTableName, uIdsTableName, None)
   }
 
   def createKafkaTopic(zkConnect: String, topic: String, partitions: Int) = {

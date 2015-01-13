@@ -2,17 +2,14 @@ package popeye.pipeline.sinks
 
 import popeye.pipeline.{PipelineSinkFactory, PointsSink}
 import popeye.pipeline.kafka.{KafkaSinkStarter, KafkaPointsSinkConfig}
-import popeye.storage.hbase.{StartTimeAndPeriod, TsdbFormatConfig}
+import popeye.storage.hbase.HBaseStorageConfig
 import popeye.util._
 import com.typesafe.config.Config
 import akka.actor.Scheduler
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
-import org.apache.hadoop.conf.Configuration
 import popeye.hadoop.bulkload.{BulkLoadMetrics, BulkLoadJobRunner}
 import popeye.Logging
-import scala.collection.JavaConverters._
-import java.io.File
 import popeye.pipeline.config.KafkaPointsSinkConfigParser
 import com.codahale.metrics.MetricRegistry
 
@@ -22,16 +19,15 @@ class BulkloadSinkFactory(sinkFactory: BulkloadSinkStarter,
   override def startSink(sinkName: String, config: Config): PointsSink = {
     val kafkaConfig = KafkaPointsSinkConfigParser.parse(config.getConfig("kafka"))
     val storageName = config.getString("storage")
-    val storageConfig = config.getConfig("hbase").withFallback(storagesConfig.getConfig(storageName))
-    val tsdbFormatConfig = {
-      val startTimeAndPeriods = StartTimeAndPeriod.parseConfigList(storageConfig.getConfigList("generations"))
-      TsdbFormatConfig(startTimeAndPeriods, shardAttributeNames)
+    val hbaseStorageConfig = {
+      val storageConfig = config.getConfig("hbase").withFallback(storagesConfig.getConfig(storageName))
+      HBaseStorageConfig.apply(storageConfig, shardAttributeNames, sinkName)
     }
     val hBaseConfig = BulkLoadJobRunner.HBaseStorageConfig(
-      hBaseZkConnect = ZkConnect.parseString(storageConfig.getString("zk.quorum")),
-      pointsTableName = storageConfig.getString("table.points"),
-      uidTableName = storageConfig.getString("table.uids"),
-      tsdbFormatConfig = tsdbFormatConfig
+      hBaseZkConnect = hbaseStorageConfig.zkQuorum,
+      pointsTableName = hbaseStorageConfig.pointsTableName,
+      uidTableName = hbaseStorageConfig.uidsTableName,
+      tsdbFormatConfig = hbaseStorageConfig.tsdbFormatConfig
     )
 
     val zkClientConfig = {
@@ -47,21 +43,13 @@ class BulkloadSinkFactory(sinkFactory: BulkloadSinkStarter,
     val kafkaBrokers = parseBrokerList(brokerListString)
     val jobRunnerConfig = config.getConfig("job")
 
-    val hadoopConfiguration = {
-      val conf = new Configuration()
-      for (path <- jobRunnerConfig.getStringList("hadoop.conf.paths").asScala) {
-        conf.addResource(new File(path).toURI.toURL)
-      }
-      conf
-    }
-
     val jobConfig = BulkLoadJobRunner.JobRunnerConfig(
       kafkaBrokers = kafkaBrokers,
       topic = kafkaConfig.pointsProducerConfig.topic,
       outputPath = jobRunnerConfig.getString("output.hdfs.path"),
       jarsPath = jobRunnerConfig.getString("jars.hdfs.path"),
       zkClientConfig = zkClientConfig,
-      hadoopConfiguration = hadoopConfiguration
+      hadoopConfiguration = hbaseStorageConfig.hadoopConfiguration
     )
 
     val taskPeriod = jobRunnerConfig.getMilliseconds("restart.period").longValue().millis

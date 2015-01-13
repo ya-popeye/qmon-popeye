@@ -1,7 +1,11 @@
 package popeye.storage.hbase
 
+import java.io.File
+
 import com.codahale.metrics.MetricRegistry
 import java.util
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.hadoop.hbase.{CellUtil, KeyValue}
 import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.util.Bytes
@@ -452,8 +456,29 @@ class HBaseStorage(tableName: String,
 
 object HBaseStorageConfig {
   def apply(config: Config, shardAttributeNames: Set[String], storageName: String = "hbase"): HBaseStorageConfig = {
-    val uidsTableName = config.getString("table.uids")
-    val pointsTableName = config.getString("table.points")
+    import scala.collection.JavaConverters._
+    val uidsTableName = config.getString("tables.uids.name")
+    val pointsTableName = config.getString("tables.points.name")
+    def hadoopConfiguration = {
+      val conf = new Configuration()
+      for (path <- config.getStringList("hadoop.conf.paths").asScala) {
+        conf.addResource(new File(path).toURI.toURL)
+      }
+      conf
+    }
+    val pointsTableCoprocessorJarPathOption = {
+      val coprocessorJarKey = "tables.points.coprocessor.jar.path"
+      if (config.hasPath(coprocessorJarKey)) {
+        val hdfs = FileSystem.newInstance(hadoopConfiguration)
+        val jarPath = try {
+          val pathString = config.getString(coprocessorJarKey)
+          hdfs.makeQualified(new Path(pathString))
+        }
+        Some(jarPath)
+      } else {
+        None
+      }
+    }
     val poolSize = config.getInt("pool.max")
     val zkQuorum = ZkConnect.parseString(config.getString("zk.quorum"))
     val uidsConfig = config.getConfig("uids")
@@ -468,8 +493,10 @@ object HBaseStorageConfig {
 
     HBaseStorageConfig(
       config,
+      hadoopConfiguration,
       uidsTableName,
       pointsTableName,
+      pointsTableCoprocessorJarPathOption,
       poolSize,
       zkQuorum,
       readChunkSize,
@@ -483,8 +510,10 @@ object HBaseStorageConfig {
 }
 
 case class HBaseStorageConfig(hbaseConfig: Config,
+                              private val hadoopConfigurationInner: Configuration,
                               uidsTableName: String,
                               pointsTableName: String,
+                              pointsTableCoprocessorJarPathOption: Option[Path],
                               poolSize: Int,
                               zkQuorum: ZkConnect,
                               readChunkSize: Int,
@@ -492,7 +521,9 @@ case class HBaseStorageConfig(hbaseConfig: Config,
                               uidsCacheInitialCapacity: Int,
                               uidsCacheMaxCapacity: Int,
                               tsdbFormatConfig: TsdbFormatConfig,
-                              storageName: String)
+                              storageName: String) {
+  def hadoopConfiguration = new Configuration(hadoopConfigurationInner)
+}
 
 /**
  * Encapsulates configured hbase client and points storage actors.
@@ -501,10 +532,17 @@ case class HBaseStorageConfig(hbaseConfig: Config,
 class HBaseStorageConfigured(config: HBaseStorageConfig, actorSystem: ActorSystem, metricRegistry: MetricRegistry)
                             (implicit val eCtx: ExecutionContext) extends Logging {
 
+  info(f"initializing HBaseStorage, config: $config")
+
   val hbase = new HBaseConfigured(config.hbaseConfig, config.zkQuorum)
   val hTablePool: HTablePool = hbase.getHTablePool(config.poolSize)
 
-  CreateTsdbTables.createTables(hbase.hbaseConfiguration, config.pointsTableName, config.uidsTableName)
+  TsdbTables.createTables(
+    hbase.hbaseConfiguration,
+    config.pointsTableName,
+    config.uidsTableName,
+    config.pointsTableCoprocessorJarPathOption
+  )
 
   actorSystem.registerOnTermination(hTablePool.close())
 
