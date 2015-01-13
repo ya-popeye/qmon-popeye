@@ -190,7 +190,8 @@ object PopeyeBuild extends Build {
     .settings(
       libraryDependencies ++= Version.slf4jDependencies ++ Seq(
         "com.typesafe" % "config" % "1.0.2",
-        "org.scalatest" %% "scalatest" % Version.ScalaTest % "test"
+        "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
+        "org.apache.hadoop" % "hadoop-common" % Version.Hadoop % "test"
       ).excluding(Version.slf4jExclusions: _*)
         .excluding(Version.commonExclusions: _*)
     )
