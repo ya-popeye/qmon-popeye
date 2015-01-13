@@ -1,7 +1,13 @@
 package popeye
 
 trait PointRope {
-  def iterator: Iterator[Point]
+
+  def iterators: Iterator[Iterator[Point]]
+
+  def iterator: Iterator[Point] = {
+    val bufferedIterators: Iterator[Iterator[Point]] = iterators.toBuffer.iterator
+    bufferedIterators.flatten
+  }
 
   def filter(cond: Point => Boolean): PointRope = PointRope.fromIterator(iterator.filter(cond))
 
@@ -14,13 +20,13 @@ trait PointRope {
 object PointRope {
 
   private[PointRope] class CompositePointRope(pointRopes: Vector[PointRope]) extends PointRope {
-    override def iterator: Iterator[Point] = pointRopes.iterator.flatMap(_.iterator)
+    override def iterators: Iterator[Iterator[Point]] = pointRopes.iterator.flatMap(_.iterators)
 
     override def size: Int = pointRopes.map(_.size).sum
   }
 
   private[PointRope] class SinglePointArrayRope(pointArray: PointArray) extends PointRope {
-    override def iterator: Iterator[Point] = pointArray.iterator
+    override def iterators: Iterator[Iterator[Point]] = Iterator.single(pointArray.iterator)
 
     override def size: Int = pointArray.size
   }

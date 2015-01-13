@@ -388,13 +388,13 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
     shardAttributeToShardName(shardAttribute.getName, shardAttribute.getValue)
   }
 
-  def getUniqueIds(timeseriesId: TimeseriesId): Seq[QualifiedId] = {
+  def getUniqueIds(timeseriesId: TimeseriesId): Iterable[QualifiedId] = {
     val TimeseriesId(generationId, metricId, shardId, attributeIds) = timeseriesId
     val metricQId = QualifiedId(MetricKind, generationId, metricId)
     val shardQId = QualifiedId(ShardKind, generationId, shardId)
-    val attrNameQIds = attributeIds.keys.map(id => QualifiedId(AttrNameKind, generationId, id)).toSeq
-    val attrValueQIds = attributeIds.values.map(id => QualifiedId(AttrValueKind, generationId, id)).toSeq
-    metricQId +: shardQId +: (attrNameQIds ++ attrValueQIds)
+    val attrNameQIds = attributeIds.keys.map(id => QualifiedId(AttrNameKind, generationId, id))
+    val attrValueQIds = attributeIds.values.map(id => QualifiedId(AttrValueKind, generationId, id))
+    Iterable(metricQId, shardQId).view ++ attrNameQIds ++ attrValueQIds
   }
 
   def parseSingleValueRowResult(result: Result): ParsedSingleValueRowResult = {

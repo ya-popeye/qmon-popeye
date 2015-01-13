@@ -14,6 +14,7 @@ import popeye._
 import popeye.util.ZkConnect
 import scala.collection.JavaConversions._
 import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable
 import scala.concurrent.duration._
 import scala.concurrent.{Promise, Await, ExecutionContext, Future}
 import com.typesafe.config.Config
@@ -194,7 +195,7 @@ class HBaseStorage(tableName: String,
 
     def resultsToPointsGroups(results: Array[Result]): Future[PointsGroups] = {
       val rowResults = results.map(tsdbFormat.parseSingleValueRowResult)
-      val ids = rowResults.flatMap(rr => tsdbFormat.getUniqueIds(rr.timeseriesId)).toSet
+      val ids = rowResults.view.flatMap(rr => tsdbFormat.getUniqueIds(rr.timeseriesId)).toSet
       val idNamePairsFuture = Future.traverse(ids) {
         case qId =>
           uniqueId.resolveNameById(qId)(resolveTimeout).map(name => (qId, name))
@@ -216,13 +217,13 @@ class HBaseStorage(tableName: String,
     val (startTime, endTime) = timeRange
     rows.groupBy(row => row.timeseriesId.getAttributes(idMap)).mapValues {
       rowsArray =>
-        val pointsArray = rowsArray.map(_.points)
-        val firstRow = pointsArray(0)
-        pointsArray(0) = firstRow.filter(point => point.timestamp >= startTime)
-        val lastIndex = pointsArray.length - 1
-        val lastRow = pointsArray(lastIndex)
-        pointsArray(lastIndex) = lastRow.filter(point => point.timestamp < endTime)
-        PointRope.concatAll(pointsArray.toSeq)
+        val pointsSeq = rowsArray.to[mutable.IndexedSeq].map(_.points)
+        val firstRow = pointsSeq(0)
+        pointsSeq(0) = firstRow.filter(point => point.timestamp >= startTime)
+        val lastIndex = pointsSeq.length - 1
+        val lastRow = pointsSeq(lastIndex)
+        pointsSeq(lastIndex) = lastRow.filter(point => point.timestamp < endTime)
+        PointRope.concatAll(pointsSeq)
     }.view.force // mapValues returns lazy Map
   }
 
