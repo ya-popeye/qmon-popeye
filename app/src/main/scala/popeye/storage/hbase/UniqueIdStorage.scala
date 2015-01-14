@@ -33,7 +33,7 @@ class UniqueIdStorageMetrics(name: String, override val metricRegistry: MetricRe
 class UniqueIdStorage(tableName: String,
                       hTablePool: HTablePool,
                       metrics: UniqueIdStorageMetrics,
-                      generationIdWidth: Int = UniqueIdGenerationWidth,
+                      generationIdWidth: Int = uniqueIdGenerationWidth,
                       kindWidths: Map[String, Short] = UniqueIdMapping) extends Logging {
 
   import UniqueIdStorage._

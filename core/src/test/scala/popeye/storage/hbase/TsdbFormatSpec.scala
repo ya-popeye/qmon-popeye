@@ -360,8 +360,8 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       idMap = idMap,
       TsdbFormat.ValueTypes.SingleValueTypeStructureId)
     scans.size should equal(2)
-    scans(0).getStartRow.slice(0, UniqueIdGenerationWidth) should equal(Array[Byte](0, 0))
-    scans(1).getStartRow.slice(0, UniqueIdGenerationWidth) should equal(Array[Byte](0, 1))
+    scans(0).getStartRow.slice(0, uniqueIdGenerationWidth) should equal(Array[Byte](0, 0))
+    scans(1).getStartRow.slice(0, uniqueIdGenerationWidth) should equal(Array[Byte](0, 1))
   }
 
   it should "not create scan if not enough ids resolved" in {
@@ -377,7 +377,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       idMap = idMap,
       TsdbFormat.ValueTypes.SingleValueTypeStructureId)
     scans.size should equal(1)
-    scans(0).getStartRow.slice(0, UniqueIdGenerationWidth) should equal(Array[Byte](0, 0))
+    scans(0).getStartRow.slice(0, uniqueIdGenerationWidth) should equal(Array[Byte](0, 0))
   }
 
   it should "create 2 scan over shards" in {

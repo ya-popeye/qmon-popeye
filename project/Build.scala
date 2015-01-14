@@ -224,7 +224,7 @@ object PopeyeBuild extends Build {
       "org.apache.avro" % "avro" % Version.Avro % "test"
     ).excluding(Version.slf4jExclusions :_*)
      .excluding(Version.commonExclusions :_*)
-    ).dependsOn(popeyeCore, popeyeHadoopJar)
+    ).dependsOn(popeyeCore % "compile->compile;test->test", popeyeHadoopJar)
 
   lazy val popeyeBench = Project(
     id = "popeye-bench",

@@ -39,10 +39,9 @@ object TsdbFormat {
     ShardKind -> 3.toShort
   )
 
-  final val UniqueIdGenerationWidth = 2
-
   /** Number of bytes on which a timestamp is encoded.  */
   final val TIMESTAMP_BYTES: Short = 4
+
   /** Number of LSBs in time_deltas reserved for flags.  */
   final val FLAG_BITS: Short = 4
   /**
@@ -56,15 +55,17 @@ object TsdbFormat {
   final val FLAGS_MASK: Short = (FLAG_FLOAT | LENGTH_MASK).toShort
   /** Max time delta (in seconds) we can store in a column qualifier.  */
   final val MAX_TIMESPAN: Short = 3600
-
   val metricWidth: Int = UniqueIdMapping(MetricKind)
+
   val attributeNameWidth: Int = UniqueIdMapping(AttrNameKind)
   val attributeValueWidth: Int = UniqueIdMapping(AttrValueKind)
   val attributeWidth = attributeNameWidth + attributeValueWidth
   val shardIdWidth: Int = UniqueIdMapping(ShardKind)
   val valueTypeIdWidth: Int = 1
+  val uniqueIdGenerationWidth = 2
 
-  val metricOffset = UniqueIdGenerationWidth
+  val uniqueIdGenerationOffset = 0
+  val metricOffset = uniqueIdGenerationOffset + uniqueIdGenerationWidth
   val valueTypeIdOffset = metricOffset + metricWidth
   val shardIdOffset = valueTypeIdOffset + valueTypeIdWidth
   val timestampOffset = shardIdOffset + shardIdWidth
@@ -338,7 +339,7 @@ object TsdbFormat {
       attributesLength >= 0 && attributesLength % attributeWidth == 0,
       f"illegal row length: ${row.length}, attributes length: $attributesLength, attr size: ${attributeWidth}"
     )
-    val generationId = new BytesKey(copyOfRange(row, 0, UniqueIdGenerationWidth))
+    val generationId = new BytesKey(copyOfRange(row, 0, uniqueIdGenerationWidth))
     val metricId = new BytesKey(copyOfRange(row, metricOffset, metricOffset + metricWidth))
     val shardId = new BytesKey(copyOfRange(row, shardIdOffset, shardIdOffset + attributeValueWidth))
     val baseTime = Bytes.toInt(row, timestampOffset, TIMESTAMP_BYTES)
@@ -379,6 +380,14 @@ case class TimeseriesId(generationId: BytesKey,
         val value = idMap(QualifiedId(AttrValueKind, generationId, valueId))
         (name, value)
     }
+  }
+
+  def getUniqueIds: Iterable[QualifiedId] = {
+    val metricQId = QualifiedId(MetricKind, generationId, metricId)
+    val shardQId = QualifiedId(ShardKind, generationId, shardId)
+    val attrNameQIds = attributeIds.keys.map(id => QualifiedId(AttrNameKind, generationId, id))
+    val attrValueQIds = attributeIds.values.map(id => QualifiedId(AttrValueKind, generationId, id))
+    Iterable(metricQId, shardQId).view ++ attrNameQIds ++ attrValueQIds
   }
 }
 
@@ -449,15 +458,6 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
 
     val shardAttribute = shardAttributes.head
     shardAttributeToShardName(shardAttribute.getName, shardAttribute.getValue)
-  }
-
-  def getUniqueIds(timeseriesId: TimeseriesId): Iterable[QualifiedId] = {
-    val TimeseriesId(generationId, metricId, shardId, attributeIds) = timeseriesId
-    val metricQId = QualifiedId(MetricKind, generationId, metricId)
-    val shardQId = QualifiedId(ShardKind, generationId, shardId)
-    val attrNameQIds = attributeIds.keys.map(id => QualifiedId(AttrNameKind, generationId, id))
-    val attrValueQIds = attributeIds.values.map(id => QualifiedId(AttrValueKind, generationId, id))
-    Iterable(metricQId, shardQId).view ++ attrNameQIds ++ attrValueQIds
   }
 
   def getAllQualifiedNames(point: Message.Point, currentTimeInSeconds: Int): Seq[QualifiedName] = {
@@ -655,8 +655,8 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
     val id = timeRangeIdMapping.getGenerationId(pointBaseTime, currentBaseTime)
     val idBytes = new BytesKey(Bytes.toBytes(id))
     require(
-      idBytes.bytes.length == UniqueIdGenerationWidth,
-      f"TsdbFormat depends on generation id width: ${ idBytes.bytes.length } not equal to ${ UniqueIdGenerationWidth }"
+      idBytes.bytes.length == uniqueIdGenerationWidth,
+      f"TsdbFormat depends on generation id width: ${ idBytes.bytes.length } not equal to ${ uniqueIdGenerationWidth }"
     )
     idBytes
   }

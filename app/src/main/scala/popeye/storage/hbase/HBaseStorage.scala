@@ -132,7 +132,7 @@ class HBaseStorage(tableName: String,
     val resultsIterator = resolveQuery(metric, timeRange, attributes, TsdbFormat.ValueTypes.ListValueTypeStructureId)
     def resultsToListPointsTimeseries(results: Array[Result]): Future[Seq[ListPointTimeseries]] = {
       val rowResults = results.map(TsdbFormat.parseListValueRowResult)
-      val ids = rowResults.flatMap(rr => tsdbFormat.getUniqueIds(rr.timeseriesId)).toSet
+      val ids = rowResults.flatMap(rr => rr.timeseriesId.getUniqueIds).toSet
       val idNamePairsFuture = Future.traverse(ids) {
         case qId =>
           uniqueId.resolveNameById(qId)(resolveTimeout).map(name => (qId, name))
@@ -195,7 +195,7 @@ class HBaseStorage(tableName: String,
 
     def resultsToPointsGroups(results: Array[Result]): Future[PointsGroups] = {
       val rowResults = results.map(TsdbFormat.parseSingleValueRowResult)
-      val ids = rowResults.flatMap(rr => tsdbFormat.getUniqueIds(rr.timeseriesId)).toSet
+      val ids = rowResults.flatMap(rr => rr.timeseriesId.getUniqueIds).toSet
       val idNamePairsFuture = Future.traverse(ids) {
         case qId =>
           uniqueId.resolveNameById(qId)(resolveTimeout).map(name => (qId, name))
@@ -416,7 +416,7 @@ class HBaseStorage(tableName: String,
     val (delta, isFloat) = TsdbFormat.ValueTypes.parseQualifier(qualifierBytes)
     val value = TsdbFormat.ValueTypes.parseSingleValue(valueBytes, isFloat)
     val timestamp = baseTime + delta
-    val rowIds = tsdbFormat.getUniqueIds(timeseriesId)
+    val rowIds = timeseriesId.getUniqueIds
     val idNamePairsFuture = Future.traverse(rowIds) {
       case qId =>
         uniqueId.resolveNameById(qId)(resolveTimeout).map {
