@@ -10,9 +10,9 @@ import org.mockito.Matchers.{eq => the}
 import org.mockito.Mockito._
 import org.scalatest.mock.MockitoSugar
 import popeye.IdGenerator
+import popeye.test.AkkaTestKitSpec
 import popeye.test.PopeyeTestUtils._
 import popeye.proto.PackedPoints
-import popeye.pipeline.test.AkkaTestKitSpec
 import scala.concurrent.duration._
 import scala.concurrent.{Promise, Await}
 import popeye.pipeline.{PointsSinkFactory, PointsSink}

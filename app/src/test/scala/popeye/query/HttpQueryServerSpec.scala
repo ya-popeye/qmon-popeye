@@ -1,7 +1,7 @@
 package popeye.query
 
-import popeye.pipeline.test.AkkaTestKitSpec
 import org.mockito.Matchers.{eq => equalTo}
+import popeye.test.AkkaTestKitSpec
 import scala.concurrent.{Await, Future}
 import spray.http._
 import spray.http.HttpMethods._

@@ -6,7 +6,7 @@ import akka.actor.{Actor, Props, ActorRef}
 import akka.testkit.TestActorRef
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.{ConfigValueFactory, ConfigFactory, Config}
-import popeye.pipeline.test.AkkaTestKitSpec
+import popeye.test.AkkaTestKitSpec
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration._

@@ -5,7 +5,7 @@ import java.io.IOException
 import com.codahale.metrics.MetricRegistry
 import popeye.Logging
 import popeye.storage.hbase.UniqueIdProtocol._
-import popeye.pipeline.test.AkkaTestKitSpec
+import popeye.test.AkkaTestKitSpec
 import scala.concurrent.Await
 import scala.concurrent.duration._
 import popeye.storage.hbase.UniqueIdProtocol.FindName

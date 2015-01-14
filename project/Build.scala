@@ -189,8 +189,13 @@ object PopeyeBuild extends Build {
     settings = defaultSettings ++ FindBugs.settings ++ HBase.settings)
     .settings(
       libraryDependencies ++= Version.slf4jDependencies ++ Seq(
-        "com.typesafe" % "config" % "1.0.2",
+        "nl.grons" %% "metrics-scala" % Version.Metrics,
+        "com.codahale.metrics" % "metrics-jvm" % "3.0.0",
+        "com.googlecode.concurrentlinkedhashmap" % "concurrentlinkedhashmap-lru" % "1.4",
+        "com.typesafe.akka" %% "akka-actor" % Version.Akka,
         "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
+        "org.mockito" % "mockito-core" % Version.Mockito % "test",
+        "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test",
         "org.apache.hadoop" % "hadoop-common" % Version.Hadoop % "test"
       ).excluding(Version.slf4jExclusions: _*)
         .excluding(Version.commonExclusions: _*)
@@ -217,7 +222,6 @@ object PopeyeBuild extends Build {
       "com.google.guava" % "guava" % Version.Guava % "test",
       "io.spray" % "spray-can" % Version.Spray,
       "io.spray" % "spray-io" % Version.Spray,
-      "com.googlecode.concurrentlinkedhashmap" % "concurrentlinkedhashmap-lru" % "1.4",
       "org.scalatest" %% "scalatest" % Version.ScalaTest % "test",
       "org.mockito" % "mockito-core" % Version.Mockito % "test",
       "com.typesafe.akka" %% "akka-testkit" % Version.Akka % "test",

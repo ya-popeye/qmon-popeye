@@ -8,10 +8,9 @@ import java.util.Random
 import org.scalatest.matchers.ShouldMatchers
 import org.scalatest.mock.MockitoSugar
 import popeye.pipeline.{PointsSink, PointsSource, AtomicList}
-import popeye.test.{PopeyeTestUtils, MockitoStubs}
+import popeye.test.{AkkaTestKitSpec, PopeyeTestUtils, MockitoStubs}
 import popeye.test.PopeyeTestUtils._
 import popeye.proto.{Message, PackedPoints}
-import popeye.pipeline.test.AkkaTestKitSpec
 import scala.concurrent.{ExecutionContext, Promise, Await}
 import scala.concurrent.duration._
 import popeye.pipeline.kafka.KafkaPointsConsumer.DropStrategy

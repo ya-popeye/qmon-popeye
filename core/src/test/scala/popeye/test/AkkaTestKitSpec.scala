@@ -1,4 +1,4 @@
-package popeye.pipeline.test
+package popeye.test
 
 import org.scalatest.{Matchers, BeforeAndAfterAll, FlatSpec}
 import akka.testkit.TestKitBase

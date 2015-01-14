@@ -4,8 +4,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
 
 import akka.dispatch.ExecutionContexts
-import popeye.test.MockitoStubs
-import popeye.pipeline.test.AkkaTestKitSpec
+import popeye.test.{AkkaTestKitSpec, MockitoStubs}
 import org.mockito.Mockito._
 import akka.testkit.TestActorRef
 import akka.actor.Props

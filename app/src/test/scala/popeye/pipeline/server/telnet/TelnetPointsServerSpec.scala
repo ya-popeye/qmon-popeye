@@ -13,8 +13,8 @@ import java.util.Random
 import org.mockito.Mockito._
 import org.scalatest.mock.MockitoSugar
 import popeye.pipeline.DispatcherProtocol.Pending
+import popeye.test.AkkaTestKitSpec
 import popeye.test.PopeyeTestUtils._
-import popeye.pipeline.test.AkkaTestKitSpec
 import scala.concurrent.duration._
 import scala.concurrent.Promise
 import popeye.proto.PackedPoints

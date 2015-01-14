@@ -2,12 +2,12 @@ package popeye.query
 
 import org.scalatest.mock.MockitoSugar
 import org.mockito.Mockito._
+import popeye.test.AkkaTestKitSpec
 import scala.concurrent.{ExecutionContext, Await, Future}
 import scala.collection.immutable.SortedMap
 import popeye.storage.hbase.HBaseStorage
 import scala.concurrent.duration._
 import java.util.concurrent.Executors
-import popeye.pipeline.test.AkkaTestKitSpec
 import akka.testkit.TestActorRef
 import akka.actor.Props
 import akka.pattern.ask

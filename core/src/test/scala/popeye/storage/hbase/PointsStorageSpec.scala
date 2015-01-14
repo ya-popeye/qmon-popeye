@@ -3,7 +3,7 @@ package popeye.storage.hbase
 import popeye.{AsyncIterator, Point, ListPoint}
 import popeye.test.PopeyeTestUtils._
 import popeye.test.{PopeyeTestUtils, MockitoStubs}
-import popeye.pipeline.test.AkkaTestKitSpec
+import popeye.test.AkkaTestKitSpec
 import scala.collection.JavaConversions.iterableAsScalaIterable
 import scala.concurrent.{Promise, Await}
 import scala.concurrent.duration._

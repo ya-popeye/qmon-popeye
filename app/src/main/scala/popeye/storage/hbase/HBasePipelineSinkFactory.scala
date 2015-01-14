@@ -3,7 +3,8 @@ package popeye.storage.hbase
 import com.typesafe.config.Config
 import popeye.Logging
 import popeye.pipeline._
-import scala.concurrent.ExecutionContext
+import popeye.proto.{PackedPoints, Message}
+import scala.concurrent.{Future, ExecutionContext}
 import akka.actor.ActorSystem
 import com.codahale.metrics.MetricRegistry
 
@@ -27,4 +28,17 @@ class HBasePipelineSinkFactory(storagesConfig: Config,
     info("sink is ready")
     new HBasePointsSink(hbaseStorage.storage)(ectx)
   }
+}
+
+class HBasePointsSink(storage: HBaseStorage)(implicit eCtx: ExecutionContext) extends PointsSink {
+
+  override def sendPoints(batchId: Long, points: Message.Point*): Future[Long] = {
+    storage.writeMessagePoints(points :_*)(eCtx)
+  }
+
+  override def sendPacked(batchId: Long, buffers: PackedPoints*): Future[Long] = {
+    storage.writePackedPoints(buffers :_*)(eCtx)
+  }
+
+  override def close(): Unit = {}
 }
