@@ -104,7 +104,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val tsdbFormat = createTsdbFormat()
     val SuccessfulConversion(keyValue) = tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap.get, 0)
     val timestamp = samplePoint.getTimestamp.toInt
-    val (timeseriesId, baseTime) = tsdbFormat.parseTimeseriesIdAndBaseTime(CellUtil.cloneRow(keyValue))
+    val (timeseriesId, baseTime) = parseTimeseriesIdAndBaseTime(CellUtil.cloneRow(keyValue))
     val qualifierBytes = CellUtil.cloneQualifier(keyValue)
     val valueBytes = CellUtil.cloneValue(keyValue)
     val (delta, isFloat) = TsdbFormat.ValueTypes.parseQualifier(qualifierBytes)
@@ -119,7 +119,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val SuccessfulConversion(keyValue) = tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0)
     val timestamp = point.getTimestamp.toInt
     val result = new Result(List(keyValue).asJava)
-    tsdbFormat.parseListValueRowResult(result).lists.head should equal(ListPoint(timestamp, Left(Seq(1, 2, 3))))
+    parseListValueRowResult(result).lists.head should equal(ListPoint(timestamp, Left(Seq(1, 2, 3))))
   }
 
   it should "handle float list values" in {
@@ -128,7 +128,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val SuccessfulConversion(keyValue) = tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0)
     val timestamp = point.getTimestamp.toInt
     val result = new Result(List(keyValue).asJava)
-    tsdbFormat.parseListValueRowResult(result).lists.head should equal(ListPoint(timestamp, Right(Seq(1, 2, 3))))
+    parseListValueRowResult(result).lists.head should equal(ListPoint(timestamp, Right(Seq(1, 2, 3))))
   }
 
   ignore should "have good performance" in {
@@ -208,7 +208,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       point => tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0).asInstanceOf[SuccessfulConversion].keyValue
     }
     require(keyValues.map(_.getRow.toBuffer).distinct.size == 1)
-    val parsedRowResult = tsdbFormat.parseSingleValueRowResult(new Result(keyValues.asJava))
+    val parsedRowResult = parseSingleValueRowResult(new Result(keyValues.asJava))
 
     val expectedAttributeIds = SortedMap(
       sampleIdMap(qualifiedName(AttrNameKind, "name")) -> sampleIdMap(qualifiedName(AttrValueKind, "value")),
@@ -233,7 +233,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val row = Array[Byte](0)
     val keyValue = new KeyValue(row, PointsFamily, Array[Byte](0, 0, 0), Array[Byte](0, 0, 0))
     val ex = intercept[IllegalArgumentException] {
-      tsdbFormat.parseSingleValueRowResult(new Result(Seq(keyValue).asJava))
+      parseSingleValueRowResult(new Result(Seq(keyValue).asJava))
     }
     ex.getMessage should (include("row") and include("size"))
   }
@@ -265,7 +265,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       point => tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0).asInstanceOf[SuccessfulConversion].keyValue
     }
     val packedRow = TsdbFormat.rowPacker.packRow(keyValues)
-    val parsedRowResult = tsdbFormat.parseSingleValueRowResult(Result.create(List(packedRow).asJava))
+    val parsedRowResult = TsdbFormat.parseSingleValueRowResult(Result.create(List(packedRow).asJava))
     val expectedPoints = timeAndValues.map {
       case (time, value) =>
         Point(time.toInt, value.fold(_.toDouble, _.toDouble))

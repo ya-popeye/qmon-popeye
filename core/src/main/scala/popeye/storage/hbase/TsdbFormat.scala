@@ -301,6 +301,69 @@ object TsdbFormat {
       .append(attrValue.length)
       .toString()
   }
+
+  def parseSingleValueRowResult(result: Result): ParsedSingleValueRowResult = {
+    val row = result.getRow
+    val (timeseriesId, baseTime) = parseTimeseriesIdAndBaseTime(row)
+    val cells = result.rawCells()
+    val qualiierAndValues = rowPacker.unpackRow(cells)
+    val points = qualiierAndValues.iterator.map {
+      case QualifierAndValue(
+      qualifierArray, qualifierOffset, qualifierLength,
+      valueArray, valueOffset, valueLength,
+      timestamp) =>
+        val (delta, isFloat) = ValueTypes.parseQualifierFromSlice(qualifierArray, qualifierOffset, qualifierLength)
+        val value = ValueTypes.parseSingleValueFromSlice(valueArray, valueOffset, valueLength, isFloat)
+        Point(baseTime + delta, value.fold(_.toDouble, _.toDouble))
+    }
+    ParsedSingleValueRowResult(timeseriesId, PointRope.fromIterator(points))
+  }
+
+  def parseListValueRowResult(result: Result): ParsedListValueRowResult = {
+    val row = result.getRow
+    val (timeseriesId, baseTime) = parseTimeseriesIdAndBaseTime(row)
+    val columns = result.getFamilyMap(PointsFamily).asScala.toList
+    val listPoints = columns.map {
+      case (qualifierBytes, valueBytes) =>
+        val (delta, isFloat) = ValueTypes.parseQualifier(qualifierBytes)
+        val value = ValueTypes.parseListValue(valueBytes, isFloat)
+        ListPoint(baseTime + delta, value)
+    }
+    ParsedListValueRowResult(timeseriesId, listPoints)
+  }
+
+  def parseTimeseriesIdAndBaseTime(row: Array[Byte]): (TimeseriesId, Int) = {
+    val attributesLength = row.length - attributesOffset
+    require(
+      attributesLength >= 0 && attributesLength % attributeWidth == 0,
+      f"illegal row length: ${row.length}, attributes length: $attributesLength, attr size: ${attributeWidth}"
+    )
+    val generationId = new BytesKey(copyOfRange(row, 0, UniqueIdGenerationWidth))
+    val metricId = new BytesKey(copyOfRange(row, metricOffset, metricOffset + metricWidth))
+    val shardId = new BytesKey(copyOfRange(row, shardIdOffset, shardIdOffset + attributeValueWidth))
+    val baseTime = Bytes.toInt(row, timestampOffset, TIMESTAMP_BYTES)
+    val attributesBytes = copyOfRange(row, attributesOffset, row.length)
+    val timeseriedId = TimeseriesId(generationId, metricId, shardId, createAttributesMap(attributesBytes))
+    (timeseriedId, baseTime)
+  }
+
+  private def createAttributesMap(attributes: Array[Byte]): SortedMap[BytesKey, BytesKey] = {
+    val attributeWidth = attributeNameWidth + attributeValueWidth
+    require(attributes.length % attributeWidth == 0, "bad attributes length")
+    val numberOfAttributes = attributes.length / attributeWidth
+    val attrNamesIndexes = (0 until numberOfAttributes).map(i => i * attributeWidth)
+    val attributePairs =
+      for (attrNameIndex <- attrNamesIndexes)
+      yield {
+        val attrValueIndex = attrNameIndex + attributeNameWidth
+        val nameArray = new Array[Byte](attributeNameWidth)
+        val valueArray = new Array[Byte](attributeValueWidth)
+        System.arraycopy(attributes, attrNameIndex, nameArray, 0, attributeNameWidth)
+        System.arraycopy(attributes, attrValueIndex, valueArray, 0, attributeValueWidth)
+        (new BytesKey(nameArray), new BytesKey(valueArray))
+      }
+    SortedMap[BytesKey, BytesKey](attributePairs: _*)
+  }
 }
 
 case class TimeseriesId(generationId: BytesKey,
@@ -395,69 +458,6 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
     val attrNameQIds = attributeIds.keys.map(id => QualifiedId(AttrNameKind, generationId, id))
     val attrValueQIds = attributeIds.values.map(id => QualifiedId(AttrValueKind, generationId, id))
     Iterable(metricQId, shardQId).view ++ attrNameQIds ++ attrValueQIds
-  }
-
-  def parseSingleValueRowResult(result: Result): ParsedSingleValueRowResult = {
-    val row = result.getRow
-    val (timeseriesId, baseTime) = parseTimeseriesIdAndBaseTime(row)
-    val cells = result.rawCells()
-    val qualiierAndValues = rowPacker.unpackRow(cells)
-    val points = qualiierAndValues.iterator.map {
-      case QualifierAndValue(
-      qualifierArray, qualifierOffset, qualifierLength,
-      valueArray, valueOffset, valueLength,
-      timestamp) =>
-        val (delta, isFloat) = ValueTypes.parseQualifierFromSlice(qualifierArray, qualifierOffset, qualifierLength)
-        val value = ValueTypes.parseSingleValueFromSlice(valueArray, valueOffset, valueLength, isFloat)
-        Point(baseTime + delta, value.fold(_.toDouble, _.toDouble))
-    }
-    ParsedSingleValueRowResult(timeseriesId, PointRope.fromIterator(points))
-  }
-
-  def parseListValueRowResult(result: Result): ParsedListValueRowResult = {
-    val row = result.getRow
-    val (timeseriesId, baseTime) = parseTimeseriesIdAndBaseTime(row)
-    val columns = result.getFamilyMap(PointsFamily).asScala.toList
-    val listPoints = columns.map {
-      case (qualifierBytes, valueBytes) =>
-        val (delta, isFloat) = ValueTypes.parseQualifier(qualifierBytes)
-        val value = ValueTypes.parseListValue(valueBytes, isFloat)
-        ListPoint(baseTime + delta, value)
-    }
-    ParsedListValueRowResult(timeseriesId, listPoints)
-  }
-
-  def parseTimeseriesIdAndBaseTime(row: Array[Byte]): (TimeseriesId, Int) = {
-    val attributesLength = row.length - attributesOffset
-    require(
-      attributesLength >= 0 && attributesLength % attributeWidth == 0,
-      f"illegal row length: ${ row.length }, attributes length: $attributesLength, attr size: ${ attributeWidth }"
-    )
-    val generationId = new BytesKey(copyOfRange(row, 0, UniqueIdGenerationWidth))
-    val metricId = new BytesKey(copyOfRange(row, metricOffset, metricOffset + metricWidth))
-    val shardId = new BytesKey(copyOfRange(row, shardIdOffset, shardIdOffset + attributeValueWidth))
-    val baseTime = Bytes.toInt(row, timestampOffset, TIMESTAMP_BYTES)
-    val attributesBytes = copyOfRange(row, attributesOffset, row.length)
-    val timeseriedId = TimeseriesId(generationId, metricId, shardId, createAttributesMap(attributesBytes))
-    (timeseriedId, baseTime)
-  }
-
-  private def createAttributesMap(attributes: Array[Byte]): SortedMap[BytesKey, BytesKey] = {
-    val attributeWidth = attributeNameWidth + attributeValueWidth
-    require(attributes.length % attributeWidth == 0, "bad attributes length")
-    val numberOfAttributes = attributes.length / attributeWidth
-    val attrNamesIndexes = (0 until numberOfAttributes).map(i => i * attributeWidth)
-    val attributePairs =
-      for (attrNameIndex <- attrNamesIndexes)
-      yield {
-        val attrValueIndex = attrNameIndex + attributeNameWidth
-        val nameArray = new Array[Byte](attributeNameWidth)
-        val valueArray = new Array[Byte](attributeValueWidth)
-        System.arraycopy(attributes, attrNameIndex, nameArray, 0, attributeNameWidth)
-        System.arraycopy(attributes, attrValueIndex, valueArray, 0, attributeValueWidth)
-        (new BytesKey(nameArray), new BytesKey(valueArray))
-      }
-    SortedMap[BytesKey, BytesKey](attributePairs: _*)
   }
 
   def getAllQualifiedNames(point: Message.Point, currentTimeInSeconds: Int): Seq[QualifiedName] = {

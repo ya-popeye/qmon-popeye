@@ -131,7 +131,7 @@ class HBaseStorage(tableName: String,
                    (implicit eCtx: ExecutionContext): AsyncIterator[Seq[ListPointTimeseries]] = {
     val resultsIterator = resolveQuery(metric, timeRange, attributes, TsdbFormat.ValueTypes.ListValueTypeStructureId)
     def resultsToListPointsTimeseries(results: Array[Result]): Future[Seq[ListPointTimeseries]] = {
-      val rowResults = results.map(tsdbFormat.parseListValueRowResult)
+      val rowResults = results.map(TsdbFormat.parseListValueRowResult)
       val ids = rowResults.flatMap(rr => tsdbFormat.getUniqueIds(rr.timeseriesId)).toSet
       val idNamePairsFuture = Future.traverse(ids) {
         case qId =>
@@ -194,8 +194,8 @@ class HBaseStorage(tableName: String,
                                 (implicit eCtx: ExecutionContext): AsyncIterator[PointsGroups] = {
 
     def resultsToPointsGroups(results: Array[Result]): Future[PointsGroups] = {
-      val rowResults = results.map(tsdbFormat.parseSingleValueRowResult)
-      val ids = rowResults.view.flatMap(rr => tsdbFormat.getUniqueIds(rr.timeseriesId)).toSet
+      val rowResults = results.map(TsdbFormat.parseSingleValueRowResult)
+      val ids = rowResults.flatMap(rr => tsdbFormat.getUniqueIds(rr.timeseriesId)).toSet
       val idNamePairsFuture = Future.traverse(ids) {
         case qId =>
           uniqueId.resolveNameById(qId)(resolveTimeout).map(name => (qId, name))
@@ -410,7 +410,7 @@ class HBaseStorage(tableName: String,
    * @return future
    */
   private def mkPointFuture(kv: KeyValue)(implicit eCtx: ExecutionContext): Future[Message.Point] = {
-    val (timeseriesId, baseTime) = tsdbFormat.parseTimeseriesIdAndBaseTime(CellUtil.cloneRow(kv))
+    val (timeseriesId, baseTime) = TsdbFormat.parseTimeseriesIdAndBaseTime(CellUtil.cloneRow(kv))
     val qualifierBytes = CellUtil.cloneQualifier(kv)
     val valueBytes = CellUtil.cloneValue(kv)
     val (delta, isFloat) = TsdbFormat.ValueTypes.parseQualifier(qualifierBytes)

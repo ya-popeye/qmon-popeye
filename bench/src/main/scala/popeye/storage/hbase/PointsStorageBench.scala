@@ -135,7 +135,7 @@ object PointsStorageBench extends Logging {
       pointsTable.put(new util.ArrayList(puts.asJavaCollection))
       val results = pointsTable.getScanner(TsdbFormat.PointsFamily).asScala.toBuffer
       val benchResult = BenchUtils.bench(20, 10) {
-        results.map(tsdbFormat.parseSingleValueRowResult)
+        results.map(TsdbFormat.parseSingleValueRowResult)
       }
       println(f"number of points: ${ keyValues.size }")
       println(f"number of tag values: $numberOfTagValues, points per series: $numberOfPointsPerSeries")
