@@ -16,26 +16,8 @@ class PopeyeIntTestCase(currentTimeSeconds: Int) extends Logging with Matchers {
   val startTime = firstTimestamp.toInt
   val stopTime = currentTimeSeconds.toInt + 1
 
-  def createSinTsPoints(timestamps: Seq[Int],
-                        periods: Seq[Int],
-                        amps: Seq[Int],
-                        shifts: Seq[Int],
-                        cluster: String) = {
-    for {
-      period <- periods
-      amp <- amps
-      shift <- shifts
-      timestamp <- timestamps
-    } yield {
-      val x = ((timestamp + shift) % period).toDouble / period * 2 * math.Pi
-      val value = math.sin(x).toFloat * amp
-      val tags = Map("period" -> period, "amp" -> amp, "shift" -> shift).mapValues(_.toString) + ("cluster" -> "popeye")
-      TsPoint("sin", timestamp, Right(value), tags)
-    }
-  }
-
   def createTestPoints: Seq[TsPoint] = {
-    createSinTsPoints(timestamps, periods, amps, shifts, "popeye")
+    TestDataUtils.createSinTsPoints("sin", timestamps, periods, amps, shifts, "cluster" -> "popeye")
   }
 
   def putPoints(slicerHost: String, slicerPort: Int): Unit = {
