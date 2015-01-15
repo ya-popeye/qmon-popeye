@@ -1,5 +1,7 @@
 package popeye.query
 
+import popeye.Point
+
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
@@ -23,10 +25,7 @@ object PointSeriesUtils {
     }
   }
 
-  type PlotPoint = (Int, Double)
-  type Plot = Iterator[PlotPoint]
-
-  def interpolateAndAggregate(series: Seq[Plot], aggregateFunction: Seq[Double] => Double): Iterator[PlotPoint] = {
+  def interpolateAndAggregate(series: Seq[Iterator[Point]], aggregateFunction: Seq[Double] => Double): Iterator[Point] = {
     val nonEmptySeries =
       series
         .map(toLines)
@@ -38,7 +37,7 @@ object PointSeriesUtils {
   }
 
   class AggregatingIterator(nonEmptySpans: Seq[BufferedIterator[Line]],
-                            aggregateFunction: Seq[Double] => Double) extends Iterator[PlotPoint] {
+                            aggregateFunction: Seq[Double] => Double) extends Iterator[Point] {
     var idleSeries = {
       val series = nonEmptySpans.map(it => IdleSeries(it.head.x1, it))
       series.sortBy(_.firstLineStart)
@@ -52,12 +51,12 @@ object PointSeriesUtils {
 
     def hasNext: Boolean = activeSeries.nonEmpty || idleSeries.nonEmpty
 
-    def next(): PlotPoint = {
+    def next(): Point = {
       val currentX = nextX()
       if (idleSeries.nonEmpty) {
         activateIdleSeries(currentX)
       }
-      val nextPoint = (currentX, currentValue(currentX))
+      val nextPoint = Point(currentX, currentValue(currentX))
       updateActiveSeries(currentX)
       nextPoint
     }
@@ -106,33 +105,33 @@ object PointSeriesUtils {
 
   }
 
-  def toLines(points: Iterator[PlotPoint]): Iterator[Line] = {
+  def toLines(points: Iterator[Point]): Iterator[Line] = {
     val firstTwoPoints = points.take(2).toList
     if (firstTwoPoints.size != 2) {
       Iterator.empty
     } else {
-      val List((x1, y1), (x2, y2)) = firstTwoPoints
+      val List(Point(x1, y1), Point(x2, y2)) = firstTwoPoints
       val firstLine = Line(x1, y1, x2, y2)
       points.scanLeft(firstLine) {
-        case (Line(_, _, lastX, lastY), (newX, newY)) => Line(lastX, lastY, newX, newY)
+        case (Line(_, _, lastX, lastY), Point(newX, newY)) => Line(lastX, lastY, newX, newY)
       }
     }
   }
 
-  def downsample(source: Iterator[PlotPoint],
+  def downsample(source: Iterator[Point],
                  intervalLength: Int,
-                 aggregator: Seq[Double] => Double): Iterator[PlotPoint] = {
+                 aggregator: Seq[Double] => Double): Iterator[Point] = {
     new DownsamplingIterator(source, intervalLength, aggregator)
   }
 
-  class DownsamplingIterator(source: Iterator[PlotPoint],
+  class DownsamplingIterator(source: Iterator[Point],
                              intervalLength: Int,
-                             aggregator: Seq[Double] => Double) extends Iterator[PlotPoint] {
+                             aggregator: Seq[Double] => Double) extends Iterator[Point] {
     var currentIntervalStart = 0
     val buffer = {
       val buf = ArrayBuffer[Double]()
       if (source.hasNext) {
-        val (firstTimestamp, firstValue) = source.next()
+        val Point(firstTimestamp, firstValue) = source.next()
         currentIntervalStart = firstTimestamp
         buf += firstValue
       }
@@ -141,39 +140,39 @@ object PointSeriesUtils {
 
     def hasNext: Boolean = buffer.nonEmpty
 
-    def next(): PointSeriesUtils.PlotPoint = {
+    def next(): Point = {
       if (!source.hasNext) {
-        val point = (currentIntervalStart + intervalLength / 2, aggregator(buffer))
+        val point = Point(currentIntervalStart + intervalLength / 2, aggregator(buffer))
         buffer.clear()
         return point
       }
       var newPoint = source.next()
-      while(source.hasNext && newPoint._1 < (currentIntervalStart + intervalLength)) {
-        buffer += newPoint._2
+      while(source.hasNext && newPoint.timestamp < (currentIntervalStart + intervalLength)) {
+        buffer += newPoint.value
         newPoint = source.next()
       }
       val aggregatedValue =
-        if (source.hasNext || newPoint._1 >= (currentIntervalStart + intervalLength)) {
+        if (source.hasNext || newPoint.timestamp >= (currentIntervalStart + intervalLength)) {
           val value = aggregator(buffer)
           buffer.clear()
-          buffer += newPoint._2
+          buffer += newPoint.value
           value
         }
         else {
-          buffer += newPoint._2
+          buffer += newPoint.value
           val value = aggregator(buffer)
           buffer.clear()
           value
         }
       val intervalTime = currentIntervalStart + intervalLength / 2
-      currentIntervalStart += intervalLength * ((newPoint._1 - currentIntervalStart) / intervalLength)
+      currentIntervalStart += intervalLength * ((newPoint.timestamp - currentIntervalStart) / intervalLength)
 
-      (intervalTime, aggregatedValue)
+      Point(intervalTime, aggregatedValue)
     }
 
   }
 
-  def differentiate(source: Iterator[PlotPoint]): Iterator[PlotPoint] = {
+  def differentiate(source: Iterator[Point]): Iterator[Point] = {
     if (source.hasNext) {
       new DifferentiatingIterator(source, source.next())
     } else {
@@ -181,18 +180,18 @@ object PointSeriesUtils {
     }
   }
 
-  class DifferentiatingIterator(source: Iterator[PlotPoint], startPoint: PlotPoint) extends Iterator[PlotPoint] {
+  class DifferentiatingIterator(source: Iterator[Point], startPoint: Point) extends Iterator[Point] {
 
     var lastPoint = startPoint
 
     def hasNext: Boolean = source.hasNext
 
-    def next(): PointSeriesUtils.PlotPoint = {
-      val (lastX, lastY) = lastPoint
-      val currentPoint@(currentX, currentY) = source.next()
+    def next(): Point = {
+      val Point(lastX, lastY) = lastPoint
+      val currentPoint@Point(currentX, currentY) = source.next()
       lastPoint = currentPoint
       val y = (currentY - lastY) / (currentX - lastX)
-      (currentX, y)
+      Point(currentX, y)
     }
   }
 

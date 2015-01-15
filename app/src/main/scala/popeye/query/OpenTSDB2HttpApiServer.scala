@@ -9,7 +9,7 @@ import popeye.storage.ValueNameFilterCondition.{SingleValueName, MultipleValueNa
 import scala.collection.JavaConverters._
 import akka.actor.{Props, ActorRef, ActorSystem, Actor}
 import org.codehaus.jackson.map.ObjectMapper
-import popeye.{PointRope, Instrumented, Logging}
+import popeye.{Point, PointRope, Instrumented, Logging}
 import spray.can.Http
 import spray.http.HttpHeaders._
 import spray.http.HttpMethods._
@@ -178,7 +178,7 @@ class OpenTSDB2HttpApiServerHandler(storage: PointsStorage,
 
   private def pointGroupToJsonObj(metricName: String,
                                   tags: PointAttributes,
-                                  points: Seq[(Int, Double)]): ObjectNode = {
+                                  points: Seq[Point]): ObjectNode = {
 
     val jsonFactory = JsonNodeFactory.instance
     val resultNode = jsonFactory.objectNode()
@@ -189,7 +189,7 @@ class OpenTSDB2HttpApiServerHandler(storage: PointsStorage,
     }
     resultNode.put("tags", tagObj)
     val dpsObj = jsonFactory.objectNode()
-    for ((ts, value) <- points) {
+    for (Point(ts, value) <- points) {
       dpsObj.put(ts.toString, value)
     }
     resultNode.put("dps", dpsObj)
@@ -258,11 +258,9 @@ object OpenTSDB2HttpApiServer {
   def aggregatePoints(pointsGroups: PointsGroups,
                       interpolationAggregator: Seq[Double] => Double,
                       rate: Boolean,
-                      downsamplingOption: Option[(Int, Seq[Double] => Double)]): Map[PointAttributes, Seq[(Int, Double)]] = {
+                      downsamplingOption: Option[(Int, Seq[Double] => Double)]): Map[PointAttributes, Seq[Point]] = {
     def toGraphPointIterator(points: PointRope) = {
-      val graphPoints = points.iterator.map {
-        point => (point.timestamp, point.value)
-      }
+      val graphPoints = points.iterator
       val downsampled = downsamplingOption.map {
         case (interval, aggregator) => PointSeriesUtils.downsample(graphPoints, interval, aggregator)
       }.getOrElse(graphPoints)

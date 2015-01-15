@@ -1,7 +1,7 @@
 package popeye.query
 
 import akka.actor.{ActorRef, ActorSystem, Props, Actor}
-import popeye.Logging
+import popeye.{Point, Logging}
 import spray.http._
 import spray.http.HttpMethods._
 import spray.can.Http
@@ -117,7 +117,7 @@ object HttpQueryServer extends HttpServerFactory {
     system.actorOf(Props.apply(new HttpQueryServer(storage, executionContext)))
   }
 
-  private def aggregationsToString(aggregationsMap: Map[PointAttributes, Seq[(Int, Double)]]): String =
+  private def aggregationsToString(aggregationsMap: Map[PointAttributes, Seq[Point]]): String =
     aggregationsMap.toList
       .flatMap { case (attrs, points) => attrs +: points}
       .mkString("\n")
@@ -125,7 +125,7 @@ object HttpQueryServer extends HttpServerFactory {
 
   private def aggregatePoints(pointsGroups: PointsGroups,
                               interpolationAggregator: Seq[Double] => Double,
-                              downsamplingOption: Option[(Int, Seq[Double] => Double)]): Map[PointAttributes, Seq[(Int, Double)]] = {
+                              downsamplingOption: Option[(Int, Seq[Double] => Double)]): Map[PointAttributes, Seq[Point]] = {
     OpenTSDB2HttpApiServer.aggregatePoints(pointsGroups, interpolationAggregator, false, downsamplingOption)
   }
 }
