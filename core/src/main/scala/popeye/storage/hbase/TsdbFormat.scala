@@ -55,6 +55,80 @@ object TsdbFormat {
   final val FLAGS_MASK: Short = (FLAG_FLOAT | LENGTH_MASK).toShort
   /** Max time delta (in seconds) we can store in a column qualifier.  */
   final val MAX_TIMESPAN: Short = 3600
+
+  object AggregationType extends Enumeration {
+    type AggregationType = Value
+    val Max, Min, Sum, Avg = Value
+
+    def getId(aggregationType: AggregationType) = aggregationType match {
+      case Max => 1
+      case Min => 2
+      case Sum => 3
+      case Avg => 4
+    }
+
+    def getById(id: Int) = id match {
+      case 1 => Max
+      case 2 => Min
+      case 3 => Sum
+      case 4 => Avg
+    }
+  }
+
+  object DownsamplingResolution extends Enumeration {
+    val secondsInHour = 3600
+    val secondsInDay = secondsInHour * 24
+    type DownsamplingResolution = Value
+    val Minute5, Hour, Day = Value
+
+    def getId(resolution: DownsamplingResolution) = resolution match {
+      case Minute5 => 1
+      case Hour => 2
+      case Day => 3
+    }
+
+    def getById(id: Int) = id match {
+      case 1 => Minute5
+      case 2 => Hour
+      case 3 => Day
+    }
+
+    def resolutionInSeconds(resolution: DownsamplingResolution) = resolution match {
+      case Minute5 => 300
+      case Hour => secondsInHour
+      case Day => secondsInDay
+    }
+
+    def timespanInSeconds(resolution: DownsamplingResolution) = resolution match {
+      case Minute5 => secondsInHour * 5
+      case Hour => secondsInDay * 3
+      case Day => secondsInDay * 60
+    }
+  }
+
+  import DownsamplingResolution._
+  import AggregationType._
+
+  def renderDownsamplingByte(downsampling: Option[(DownsamplingResolution, AggregationType)]): Byte = {
+    val byteOption = downsampling.map {
+      case (resolution, aggregationType) =>
+        val resId = DownsamplingResolution.getId(resolution)
+        val aggrId = AggregationType.getId(aggregationType)
+        (resId << 4 | aggrId).toByte
+    }
+    byteOption.getOrElse(0)
+  }
+
+  def parseDownsamplingByte(dsByte: Byte): Option[(DownsamplingResolution, AggregationType)] = {
+    if (dsByte == 0) {
+      None
+    } else {
+      val downsamplingId = (dsByte & 0xf0) >> 4
+      val aggregationId = dsByte & 0x0f
+      Some(DownsamplingResolution.getById(downsamplingId), AggregationType.getById(aggregationId))
+    }
+  }
+
   val metricWidth: Int = UniqueIdMapping(MetricKind)
 
   val attributeNameWidth: Int = UniqueIdMapping(AttrNameKind)

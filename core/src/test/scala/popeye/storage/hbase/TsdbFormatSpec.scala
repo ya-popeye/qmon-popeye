@@ -552,6 +552,33 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     }
   }
 
+  behavior of "TsdbFormat downsampling descriptor"
+
+  import DownsamplingResolution._
+  import AggregationType._
+
+  it should "render zero byte" in {
+    TsdbFormat.renderDownsamplingByte(None) should equal(0.toByte)
+    TsdbFormat.parseDownsamplingByte(0) should equal(None)
+  }
+
+  it should "render byte for m5:min" in {
+    val downsampling = (Minute5, Min)
+    val dsByte = TsdbFormat.renderDownsamplingByte(Some(downsampling))
+    dsByte should equal(0x12.toByte)
+  }
+
+  it should "handle roundtrips" in {
+    def roundtrip(downsampling: Option[(DownsamplingResolution, AggregationType)]) = {
+      val dsByte = TsdbFormat.renderDownsamplingByte(downsampling)
+      val parsedDs = TsdbFormat.parseDownsamplingByte(dsByte)
+      parsedDs should equal(downsampling)
+    }
+    roundtrip(Some(Minute5, Max))
+    roundtrip(Some(Hour, Avg))
+    roundtrip(Some(Day, Min))
+  }
+
   def deterministicRandom: Random = {
     new Random(0)
   }
