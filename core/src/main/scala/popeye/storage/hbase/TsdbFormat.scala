@@ -5,6 +5,8 @@ import popeye.paking.{RowPacker, ValueTypeDescriptor}
 import popeye.proto.Message
 import popeye.storage.{QualifiedId, QualifiedName}
 import popeye.storage.hbase.TsdbFormat._
+import DownsamplingResolution.DownsamplingResolution
+import AggregationType.AggregationType
 import org.apache.hadoop.hbase.KeyValue
 import org.apache.hadoop.hbase.util.Bytes
 import popeye.{ListPoint, PointRope, Point, Logging}
@@ -38,10 +40,7 @@ object TsdbFormat {
     AttrValueKind -> 3.toShort,
     ShardKind -> 3.toShort
   )
-
-  /** Number of bytes on which a timestamp is encoded.  */
-  final val TIMESTAMP_BYTES: Short = 4
-
+  
   /** Number of LSBs in time_deltas reserved for flags.  */
   final val FLAG_BITS: Short = 4
   /**
@@ -54,7 +53,26 @@ object TsdbFormat {
   /** Mask to select all the FLAG_BITS.  */
   final val FLAGS_MASK: Short = (FLAG_FLOAT | LENGTH_MASK).toShort
   /** Max time delta (in seconds) we can store in a column qualifier.  */
-  final val MAX_TIMESPAN: Short = 3600
+  final val RAW_TIMESPAN: Int = 3600
+
+  trait Downsampling {
+    def rowTimespanInSeconds: Int
+
+    def resolutionInSeconds: Int
+  }
+
+  case object NoDownsampling extends Downsampling {
+    override def rowTimespanInSeconds: Int = RAW_TIMESPAN
+
+    override def resolutionInSeconds: Int = 1
+  }
+
+  case class EnabledDownsampling(downsamplingResolution: DownsamplingResolution,
+                                 aggregationType: AggregationType) extends Downsampling {
+    override def rowTimespanInSeconds: Int = DownsamplingResolution.timespanInSeconds(downsamplingResolution)
+
+    override def resolutionInSeconds: Int = DownsamplingResolution.resolutionInSeconds(downsamplingResolution)
+  }
 
   object AggregationType extends Enumeration {
     type AggregationType = Value
@@ -106,26 +124,24 @@ object TsdbFormat {
     }
   }
 
-  import DownsamplingResolution._
-  import AggregationType._
-
-  def renderDownsamplingByte(downsampling: Option[(DownsamplingResolution, AggregationType)]): Byte = {
-    val byteOption = downsampling.map {
-      case (resolution, aggregationType) =>
+  def renderDownsamplingByte(downsampling: Downsampling): Byte = {
+    downsampling match {
+      case NoDownsampling =>
+        0.toByte
+      case EnabledDownsampling(resolution, aggregationType) =>
         val resId = DownsamplingResolution.getId(resolution)
         val aggrId = AggregationType.getId(aggregationType)
         (resId << 4 | aggrId).toByte
     }
-    byteOption.getOrElse(0)
   }
 
-  def parseDownsamplingByte(dsByte: Byte): Option[(DownsamplingResolution, AggregationType)] = {
+  def parseDownsamplingByte(dsByte: Byte): Downsampling = {
     if (dsByte == 0) {
-      None
+      NoDownsampling
     } else {
       val downsamplingId = (dsByte & 0xf0) >> 4
       val aggregationId = dsByte & 0x0f
-      Some(DownsamplingResolution.getById(downsamplingId), AggregationType.getById(aggregationId))
+      EnabledDownsampling(DownsamplingResolution.getById(downsamplingId), AggregationType.getById(aggregationId))
     }
   }
 
@@ -134,23 +150,39 @@ object TsdbFormat {
   val attributeNameWidth: Int = UniqueIdMapping(AttrNameKind)
   val attributeValueWidth: Int = UniqueIdMapping(AttrValueKind)
   val attributeWidth = attributeNameWidth + attributeValueWidth
+  val baseTimeWidth: Int = 4
   val shardIdWidth: Int = UniqueIdMapping(ShardKind)
   val valueTypeIdWidth: Int = 1
+  val downsamplingQualByteWidth: Int = 1
   val uniqueIdGenerationWidth = 2
 
-  val uniqueIdGenerationOffset = 0
-  val metricOffset = uniqueIdGenerationOffset + uniqueIdGenerationWidth
-  val valueTypeIdOffset = metricOffset + metricWidth
-  val shardIdOffset = valueTypeIdOffset + valueTypeIdWidth
-  val timestampOffset = shardIdOffset + shardIdWidth
-  val attributesOffset = timestampOffset + TIMESTAMP_BYTES
+  val Seq(
+  uniqueIdGenerationOffset,
+  downsamplingQualByteOffset,
+  metricOffset,
+  valueTypeIdOffset,
+  shardIdOffset,
+  timestampOffset,
+  attributesOffset
+  ) = {
+    val widths = Seq(
+      uniqueIdGenerationWidth,
+      downsamplingQualByteWidth,
+      metricWidth,
+      valueTypeIdWidth,
+      shardIdWidth,
+      baseTimeWidth
+    )
+    val offsets = widths.scanLeft(0)((previousOffset, nextWidth) => previousOffset + nextWidth)
+    offsets
+  }
 
   val ROW_REGEX_FILTER_ENCODING = Charset.forName("ISO-8859-1")
 
   val rowPacker = new RowPacker(qualifierLength = 2, valueTypeDescriptor = ValueTypes.TsdbValueTypeDescriptor)
 
   trait ValueType {
-    def mkQualifiedValue(point: Message.Point): (Array[Byte], Array[Byte])
+    def mkQualifiedValue(point: Message.Point, downsampling: Downsampling): (Array[Byte], Array[Byte])
 
     def getValueTypeStructureId: Byte
   }
@@ -175,8 +207,8 @@ object TsdbFormat {
     val SingleValueTypeStructureId: Byte = 0
     val ListValueTypeStructureId: Byte = 1
 
-    def renderQualifier(timestamp: Long, isFloat: Boolean): Array[Byte] = {
-      val delta: Short = (timestamp % MAX_TIMESPAN).toShort
+    def renderQualifier(timestamp: Long, downsampling: Downsampling, isFloat: Boolean): Array[Byte] = {
+      val delta: Short = ((timestamp % downsampling.rowTimespanInSeconds) / downsampling.resolutionInSeconds).toShort
       val ndelta = delta << FLAG_BITS
       if (isFloat) {
         Bytes.toBytes(((0xffff & (FLAG_FLOAT | 0x3)) | ndelta).toShort)
@@ -246,24 +278,28 @@ object TsdbFormat {
 
 
   case object IntValueType extends ValueType {
-    override def mkQualifiedValue(point: Message.Point): (Array[Byte], Array[Byte]) = {
-      (ValueTypes.renderQualifier(point.getTimestamp, isFloat = false), Bytes.toBytes(point.getIntValue))
+    override def mkQualifiedValue(point: Message.Point, downsampling: Downsampling): (Array[Byte], Array[Byte]) = {
+      val qualifier = ValueTypes.renderQualifier(point.getTimestamp, downsampling, isFloat = false)
+      val value = Bytes.toBytes(point.getIntValue)
+      (qualifier, value)
     }
 
     override def getValueTypeStructureId: Byte = ValueTypes.SingleValueTypeStructureId
   }
 
   case object FloatValueType extends ValueType {
-    override def mkQualifiedValue(point: Message.Point): (Array[Byte], Array[Byte]) = {
-      (ValueTypes.renderQualifier(point.getTimestamp, isFloat = true), Bytes.toBytes(point.getFloatValue))
+    override def mkQualifiedValue(point: Message.Point, downsampling: Downsampling): (Array[Byte], Array[Byte]) = {
+      val qualifier = ValueTypes.renderQualifier(point.getTimestamp, downsampling, isFloat = true)
+      val value = Bytes.toBytes(point.getFloatValue)
+      (qualifier, value)
     }
 
     override def getValueTypeStructureId: Byte = ValueTypes.SingleValueTypeStructureId
   }
 
   case object IntListValueType extends ValueType {
-    override def mkQualifiedValue(point: Message.Point): (Array[Byte], Array[Byte]) = {
-      val qualifier = ValueTypes.renderQualifier(point.getTimestamp, isFloat = false)
+    override def mkQualifiedValue(point: Message.Point, downsampling: Downsampling): (Array[Byte], Array[Byte]) = {
+      val qualifier = ValueTypes.renderQualifier(point.getTimestamp, downsampling, isFloat = false)
       val value = longsToBytes(point.getIntListValueList.asScala)
       (qualifier, value)
     }
@@ -287,8 +323,8 @@ object TsdbFormat {
   }
 
   case object FloatListValueType extends ValueType {
-    override def mkQualifiedValue(point: Message.Point): (Array[Byte], Array[Byte]) = {
-      val qualifier = ValueTypes.renderQualifier(point.getTimestamp, isFloat = true)
+    override def mkQualifiedValue(point: Message.Point, downsampling: Downsampling): (Array[Byte], Array[Byte]) = {
+      val qualifier = ValueTypes.renderQualifier(point.getTimestamp, downsampling, isFloat = true)
       val value = floatsToBytes(point.getFloatListValueList.asScala)
       (qualifier, value)
     }
@@ -380,16 +416,17 @@ object TsdbFormat {
   def parseSingleValueRowResult(result: Result): ParsedSingleValueRowResult = {
     val row = result.getRow
     val (timeseriesId, baseTime) = parseTimeseriesIdAndBaseTime(row)
+    val downsampling = parseDownsamplingByte(row(downsamplingQualByteOffset))
     val cells = result.rawCells()
-    val qualiierAndValues = rowPacker.unpackRow(cells)
-    val points = qualiierAndValues.iterator.map {
+    val qualifierAndValues = rowPacker.unpackRow(cells)
+    val points = qualifierAndValues.iterator.map {
       case QualifierAndValue(
       qualifierArray, qualifierOffset, qualifierLength,
       valueArray, valueOffset, valueLength,
       timestamp) =>
         val (delta, isFloat) = ValueTypes.parseQualifierFromSlice(qualifierArray, qualifierOffset, qualifierLength)
         val value = ValueTypes.parseSingleValueFromSlice(valueArray, valueOffset, valueLength, isFloat)
-        Point(baseTime + delta, value.fold(_.toDouble, _.toDouble))
+        Point(baseTime + delta * downsampling.resolutionInSeconds, value.fold(_.toDouble, _.toDouble))
     }
     ParsedSingleValueRowResult(timeseriesId, PointRope.fromIterator(points))
   }
@@ -416,7 +453,7 @@ object TsdbFormat {
     val generationId = new BytesKey(copyOfRange(row, 0, uniqueIdGenerationWidth))
     val metricId = new BytesKey(copyOfRange(row, metricOffset, metricOffset + metricWidth))
     val shardId = new BytesKey(copyOfRange(row, shardIdOffset, shardIdOffset + attributeValueWidth))
-    val baseTime = Bytes.toInt(row, timestampOffset, TIMESTAMP_BYTES)
+    val baseTime = Bytes.toInt(row, timestampOffset, baseTimeWidth)
     val attributesBytes = copyOfRange(row, attributesOffset, row.length)
     val timeseriedId = TimeseriesId(generationId, metricId, shardId, createAttributesMap(attributesBytes))
     (timeseriedId, baseTime)
@@ -484,7 +521,8 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
 
   def convertToKeyValue(point: Message.Point,
                         idCache: QualifiedName => Option[BytesKey],
-                        currentTimeSeconds: Int): ConversionResult = {
+                        currentTimeSeconds: Int,
+                        downsampling: Downsampling = NoDownsampling): ConversionResult = {
     try {
       val generationId = getGenerationId(point, currentTimeSeconds)
       val metricId = idCache(QualifiedName(MetricKind, generationId, point.getMetric))
@@ -502,9 +540,10 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
       val valueType = ValueTypes.getType(point.getValueType)
       def attributesAreDefined = attributeIds.forall { case (n, v) => n.isDefined && v.isDefined }
       if (metricId.isDefined && shardId.isDefined && attributesAreDefined) {
-        val qualifiedValue = valueType.mkQualifiedValue(point)
+        val qualifiedValue = valueType.mkQualifiedValue(point, downsampling)
         val keyValue = mkKeyValue(
           generationId,
+          downsampling,
           metricId.get,
           valueType.getValueTypeStructureId,
           shardId.get,
@@ -588,10 +627,12 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
                timeRange: (Int, Int),
                attributeValueFilters: Map[String, ValueNameFilterCondition],
                idMap: Map[QualifiedName, BytesKey],
-               valueTypeStructureId: Byte): Seq[Scan] = {
+               valueTypeStructureId: Byte,
+               downsampling: Downsampling): Seq[Scan] = {
     val (startTime, stopTime) = timeRange
     val ranges = getTimeRanges(startTime, stopTime)
     val shardNames = getShardNames(attributeValueFilters)
+    val downsamplingByte = renderDownsamplingByte(downsampling)
     info(s"getScans metric: $metric, shard names: $shardNames, ranges: $ranges")
     ranges.map {
       range =>
@@ -614,7 +655,9 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
             shardIds,
             (range.start, range.stop),
             attrIdFilters,
-            valueTypeStructureId)
+            valueTypeStructureId,
+            downsamplingByte
+          )
         }
     }.collect { case Some(scans) => scans }.flatten
   }
@@ -687,10 +730,11 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
                             shardIds: Seq[BytesKey],
                             timeRange: (Int, Int),
                             attributePredicates: Map[BytesKey, ValueIdFilterCondition],
-                            valueTypeStructureId: Byte): Seq[Scan] = {
+                            valueTypeStructureId: Byte,
+                            downsamplingByte: Byte): Seq[Scan] = {
     val (startTime, endTime) = timeRange
-    val baseStartTime = startTime - (startTime % MAX_TIMESPAN)
-    val rowPrefix = generationId.bytes ++ metricId.bytes :+ valueTypeStructureId
+    val baseStartTime = startTime - (startTime % RAW_TIMESPAN)
+    val rowPrefix = (generationId.bytes :+ downsamplingByte) ++ metricId.bytes :+ valueTypeStructureId
     val startTimeBytes = Bytes.toBytes(baseStartTime)
     val stopTimeBytes = Bytes.toBytes(endTime)
     for (shardId <- shardIds) yield {
@@ -736,10 +780,11 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
   }
 
   private def getBaseTime(timestamp: Int) = {
-    timestamp - (timestamp % MAX_TIMESPAN)
+    timestamp - (timestamp % RAW_TIMESPAN)
   }
 
   private def mkKeyValue(timeRangeId: BytesKey,
+                         downsampling: Downsampling,
                          metric: BytesKey,
                          valueTypeStructureId: Byte,
                          shardId: BytesKey,
@@ -747,11 +792,15 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
                          attributeIds: Seq[(BytesKey, BytesKey)],
                          keyValueTimestamp: Long,
                          value: (Array[Byte], Array[Byte])) = {
-    val baseTime: Int = (timestamp - (timestamp % MAX_TIMESPAN)).toInt
+    val downsamplingByte = renderDownsamplingByte(downsampling)
+    val rowTimespan = downsampling.rowTimespanInSeconds
+    val baseTime: Int = (timestamp - (timestamp % rowTimespan)).toInt
     val rowLength = attributesOffset + attributeIds.length * attributeWidth
     val row = new Array[Byte](rowLength)
     var off = 0
     off = copyBytes(timeRangeId, row, off)
+    row(off) = downsamplingByte
+    off += 1
     off = copyBytes(metric, row, off)
     row(off) = valueTypeStructureId
     off += 1
@@ -762,8 +811,6 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
       off = copyBytes(attr._1, row, off)
       off = copyBytes(attr._2, row, off)
     }
-    val delta = (timestamp - baseTime).toShort
-    trace(s"Made point: ts=$timestamp, basets=$baseTime, delta=$delta")
     new KeyValue(row, PointsFamily, value._1, keyValueTimestamp, value._2)
   }
 

@@ -28,7 +28,7 @@ case class TimeRangeAndId(start: Int, stop: Int, id: Short) {
 // points are packed in rows by timespans, so period must be timespan-aligned
 case class PeriodConfig(startTime: Int, periodInTimespans: Int, firstPeriodId: Short) {
   def periodInSeconds: Int = {
-    periodInTimespans * TsdbFormat.MAX_TIMESPAN
+    periodInTimespans * TsdbFormat.RAW_TIMESPAN
   }
 
   def getPeriodId(timestamp: Int): Short = {

@@ -9,7 +9,7 @@ import org.apache.hadoop.hbase.util.Bytes
 import org.apache.hadoop.hbase.client.Result
 import popeye.test.PopeyeTestUtils._
 import scala.collection.immutable.SortedMap
-import org.apache.hadoop.hbase.{CellUtil, KeyValue}
+import org.apache.hadoop.hbase.{Cell, CellUtil, KeyValue}
 import java.nio.CharBuffer
 import java.util.regex.Pattern
 import scala.util.Random
@@ -79,8 +79,9 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val SuccessfulConversion(keyValue) = tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap.get, 0)
     val metricId = Array[Byte](1, 0, 1)
     val valueTypeStructureId = Array[Byte](TsdbFormat.ValueTypes.SingleValueTypeStructureId)
+    val downsamplingByte = Array[Byte](TsdbFormat.renderDownsamplingByte(NoDownsampling))
     val timestamp = samplePoint.getTimestamp.toInt
-    val timestampBytes = Bytes.toBytes(timestamp - timestamp % TsdbFormat.MAX_TIMESPAN)
+    val timestampBytes = Bytes.toBytes(timestamp - timestamp % TsdbFormat.RAW_TIMESPAN)
 
     val attr = Array[Byte](2, 0, 1 /*name*/ , 3, 0, 1 /*value*/)
     val anotherAttr = Array[Byte](2, 0, 2 /*name*/ , 3, 0, 2 /*value*/)
@@ -91,6 +92,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
 
     val row = Seq(
       defaultGenerationIdBytes.bytes,
+      downsamplingByte,
       metricId,
       valueTypeStructureId,
       shardId,
@@ -131,6 +133,15 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     parseListValueRowResult(result).lists.head should equal(ListPoint(timestamp, Right(Seq(1, 2, 3))))
   }
 
+  it should "use longer timespans for downsampled timeseries" in {
+    val tsdbFormat = createTsdbFormat()
+    val point = createPoint("test", 3600 * 24 * 59, Seq(defaultShardAttributeName -> "value"), Right(1))
+    val downsampling = EnabledDownsampling(DownsamplingResolution.Day, AggregationType.Max)
+    val SuccessfulConversion(keyValue) = tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0, downsampling)
+    val (tsId, baseTime) = TsdbFormat.parseTimeseriesIdAndBaseTime(CellUtil.cloneRow(keyValue))
+    baseTime should equal(0)
+  }
+
   ignore should "have good performance" in {
     val tsdbFormat = createTsdbFormat(shardAttributes = (0 until 2).map(i => f"metric_$i").toSet)
     val random = new Random(0)
@@ -167,7 +178,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
 
   it should "serialize empty lists" in {
     val point = createListPoint(value = Left(Seq()))
-    val (_, value: Array[Byte]) = IntListValueType.mkQualifiedValue(point)
+    val (_, value: Array[Byte]) = IntListValueType.mkQualifiedValue(point, NoDownsampling)
     IntListValueType.parseIntListValue(value).toSeq should be(empty)
   }
 
@@ -175,7 +186,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
 
   it should "serialize empty lists" in {
     val point = createListPoint(value = Right(Seq()))
-    val (_, value: Array[Byte]) = FloatListValueType.mkQualifiedValue(point)
+    val (_, value: Array[Byte]) = FloatListValueType.mkQualifiedValue(point, NoDownsampling)
     FloatListValueType.parseFloatListValue(value).toSeq should be(empty)
   }
 
@@ -274,6 +285,16 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     parsedRowResult.points.iterator.toList should equal(expectedPoints)
   }
 
+  it should "parse downsampled timeseries correctly" in {
+    val tsdbFormat = createTsdbFormat()
+    val point = createPoint("test", 3600 * 24 * 59, Seq(defaultShardAttributeName -> "value"), Right(1))
+    val downsampling = EnabledDownsampling(DownsamplingResolution.Day, AggregationType.Max)
+    val SuccessfulConversion(keyValue) = tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0, downsampling)
+    val parsedRowResult = TsdbFormat.parseSingleValueRowResult(Result.create(List(keyValue.asInstanceOf[Cell]).asJava))
+    val timeseriesId = parsedRowResult.timeseriesId
+    parsedRowResult.points.iterator.toList should equal(List(Point(3600 * 24 * 59, 1.0)))
+  }
+
   behavior of "TsdbFormat.getScanNames"
 
   it should "get qualified names" in {
@@ -331,15 +352,23 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       timeRange = (0, 1),
       attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
       idMap = sampleIdMap,
-      TsdbFormat.ValueTypes.SingleValueTypeStructureId)
+      TsdbFormat.ValueTypes.SingleValueTypeStructureId,
+      NoDownsampling
+    )
     scans.size should equal(1)
     val scan = scans(0)
+    val downsamplingByte = 0.toByte
     val metricId = Array[Byte](1, 0, 1)
     val valueStructureTypeId = ValueTypes.SingleValueTypeStructureId
     val shardId = Array[Byte](4, 0, 1)
     val startTimestamp = Array[Byte](0, 0, 0, 0)
     val stopTimestamp = Array[Byte](0, 0, 0, 1)
-    val rowPrefix = defaultGenerationIdBytes.bytes ++ metricId ++ Array(valueStructureTypeId) ++ shardId
+    val rowPrefix =
+      defaultGenerationIdBytes.bytes ++
+        Array(downsamplingByte) ++
+        metricId ++
+        Array(valueStructureTypeId) ++
+        shardId
     scan.getStartRow should equal(rowPrefix ++ startTimestamp)
     scan.getStopRow should equal(rowPrefix ++ stopTimestamp)
   }
@@ -358,7 +387,9 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       timeRange = (0, 4000),
       attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
       idMap = idMap,
-      TsdbFormat.ValueTypes.SingleValueTypeStructureId)
+      TsdbFormat.ValueTypes.SingleValueTypeStructureId,
+      NoDownsampling
+    )
     scans.size should equal(2)
     scans(0).getStartRow.slice(0, uniqueIdGenerationWidth) should equal(Array[Byte](0, 0))
     scans(1).getStartRow.slice(0, uniqueIdGenerationWidth) should equal(Array[Byte](0, 1))
@@ -375,7 +406,9 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       timeRange = (0, 4000),
       attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
       idMap = idMap,
-      TsdbFormat.ValueTypes.SingleValueTypeStructureId)
+      TsdbFormat.ValueTypes.SingleValueTypeStructureId,
+      NoDownsampling
+    )
     scans.size should equal(1)
     scans(0).getStartRow.slice(0, uniqueIdGenerationWidth) should equal(Array[Byte](0, 0))
   }
@@ -391,7 +424,9 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       timeRange = (0, 4000),
       attributeValueFilters = Map(defaultShardAttributeName -> MultipleValueNames(Seq("value", "anotherValue"))),
       idMap = idMap,
-      TsdbFormat.ValueTypes.SingleValueTypeStructureId)
+      TsdbFormat.ValueTypes.SingleValueTypeStructureId,
+      NoDownsampling
+    )
     scans.size should equal(2)
     scans(0).getStartRow.slice(shardIdOffset, shardIdOffset + shardIdWidth) should equal(Array[Byte](4, 0, 1))
     scans(1).getStartRow.slice(shardIdOffset, shardIdOffset + shardIdWidth) should equal(Array[Byte](4, 0, 2))
@@ -404,10 +439,25 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       timeRange = (0, 1),
       attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
       idMap = sampleIdMap,
-      TsdbFormat.ValueTypes.ListValueTypeStructureId
+      TsdbFormat.ValueTypes.ListValueTypeStructureId,
+      NoDownsampling
     )
     scans.size should equal(1)
     scans(0).getStartRow()(valueTypeIdOffset) should equal(ValueTypes.ListValueTypeStructureId)
+  }
+
+  it should "include downsampling byte flag" in {
+    val tsdbFormat = createTsdbFormat()
+    val scans = tsdbFormat.getScans(
+      metric = "test",
+      timeRange = (0, 1),
+      attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
+      idMap = sampleIdMap,
+      TsdbFormat.ValueTypes.ListValueTypeStructureId,
+      EnabledDownsampling(DownsamplingResolution.Minute5, AggregationType.Min)
+    )
+    scans.size should equal(1)
+    scans(0).getStartRow()(downsamplingQualByteOffset) should equal(0x12.toByte)
   }
 
   behavior of "TsdbFormat.createRowRegexp"
@@ -558,25 +608,25 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
   import AggregationType._
 
   it should "render zero byte" in {
-    TsdbFormat.renderDownsamplingByte(None) should equal(0.toByte)
-    TsdbFormat.parseDownsamplingByte(0) should equal(None)
+    TsdbFormat.renderDownsamplingByte(NoDownsampling) should equal(0.toByte)
+    TsdbFormat.parseDownsamplingByte(0) should equal(NoDownsampling)
   }
 
   it should "render byte for m5:min" in {
-    val downsampling = (Minute5, Min)
-    val dsByte = TsdbFormat.renderDownsamplingByte(Some(downsampling))
+    val downsampling = EnabledDownsampling(Minute5, Min)
+    val dsByte = TsdbFormat.renderDownsamplingByte(downsampling)
     dsByte should equal(0x12.toByte)
   }
 
   it should "handle roundtrips" in {
-    def roundtrip(downsampling: Option[(DownsamplingResolution, AggregationType)]) = {
+    def roundtrip(downsampling: Downsampling) = {
       val dsByte = TsdbFormat.renderDownsamplingByte(downsampling)
       val parsedDs = TsdbFormat.parseDownsamplingByte(dsByte)
       parsedDs should equal(downsampling)
     }
-    roundtrip(Some(Minute5, Max))
-    roundtrip(Some(Hour, Avg))
-    roundtrip(Some(Day, Min))
+    roundtrip(EnabledDownsampling(Minute5, Max))
+    roundtrip(EnabledDownsampling(Hour, Avg))
+    roundtrip(EnabledDownsampling(Day, Min))
   }
 
   def deterministicRandom: Random = {

@@ -30,8 +30,8 @@ public class TsdbPointsFilter extends FilterBase {
 
   private void checkAlignment(int baseTimeStopSeconds, String variableName) {
     Preconditions.checkArgument(
-      baseTimeStopSeconds % TsdbFormat.MAX_TIMESPAN() == 0,
-      variableName + " (" + baseTimeStopSeconds + ") should be divisible by " + TsdbFormat.MAX_TIMESPAN()
+      baseTimeStopSeconds % TsdbFormat.RAW_TIMESPAN() == 0,
+      variableName + " (" + baseTimeStopSeconds + ") should be divisible by " + TsdbFormat.RAW_TIMESPAN()
     );
   }
 
@@ -57,7 +57,7 @@ public class TsdbPointsFilter extends FilterBase {
   private ReturnCode filterKeyValueBaseCase(byte[] rowArray, int rowOffset) {
     byte pointValueTypeId = rowArray[rowOffset + TsdbFormat.valueTypeIdOffset()];
     boolean valueTypeMatches = pointValueTypeId == valueTypeId;
-    int pointBaseTime = Bytes.toInt(rowArray, rowOffset + TsdbFormat.timestampOffset(), TsdbFormat.TIMESTAMP_BYTES());
+    int pointBaseTime = Bytes.toInt(rowArray, rowOffset + TsdbFormat.timestampOffset(), TsdbFormat.baseTimeWidth());
     boolean timestampIsInRange = baseTimeStartSeconds <= pointBaseTime && pointBaseTime < baseTimeStopSeconds;
     if (valueTypeMatches && timestampIsInRange) {
       return ReturnCode.INCLUDE;
@@ -89,7 +89,7 @@ public class TsdbPointsFilter extends FilterBase {
     byte pointValueTypeId = rowArray[rowOffset + TsdbFormat.valueTypeIdOffset()];
     int valueTypeComparison = UnsignedBytes.compare(pointValueTypeId, valueTypeId);
     if (valueTypeComparison == 0) {
-      int pointBaseTime = Bytes.toInt(rowArray, rowOffset + TsdbFormat.timestampOffset(), TsdbFormat.TIMESTAMP_BYTES());
+      int pointBaseTime = Bytes.toInt(rowArray, rowOffset + TsdbFormat.timestampOffset(), TsdbFormat.baseTimeWidth());
       if (pointBaseTime < baseTimeStartSeconds) {
         byte[] rowHint = Bytes.copy(rowArray, rowOffset, TsdbFormat.attributesOffset());
         Bytes.putInt(rowHint, TsdbFormat.timestampOffset(), baseTimeStartSeconds);

@@ -10,6 +10,7 @@ import org.apache.hadoop.hbase.{CellUtil, KeyValue}
 import popeye._
 import popeye.proto.{Message, PackedPoints}
 import popeye.storage.hbase.HBaseStorage._
+import popeye.storage.hbase.TsdbFormat.NoDownsampling
 import popeye.storage.{QualifiedId, QualifiedName, ValueNameFilterCondition}
 import popeye.util.hbase.HBaseUtils
 import popeye.util.hbase.HBaseUtils.ChunkedResultsMetrics
@@ -147,7 +148,8 @@ class HBaseStorage(tableName: String,
         timeRange,
         attributes,
         scanNameToIdMap,
-        valueTypeStructureId
+        valueTypeStructureId,
+        NoDownsampling
       )
       val scansString = scans.map {
         scan =>
