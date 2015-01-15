@@ -255,6 +255,7 @@ object PopeyeBuild extends Build {
       ).excluding(Version.commonExclusions: _*)
         .excluding(Version.slf4jExclusions: _*),
       fork in test := true,
+      parallelExecution in test := false,
       javaOptions in test ++= Seq("-Xmx2g", "-Xms1g", "-XX:MaxPermSize=512m")
     ).dependsOn(popeyeCore)
 

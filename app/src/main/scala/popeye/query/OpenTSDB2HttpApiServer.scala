@@ -66,7 +66,7 @@ class OpenTSDB2HttpApiServerHandler(storage: PointsStorage,
 
     case request@HttpRequest(POST, path@Uri.Path("/api/query"), _, _, _) =>
       val json = objectMapper.readTree(request.entity.asString)
-      info(s"points request: ${ objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(json) }")
+      info(s"points request: ${ objectMapper.writeValueAsString(json) }")
       val startMillis = json.get("start").getLongValue
       val stopMillis = if (json.has("end")) json.get("end").getLongValue else System.currentTimeMillis()
       val queries = json.get("queries").asScala.toList.map(parseTsQuery)
