@@ -14,6 +14,8 @@ trait PointRope {
   def concat(right: PointRope) = new PointRope.CompositePointRope(Vector(this, right))
 
   def size: Int
+
+  def last: Point
 }
 
 
@@ -23,12 +25,16 @@ object PointRope {
     override def iterators: Iterator[Iterator[Point]] = pointRopes.iterator.flatMap(_.iterators)
 
     override def size: Int = pointRopes.map(_.size).sum
+
+    override def last: Point = pointRopes.last.last
   }
 
   private[PointRope] class SinglePointArrayRope(pointArray: PointArray) extends PointRope {
     override def iterators: Iterator[Iterator[Point]] = Iterator.single(pointArray.iterator)
 
     override def size: Int = pointArray.size
+
+    override def last: Point = pointArray.last
   }
 
   def fromIterator(points: Iterator[Point]) = {
@@ -62,6 +68,8 @@ class PointArray(protected val timestamps: Array[Int],
   }
 
   def size = timestamps.length
+
+  def last = Point(timestamps.last, values.last)
 
   override def toString: String = iterator.mkString("PointArray(", ", ", ")")
 }

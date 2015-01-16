@@ -99,6 +99,13 @@ object TsdbFormat {
     type DownsamplingResolution = Value
     val Minute5, Hour, Day = Value
 
+    val resolutions:SortedMap[Int, DownsamplingResolution] = {
+      val pairs = values.toList.map {
+        resolution => (resolutionInSeconds(resolution), resolution)
+      }
+      SortedMap(pairs: _*)
+    }
+
     def getId(resolution: DownsamplingResolution) = resolution match {
       case Minute5 => 1
       case Hour => 2

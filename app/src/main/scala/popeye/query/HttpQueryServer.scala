@@ -43,7 +43,7 @@ class HttpQueryServer(storage: PointsStorage, executionContext: ExecutionContext
           unfulfillablePromise.future
         )
         val aggregatedPointsFuture = pointsGroupsFuture.map {
-          groups => aggregationsToString(aggregatePoints(groups, aggregation, downsampling))
+          groups => aggregationsToString(aggregatePoints(groups, aggregation))
         }
         aggregatedPointsFuture.onComplete {
           tryString =>
@@ -125,8 +125,7 @@ object HttpQueryServer extends HttpServerFactory {
 
 
   private def aggregatePoints(pointsGroups: PointsGroups,
-                              interpolationAggregator: Seq[Double] => Double,
-                              downsamplingOption: Option[(Int, Seq[Double] => Double)]): Map[PointAttributes, Seq[Point]] = {
-    OpenTSDB2HttpApiServer.aggregatePoints(pointsGroups, interpolationAggregator, false, downsamplingOption)
+                              interpolationAggregator: Seq[Double] => Double): Map[PointAttributes, Seq[Point]] = {
+    OpenTSDB2HttpApiServer.aggregatePoints(pointsGroups, interpolationAggregator, false)
   }
 }

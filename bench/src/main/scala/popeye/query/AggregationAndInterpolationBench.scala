@@ -17,19 +17,16 @@ object AggregationAndInterpolationBench {
     println(f"time step: $timeStep, aggregator: $aggregatorKey")
     println()
 
-    benchmark(iterations = 100, numberOfSeries = 1, pointsPerSeries = 1000, rate = false, downsamplingOption = None)
-    benchmark(iterations = 100, numberOfSeries = 10, pointsPerSeries = 1000, rate = false, downsamplingOption = None)
-    benchmark(numberOfSeries = 100, pointsPerSeries = 1000, rate = false, downsamplingOption = None)
-    benchmark(numberOfSeries = 100, pointsPerSeries = 1000, rate = true, downsamplingOption = None)
-    benchmark(iterations = 100, numberOfSeries = 10, pointsPerSeries = 1000, rate = false, downsamplingOption = Some(timeStep * 10))
-    benchmark(iterations = 100, numberOfSeries = 1, pointsPerSeries = 10000, rate = true, downsamplingOption = Some(timeStep * 10))
+    benchmark(iterations = 100, numberOfSeries = 1, pointsPerSeries = 1000, rate = false)
+    benchmark(iterations = 100, numberOfSeries = 10, pointsPerSeries = 1000, rate = false)
+    benchmark(numberOfSeries = 100, pointsPerSeries = 1000, rate = false)
+    benchmark(numberOfSeries = 100, pointsPerSeries = 1000, rate = true)
   }
 
   def benchmark(iterations: Int = 1,
                 numberOfSeries: Int,
                 pointsPerSeries: Int,
-                rate: Boolean,
-                downsamplingOption: Option[Int]) = {
+                rate: Boolean) = {
     val random = new Random()
     val startTime = 1416395727 // Wed Nov 19 14:15:27 MSK 2014
     val seriesStartTimes = List.fill(numberOfSeries)(random.nextInt(timeStep))
@@ -55,12 +52,10 @@ object AggregationAndInterpolationBench {
       aggregatePoints(
         pointsGroups,
         aggregator,
-        rate,
-        downsamplingOption.map { interval => (interval, aggregator) }
+        rate
       ).toList
     }
-    println(f"number of series: $numberOfSeries, points per series: $pointsPerSeries")
-    println(f"rate: $rate, downsample interval: ${ downsamplingOption.getOrElse("no downsampling") }")
+    println(f"number of series: $numberOfSeries, points per series: $pointsPerSeries, rate: $rate")
     println(f"min time: ${ benchResult.minTime }, median time: ${ benchResult.medianTime }")
     println()
   }

@@ -6,6 +6,7 @@ import org.codehaus.jackson.node.{ObjectNode, JsonNodeFactory}
 import popeye.storage.hbase.HBaseStorage._
 import popeye.storage.ValueNameFilterCondition
 import popeye.storage.ValueNameFilterCondition.{SingleValueName, MultipleValueNames, AllValueNames}
+import popeye.storage.hbase.TsdbFormat
 import scala.collection.JavaConverters._
 import akka.actor.{Props, ActorRef, ActorSystem, Actor}
 import org.codehaus.jackson.map.ObjectMapper
@@ -74,24 +75,24 @@ class OpenTSDB2HttpApiServerHandler(storage: PointsStorage,
       val queryResults = Future.traverse(queries) {
         query =>
           val storageReadTimeContext = metrics.storageReadTime.timerContext()
+          val downsampleOption = query.downsample.map {
+            case (interval, aggrgKey) => (interval, aggregatorNameToTypeMap(aggrgKey))
+          }
           val pointGroupsFuture = storage.getPoints(
             query.metricName,
             ((startMillis / 1000).toInt, (stopMillis / 1000).toInt),
             query.tags,
-            None,
+            downsampleOption,
             storageRequestCancellation.future
           )
           val aggregator = aggregators(query.aggregatorKey)
-          val downsampleOption = query.downsample.map {
-            case (interval, aggrgKey) => (interval, aggregators(aggrgKey))
-          }
           for {
             pointGroups <- pointGroupsFuture
           } yield {
             storageReadTimeContext.stop()
             debug(s"got point groups sizes: ${ pointGroups.groupsMap.mapValues(_.seriesMap.mapValues(_.size)) }")
             val aggregatedPoints = metrics.aggregationTime.time {
-              aggregatePoints(pointGroups, aggregator, query.isRate, downsampleOption)
+              aggregatePoints(pointGroups, aggregator, query.isRate)
             }
             (query.metricName, aggregatedPoints)
           }
@@ -256,19 +257,25 @@ object OpenTSDB2HttpApiServer {
     "avg" -> (seq => seq.sum / seq.size)
   )
 
+  val aggregatorNameToTypeMap = {
+    import TsdbFormat.AggregationType._
+    Map[String, AggregationType](
+      "sum" -> Sum,
+      "min" -> Min,
+      "max" -> Max,
+      "avg" -> Avg
+    )
+  }
+
   def aggregatePoints(pointsGroups: PointsGroups,
                       interpolationAggregator: Seq[Double] => Double,
-                      rate: Boolean,
-                      downsamplingOption: Option[(Int, Seq[Double] => Double)]): Map[PointAttributes, Seq[Point]] = {
+                      rate: Boolean): Map[PointAttributes, Seq[Point]] = {
     def toGraphPointIterator(points: PointRope) = {
       val graphPoints = points.iterator
-      val downsampled = downsamplingOption.map {
-        case (interval, aggregator) => PointSeriesUtils.downsample(graphPoints, interval, aggregator)
-      }.getOrElse(graphPoints)
       if (rate) {
-        PointSeriesUtils.differentiate(downsampled)
+        PointSeriesUtils.differentiate(graphPoints)
       } else {
-        downsampled
+        graphPoints
       }
     }
     pointsGroups.groupsMap.mapValues {
