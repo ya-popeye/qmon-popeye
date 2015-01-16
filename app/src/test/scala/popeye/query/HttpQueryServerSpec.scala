@@ -27,7 +27,7 @@ class HttpQueryServerSpec extends AkkaTestKitSpec("http-query") with MockitoSuga
 
   it should "parse query string" in {
     val storage = mock[PointsStorage]
-    stub(storage.getPoints(any(), any(), any(), any())).toReturn(Future.successful(PointsGroups(Map.empty)))
+    stub(storage.getPoints(any(), any(), any(), any(), any())).toReturn(Future.successful(PointsGroups(Map.empty)))
     val serverRef = TestActorRef(Props.apply(new HttpQueryServer(storage, executionContext)))
     val attributesParams = "attrs=" +
       "single->foo;" +
@@ -48,7 +48,7 @@ class HttpQueryServerSpec extends AkkaTestKitSpec("http-query") with MockitoSuga
       "multiple" -> MultipleValueNames(Seq("foo", "bar")),
       "all" -> AllValueNames
     )
-    verify(storage).getPoints(equalTo("metricId"), equalTo((0, 1)), equalTo(attrs), any())
+    verify(storage).getPoints(equalTo("metricId"), equalTo((0, 1)), equalTo(attrs), any(), any())
   }
 
 }

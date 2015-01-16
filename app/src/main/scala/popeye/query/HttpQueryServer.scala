@@ -39,6 +39,7 @@ class HttpQueryServer(storage: PointsStorage, executionContext: ExecutionContext
           metricName,
           (startTime.toInt, endTime.toInt),
           attributes,
+          None,
           unfulfillablePromise.future
         )
         val aggregatedPointsFuture = pointsGroupsFuture.map {

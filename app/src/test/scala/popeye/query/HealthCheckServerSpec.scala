@@ -2,6 +2,7 @@ package popeye.query
 
 import org.scalatest.mock.MockitoSugar
 import org.mockito.Mockito._
+import popeye.storage.hbase.TsdbFormat.{Downsampling, NoDownsampling}
 import popeye.test.AkkaTestKitSpec
 import scala.concurrent.{ExecutionContext, Await, Future}
 import scala.collection.immutable.SortedMap
@@ -61,6 +62,7 @@ class HealthCheckServerSpec extends AkkaTestKitSpec("http-query") with MockitoSu
       equalTo(metricName),
       equalTo((70, 80)),
       equalTo(valueFilters),
+      equalTo(None),
       any()
     )).toReturn(Future.successful(firstGroups))
     val secondGroups = pointsGroups(countAttr, numberOfDistinctTagValuesInSecondTimeInterval)
@@ -68,6 +70,7 @@ class HealthCheckServerSpec extends AkkaTestKitSpec("http-query") with MockitoSu
       equalTo(metricName),
       equalTo((80, 90)),
       equalTo(valueFilters),
+      equalTo(None),
       any()
     )).toReturn(Future.successful(secondGroups))
     val future = HealthCheckTool.checkHealth(
@@ -103,7 +106,7 @@ class HealthCheckServerSpec extends AkkaTestKitSpec("http-query") with MockitoSu
     val countAttr = "host"
     val timeInterval = 10
     val points = pointsGroups(countAttr, 10)
-    stub(storage.getPoints(any(), any(), any(), any())).toReturn(Future.successful(points))
+    stub(storage.getPoints(any(), any(), any(), any(), any())).toReturn(Future.successful(points))
     val serverRef = TestActorRef(Props.apply(new HealthCheckServer(storage, executionContext)))
     val uriString = f"/?metric=$metricName&fixed_attrs=$fixedAttrs&count_attr=$countAttr&time_interval=$timeInterval"
     val future = (serverRef ? HttpRequest(GET, Uri(uriString))).mapTo[HttpResponse]
@@ -117,7 +120,7 @@ class HealthCheckServerSpec extends AkkaTestKitSpec("http-query") with MockitoSu
     val fixedAttrs = "foo+bar"
     val countAttr = "host"
     val timeInterval = 10
-    stub(storage.getPoints(any(), any(), any(), any())).toReturn(Future.failed(new RuntimeException()))
+    stub(storage.getPoints(any(), any(), any(), any(), any())).toReturn(Future.failed(new RuntimeException()))
     val serverRef = TestActorRef(Props.apply(new HealthCheckServer(storage, executionContext)))
     val uriString = f"/?metric=$metricName&fixed_attrs=$fixedAttrs&count_attr=$countAttr&time_interval=$timeInterval"
     val future = (serverRef ? HttpRequest(GET, Uri(uriString))).mapTo[HttpResponse]
@@ -132,7 +135,7 @@ class HealthCheckServerSpec extends AkkaTestKitSpec("http-query") with MockitoSu
     val countAttr = "host"
     val timeInterval = 10
     val points = pointsGroups(countAttr, 10)
-    stub(storage.getPoints(any(), any(), any(), any())).toReturn(Future.successful(points))
+    stub(storage.getPoints(any(), any(), any(), any(), any())).toReturn(Future.successful(points))
     val serverRef = TestActorRef(Props.apply(new HealthCheckServer(storage, executionContext)))
     val uriString = f"/?metric=$metricName&fixed_attrs=$fixedAttrs&count_attr=$countAttr&time_interval=$timeInterval"
     val future = (serverRef ? HttpRequest(GET, Uri(uriString))).mapTo[HttpResponse]
@@ -146,7 +149,7 @@ class HealthCheckServerSpec extends AkkaTestKitSpec("http-query") with MockitoSu
     val countAttr = "host"
     val timeInterval = 10
     val points = pointsGroups(countAttr, 10)
-    stub(storage.getPoints(any(), any(), any(), any())).toReturn(Future.successful(points))
+    stub(storage.getPoints(any(), any(), any(), any(), any())).toReturn(Future.successful(points))
     val serverRef = TestActorRef(Props.apply(new HealthCheckServer(storage, executionContext)))
     val uriString = f"/?metric=$metricName&count_attr=$countAttr&time_interval=$timeInterval"
     val future = (serverRef ? HttpRequest(GET, Uri(uriString))).mapTo[HttpResponse]
@@ -176,7 +179,7 @@ class HealthCheckServerSpec extends AkkaTestKitSpec("http-query") with MockitoSu
   def testBadRequestResponse(uriString: String, errorMessageMatcher: Matcher[String]) {
     val executionContext = newExecutionContext
     val storage = mock[PointsStorage]
-    stub(storage.getPoints(any(), any(), any(), any())).toReturn(Future.failed(new RuntimeException()))
+    stub(storage.getPoints(any(), any(), any(), any(), any())).toReturn(Future.failed(new RuntimeException()))
     val serverRef = TestActorRef(Props.apply(new HealthCheckServer(storage, executionContext)))
     val future = (serverRef ? HttpRequest(GET, Uri(uriString))).mapTo[HttpResponse]
     val response = Await.result(future, 5 seconds)

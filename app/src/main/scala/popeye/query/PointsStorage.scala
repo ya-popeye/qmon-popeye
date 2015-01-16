@@ -12,6 +12,7 @@ trait PointsStorage {
   def getPoints(metric: String,
                 timeRange: (Int, Int),
                 attributes: Map[String, ValueNameFilterCondition],
+                downsampling: Option[(Int, TsdbFormat.AggregationType.AggregationType)],
                 cancellation: Future[Nothing]): Future[PointsGroups]
 
   def getSuggestions(namePrefix: String, nameType: NameType, maxSuggestions: Int): Seq[String]
@@ -35,6 +36,7 @@ object PointsStorage {
     def getPoints(metric: String,
                   timeRange: (Int, Int),
                   attributes: Map[String, ValueNameFilterCondition],
+                  downsampling: Option[(Int, TsdbFormat.AggregationType.AggregationType)],
                   cancellation: Future[Nothing]) = {
       val groupsIterator = pointsStorage.getPoints(metric, timeRange, attributes)(executionContext)
       HBaseStorage.collectAllGroups(groupsIterator, cancellation)(executionContext)

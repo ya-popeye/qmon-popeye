@@ -130,7 +130,7 @@ object HealthCheckTool {
     def countDistinctTagValues(startStopTime: (Int, Int)): Future[Int] = {
       val unfulfillablePromise = Promise()
       pointsStorage
-        .getPoints(metric, startStopTime, nameValueConditions, unfulfillablePromise.future)
+        .getPoints(metric, startStopTime, nameValueConditions, None, unfulfillablePromise.future)
         .map(groups => getAllDistinctAttributeValues(groups).size)
     }
     val firstInterval = (checkTime - timeInterval * 3, checkTime - timeInterval * 2)

@@ -3,6 +3,7 @@ package popeye.query
 import akka.actor.ActorSystem
 import com.codahale.metrics.MetricRegistry
 import com.typesafe.config.ConfigFactory
+import popeye.storage.hbase.TsdbFormat
 import popeye.{PointRope, Point}
 import popeye.query.PointsStorage.NameType
 import popeye.query.PointsStorage.NameType.NameType
@@ -43,6 +44,7 @@ object OpenTSDB2HttpApiServerStub {
       override def getPoints(metric: String,
                              timeRange: (Int, Int),
                              attributes: Map[String, ValueNameFilterCondition],
+                             downsampling: Option[(Int, TsdbFormat.AggregationType.AggregationType)],
                              cancellation: Future[Nothing]): Future[PointsGroups] = {
         def conditionHolds(tagValue: String, condition: ValueNameFilterCondition) = condition match {
           case SingleValueName(name) => name == tagValue

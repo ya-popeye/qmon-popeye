@@ -78,6 +78,7 @@ class OpenTSDB2HttpApiServerHandler(storage: PointsStorage,
             query.metricName,
             ((startMillis / 1000).toInt, (stopMillis / 1000).toInt),
             query.tags,
+            None,
             storageRequestCancellation.future
           )
           val aggregator = aggregators(query.aggregatorKey)
