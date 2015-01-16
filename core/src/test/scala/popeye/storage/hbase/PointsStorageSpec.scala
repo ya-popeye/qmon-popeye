@@ -4,7 +4,7 @@ import org.apache.hadoop.hbase.CellUtil
 import org.apache.hadoop.hbase.client.Put
 import popeye.storage.hbase.TsdbFormat.{AggregationType, DownsamplingResolution, EnabledDownsampling}
 import popeye.storage.{QualifiedName, QualifiedId}
-import popeye.{AsyncIterator, Point, ListPoint}
+import popeye.{PointRope, AsyncIterator, Point, ListPoint}
 import popeye.test.PopeyeTestUtils._
 import popeye.test.{PopeyeTestUtils, MockitoStubs}
 import popeye.test.AkkaTestKitSpec
@@ -114,10 +114,9 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
     }
     writePoints(storageStub, points)
     val future = storageStub.storage.getPoints("my.metric1", (1200, 4801), Map("host" -> SingleValueName("localhost")))
-    val groupsMap = toGroupsMap(future)
-    val group = groupsMap(SortedMap())
-    group.size should equal(1)
-    val series = group(SortedMap("host" -> "localhost")).iterator.toList
+    val seriesMap = toSeriesMap(future)
+    seriesMap.size should equal(1)
+    val series = seriesMap(SortedMap("host" -> "localhost")).iterator.toList
     series should contain(Point(1200, 1))
     series should (not contain Point(0, 0))
     series should (not contain Point(6000, 5))
@@ -134,10 +133,9 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
     )
     writePoints(storageStub, Seq(point))
     val future = storageStub.storage.getPoints("my.metric1", (0, 4000), Map("host" -> SingleValueName("localhost")))
-    val groupsMap = toGroupsMap(future)
-    val group = groupsMap(SortedMap())
-    group.size should equal(1)
-    val series = group(SortedMap("host" -> "localhost")).iterator.toList
+    val seriesMap = toSeriesMap(future)
+    seriesMap.size should equal(1)
+    val series = seriesMap(SortedMap("host" -> "localhost")).iterator.toList
     series should contain(Point(0, 0))
   }
 
@@ -156,10 +154,9 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
       (0, 1),
       Map("a" -> SingleValueName("foo"), "b" -> SingleValueName("foo"))
     )
-    val groupsMap = toGroupsMap(future)
-    val group = groupsMap(SortedMap())
-    group.size should equal(1)
-    val series = group(SortedMap("a" -> "foo", "b" -> "foo")).iterator.toList
+    val seriesMap = toSeriesMap(future)
+    seriesMap.size should equal(1)
+    val series = seriesMap(SortedMap("a" -> "foo", "b" -> "foo")).iterator.toList
 
     series should contain(Point(0, 1))
   }
@@ -187,14 +184,12 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
     )
     writePoints(storageStub, Seq(fooPoint, barPoint, junkPoint))
     val future = storageStub.storage.getPoints("metric", (0, 1), Map("type" -> MultipleValueNames(Seq("foo", "bar"))))
-    val groupsMap = toGroupsMap(future)
-    groupsMap.size should equal(2)
-    val fooGroup = groupsMap(SortedMap("type" -> "foo"))
-    val barGroup = groupsMap(SortedMap("type" -> "bar"))
-    fooGroup.size should equal(1)
-    barGroup.size should equal(1)
-    fooGroup(SortedMap("type" -> "foo")).iterator.toList should (contain(Point(0, 1)) and (not contain Point(0, 3)))
-    barGroup(SortedMap("type" -> "bar")).iterator.toList should (contain(Point(0, 2)) and (not contain Point(0, 3)))
+    val seriesMap = toSeriesMap(future)
+    seriesMap.size should equal(2)
+    val fooSeries = seriesMap(SortedMap("type" -> "foo"))
+    val barSeries = seriesMap(SortedMap("type" -> "bar"))
+    fooSeries.iterator.toList should (contain(Point(0, 1)) and (not contain Point(0, 3)))
+    barSeries.iterator.toList should (contain(Point(0, 2)) and (not contain Point(0, 3)))
   }
 
   it should "perform multiple attribute value queries (All filter)" in {
@@ -215,7 +210,7 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
       metricName = "metric",
       timestamp = 0,
       value = 3,
-      attrs = Seq("type" -> "foo", "attr" -> "bar")
+      attrs = Seq("type" -> "foo", "attr" -> "junk")
     )
     writePoints(storageStub, Seq(fooPoint, barPoint, junkPoint))
     val future = storageStub.storage.getPoints(
@@ -223,16 +218,12 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
       (0, 1),
       Map("type" -> AllValueNames, "attr" -> SingleValueName("foo"))
     )
-    val groupsMap = toGroupsMap(future)
-    groupsMap.size should equal(2)
-    val fooGroup = groupsMap(SortedMap("type" -> "foo"))
-    val barGroup = groupsMap(SortedMap("type" -> "bar"))
-    fooGroup.size should equal(1)
-    barGroup.size should equal(1)
-    val fooList = fooGroup(SortedMap("type" -> "foo", "attr" -> "foo")).iterator.toList
-    fooList should (contain(Point(0, 1)) and (not contain Point(0, 3)))
-    val barList = barGroup(SortedMap("type" -> "bar", "attr" -> "foo")).iterator.toList
-    barList should (contain(Point(0, 2)) and (not contain Point(0, 3)))
+    val seriesMap = toSeriesMap(future)
+    seriesMap.size should equal(2)
+    val fooSeries = seriesMap(SortedMap("type" -> "foo", "attr" -> "foo"))
+    val barSeries = seriesMap(SortedMap("type" -> "bar", "attr" -> "foo"))
+    fooSeries.iterator.toList should (contain(Point(0, 1)) and (not contain Point(0, 3)))
+    barSeries.iterator.toList should (contain(Point(0, 2)) and (not contain Point(0, 3)))
   }
 
   it should "perform list value queries" in {
@@ -288,17 +279,14 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
       Map("a" -> SingleValueName("foo")),
       downsampling
     )
-    val groupsMap = toGroupsMap(future)
-    val group = groupsMap(SortedMap())
-    group.size should equal(1)
-    val series = group(SortedMap("a" -> "foo")).iterator.toList
-
+    val seriesMap = toSeriesMap(future)
+    val series = seriesMap(SortedMap("a" -> "foo")).iterator.toList
     series should contain(Point(DownsamplingResolution.secondsInDay * 10, 1))
   }
 
-  def toGroupsMap(groupsIterator: AsyncIterator[PointsGroups]): Map[PointAttributes, PointsGroup] = {
-    val groupsFuture = HBaseStorage.collectAllGroups(groupsIterator)(executionContext)
-    Await.result(groupsFuture, Duration.Inf).groupsMap
+  def toSeriesMap(groupsIterator: AsyncIterator[PointsSeriesMap]): Map[PointAttributes, PointRope] = {
+    val groupsFuture = HBaseStorage.collectSeries(groupsIterator)(executionContext)
+    Await.result(groupsFuture, Duration.Inf).seriesMap
   }
 
   def toListPoints(listPointSeriesIterator: AsyncIterator[Seq[ListPointTimeseries]]): Seq[ListPointTimeseries] = {

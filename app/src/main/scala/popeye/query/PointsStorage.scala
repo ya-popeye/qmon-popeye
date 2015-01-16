@@ -1,12 +1,13 @@
 package popeye.query
 
 import org.apache.hadoop.hbase.util.Bytes
-import popeye.storage.hbase.HBaseStorage.PointsGroups
+import popeye.storage.hbase.HBaseStorage.{PointsSeriesMap, PointsGroups}
 import popeye.storage.ValueNameFilterCondition
 import scala.concurrent.{ExecutionContext, Future}
 import popeye.storage.hbase._
 import popeye.query.PointsStorage.NameType.NameType
 import scala.collection.immutable.SortedSet
+import scala.collection.immutable.SortedMap
 
 trait PointsStorage {
   def getPoints(metric: String,
@@ -38,8 +39,22 @@ object PointsStorage {
                   attributes: Map[String, ValueNameFilterCondition],
                   downsampling: Option[(Int, TsdbFormat.AggregationType.AggregationType)],
                   cancellation: Future[Nothing]) = {
-      val groupsIterator = pointsStorage.getPoints(metric, timeRange, attributes)(executionContext)
-      HBaseStorage.collectAllGroups(groupsIterator, cancellation)(executionContext)
+      implicit val exct = executionContext
+      val groupsIterator = pointsStorage.getPoints(metric, timeRange, attributes)
+      HBaseStorage.collectSeries(groupsIterator, cancellation).map {
+        seriesMap =>
+          val groupByAttributeNames =
+            attributes
+              .toList
+              .filter { case (attrName, valueFilter) => valueFilter.isGroupByAttribute}
+              .map(_._1)
+          val groups = seriesMap.seriesMap.groupBy {
+            case (pointAttributes, _) =>
+              val groupByAttributeValueIds = groupByAttributeNames.map(pointAttributes(_))
+              SortedMap[String, String](groupByAttributeNames zip groupByAttributeValueIds: _*)
+          }.mapValues(series => PointsSeriesMap(series))
+          PointsGroups(groups)
+      }
     }
 
     def getSuggestions(namePrefix: String, nameType: NameType, maxSuggestions: Int): Seq[String] = {

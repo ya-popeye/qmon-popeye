@@ -91,8 +91,8 @@ object PointsStorageBench extends Logging {
       val tags = Map(shardAttr -> ValueNameFilterCondition.SingleValueName(shardAttrValue))
 
       val benchResult = BenchUtils.bench(10, 1) {
-        val pointsGroupsIterator = storage.getPoints(metric, (minTimestamp, maxTimestamp + 1), tags)
-        val eventualPointsGroups = HBaseStorage.collectAllGroups(pointsGroupsIterator)
+        val pointsSeriesIterator = storage.getPoints(metric, (minTimestamp, maxTimestamp + 1), tags)
+        val eventualPointsGroups = HBaseStorage.collectSeries(pointsSeriesIterator)
         Await.result(eventualPointsGroups, Duration.Inf)
       }
 
@@ -194,13 +194,13 @@ object PointsStorageBench extends Logging {
     }
     val timeRange = (timestamps.head, timestamps.last + 1)
     val benchResults = BenchUtils.bench(20000, 1) {
-      val pointsGroupsIterator = storage.getPoints(
+      val pointsSeriesIterator = storage.getPoints(
         metric,
         timeRange,
         Map("cluster" -> ValueNameFilterCondition.SingleValueName("test"))
       )
-      val eventualPointsGroups = HBaseStorage.collectAllGroups(pointsGroupsIterator)
-      Await.result(eventualPointsGroups, Duration.Inf): PointsGroups
+      val eventualPointsSeriesMap = HBaseStorage.collectSeries(pointsSeriesIterator)
+      Await.result(eventualPointsSeriesMap, Duration.Inf)
     }
     println(benchResults)
   }

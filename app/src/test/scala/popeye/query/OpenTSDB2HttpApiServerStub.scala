@@ -68,8 +68,8 @@ object OpenTSDB2HttpApiServerStub {
           case (tags, _) =>
             val gTags = groupByTags.toList.map(tagK => (tagK, tags(tagK)))
             SortedMap(gTags: _*)
-        }
-        val groupsMap: Map[PointAttributes, PointsGroup] = groupedTs
+        }.mapValues(seriesMap => PointsSeriesMap(seriesMap))
+        val groupsMap: Map[PointAttributes, PointsSeriesMap] = groupedTs
         Future.successful(PointsGroups(groupsMap))
       }
 

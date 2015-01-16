@@ -2,7 +2,7 @@ package popeye.query
 
 import popeye.{PointRope, Point}
 import popeye.bench.BenchUtils
-import popeye.storage.hbase.HBaseStorage.PointsGroups
+import popeye.storage.hbase.HBaseStorage.{PointsSeriesMap, PointsGroups}
 
 import scala.collection.immutable.SortedMap
 import scala.util.Random
@@ -48,7 +48,7 @@ object AggregationAndInterpolationBench {
         val seriesTags = SortedMap("index" -> index.toString)
         (seriesTags, series)
     }.toMap
-    val pointsGroups = PointsGroups(Map(SortedMap("key" -> "value") -> pointsGroup))
+    val pointsGroups = PointsGroups(Map(SortedMap("key" -> "value") -> PointsSeriesMap(pointsGroup)))
     import OpenTSDB2HttpApiServer._
     val aggregator = aggregators(aggregatorKey)
     val benchResult = BenchUtils.bench(samples, iterations) {

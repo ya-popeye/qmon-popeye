@@ -24,46 +24,34 @@ import scala.concurrent.{Await, ExecutionContext, Future, Promise}
 
 object HBaseStorage {
 
-  type PointsGroup = Map[PointAttributes, PointRope]
-
   type PointAttributes = SortedMap[String, String]
 
-  object PointsGroups {
-    def empty = PointsGroups(Map.empty)
+  object PointsSeriesMap {
+    def empty = PointsSeriesMap(Map.empty)
 
-    def concatGroups(left: PointsGroup, right: PointsGroup) = {
-      right.foldLeft(left) {
+    def concat(left: PointsSeriesMap, right: PointsSeriesMap) = {
+      val concatinatedSeries = right.seriesMap.foldLeft(left.seriesMap) {
         case (accGroup, (attrs, newPoints)) =>
           val pointsOption = accGroup.get(attrs)
           val pointArray = pointsOption.map(oldPoints => oldPoints.concat(newPoints)).getOrElse(newPoints)
           accGroup.updated(attrs, pointArray)
       }
-    }
-
-    def concatPointsGroups(left: PointsGroups, right: PointsGroups) = {
-      val newMap =
-        right.groupsMap.foldLeft(left.groupsMap) {
-          case (accGroups, (groupByAttrs, newGroup)) =>
-            val groupOption = accGroups.get(groupByAttrs)
-            val concatinatedGroups = groupOption.map {
-              oldGroup => PointsGroups.concatGroups(oldGroup, newGroup)
-            }.getOrElse(newGroup)
-            accGroups.updated(groupByAttrs, concatinatedGroups)
-        }
-      PointsGroups(newMap)
+      PointsSeriesMap(concatinatedSeries)
     }
   }
 
-  case class PointsGroups(groupsMap: Map[PointAttributes, PointsGroup])
+  case class PointsSeriesMap(seriesMap: Map[PointAttributes, PointRope])
+
+  case class PointsGroups(groupsMap: Map[PointAttributes, PointsSeriesMap])
 
   case class ListPointTimeseries(tags: SortedMap[String, String], lists: Seq[ListPoint])
 
-  def collectAllGroups(groupsIterator: AsyncIterator[PointsGroups], cancellation: Future[Nothing] = Promise().future)
-                      (implicit eCtx: ExecutionContext): Future[PointsGroups] = {
+  def collectSeries(groupsIterator: AsyncIterator[PointsSeriesMap], cancellation: Future[Nothing] = Promise().future)
+                   (implicit eCtx: ExecutionContext): Future[PointsSeriesMap] = {
     AsyncIterator.foldLeft(
       groupsIterator,
-      PointsGroups.empty,
-      PointsGroups.concatPointsGroups,
+      PointsSeriesMap.empty,
+      PointsSeriesMap.concat,
       cancellation
     )
   }
@@ -97,12 +85,7 @@ class HBaseStorage(tableName: String,
                 timeRange: (Int, Int),
                 attributes: Map[String, ValueNameFilterCondition],
                 downsampling: Downsampling = NoDownsampling)
-               (implicit eCtx: ExecutionContext): AsyncIterator[PointsGroups] = {
-    val groupByAttributeNames =
-      attributes
-        .toList
-        .filter { case (attrName, valueFilter) => valueFilter.isGroupByAttribute }
-        .map(_._1)
+               (implicit eCtx: ExecutionContext): AsyncIterator[PointsSeriesMap] = {
     val resultsIterator = resolveQuery(
       metric,
       timeRange,
@@ -110,7 +93,22 @@ class HBaseStorage(tableName: String,
       TsdbFormat.ValueTypes.SingleValueTypeStructureId,
       downsampling
     )
-    createPointsGroupsIterator(resultsIterator, timeRange, groupByAttributeNames)
+
+    def resultsToPointsGroups(results: Array[Result]): Future[PointsSeriesMap] = {
+      val rowResults = results.map(TsdbFormat.parseSingleValueRowResult)
+      val ids = rowResults.flatMap(rr => rr.timeseriesId.getUniqueIds).toSet
+      val idNamePairsFuture = Future.traverse(ids) {
+        case qId =>
+          uniqueId.resolveNameById(qId)(resolveTimeout).map(name => (qId, name))
+      }
+      idNamePairsFuture.map {
+        idNamePairs =>
+          val idMap = idNamePairs.toMap
+          val pointSequences: Map[PointAttributes, PointRope] = toPointSequencesMap(rowResults, timeRange, idMap)
+          PointsSeriesMap(pointSequences)
+      }
+    }
+    resultsIterator.map(resultsToPointsGroups)
   }
 
   def getListPoints(metric: String,
@@ -184,29 +182,6 @@ class HBaseStorage(tableName: String,
     AsyncIterator.unwrapFuture(resutlsIteratorFuture)
   }
 
-  def createPointsGroupsIterator(chunkedResults: AsyncIterator[Array[Result]],
-                                 timeRange: (Int, Int),
-                                 groupByAttributeNameIds: Seq[String])
-                                (implicit eCtx: ExecutionContext): AsyncIterator[PointsGroups] = {
-
-    def resultsToPointsGroups(results: Array[Result]): Future[PointsGroups] = {
-      val rowResults = results.map(TsdbFormat.parseSingleValueRowResult)
-      val ids = rowResults.flatMap(rr => rr.timeseriesId.getUniqueIds).toSet
-      val idNamePairsFuture = Future.traverse(ids) {
-        case qId =>
-          uniqueId.resolveNameById(qId)(resolveTimeout).map(name => (qId, name))
-      }
-      idNamePairsFuture.map {
-        idNamePairs =>
-          val idMap = idNamePairs.toMap
-          val pointSequences: Map[PointAttributes, PointRope] = toPointSequencesMap(rowResults, timeRange, idMap)
-          val pointGroups: Map[PointAttributes, PointsGroup] = groupPoints(groupByAttributeNameIds, pointSequences)
-          PointsGroups(pointGroups)
-      }
-    }
-    chunkedResults.map(resultsToPointsGroups)
-  }
-
   private def toPointSequencesMap(rows: Array[ParsedSingleValueRowResult],
                                   timeRange: (Int, Int),
                                   idMap: Map[QualifiedId, String]): Map[PointAttributes, PointRope] = {
@@ -242,15 +217,6 @@ class HBaseStorage(tableName: String,
         val tags = timeseriesId.getAttributes(idMap)
         ListPointTimeseries(tags, lists)
     }.toSeq
-  }
-
-  def groupPoints(groupByAttributeNames: Seq[String],
-                  pointsSequences: Map[PointAttributes, PointRope]): Map[PointAttributes, PointsGroup] = {
-    pointsSequences.groupBy {
-      case (attributes, _) =>
-        val groupByAttributeValueIds = groupByAttributeNames.map(attributes(_))
-        SortedMap[String, String](groupByAttributeNames zip groupByAttributeValueIds: _*)
-    }
   }
 
   def ping(): Unit = {

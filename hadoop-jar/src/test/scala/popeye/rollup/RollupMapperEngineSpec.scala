@@ -48,9 +48,9 @@ class RollupMapperEngineSpec extends AkkaTestKitSpec("points-storage") with Matc
     val puts = keyValues.map(kv => new Put(CellUtil.cloneRow(kv)).add(kv)).asJava
     storageStub.pointsTable.put(puts)
     val pointsAsyncIter = storageStub.storage.getPoints("test_h1", (0, 3600 * 60), Map("host" -> SingleValueName("yandex.net")))
-    val groupsFuture = HBaseStorage.collectAllGroups(pointsAsyncIter, Promise().future)
-    val pointGroups = Await.result(groupsFuture, Duration.Inf)
-    val allAggregatedPoints = pointGroups.groupsMap(SortedMap())(SortedMap("host" -> "yandex.net")).iterator.toList
+    val seriesFuture = HBaseStorage.collectSeries(pointsAsyncIter, Promise().future)
+    val pointSeries = Await.result(seriesFuture, Duration.Inf)
+    val allAggregatedPoints = pointSeries.seriesMap(SortedMap("host" -> "yandex.net")).iterator.toList
     val averageTimestamp = {
       val singleHourTimestamps = 0 until 3600 by step
       singleHourTimestamps.sum / singleHourTimestamps.size

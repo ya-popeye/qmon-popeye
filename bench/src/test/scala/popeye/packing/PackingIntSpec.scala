@@ -86,15 +86,15 @@ class PackingIntSpec extends FlatSpec with Matchers with BeforeAndAfter with Log
     val results = scanner.asScala.toList
     scanner.close()
     pointsTable.close()
-    val groupsIterator = hbaseStorage.storage.getPoints(
+    val seriesIterator = hbaseStorage.storage.getPoints(
       "test",
       (stopTime - 3600, stopTime),
       Map("cluster" -> SingleValueName("test"))
     )
-    val groups = Await.result(HBaseStorage.collectAllGroups(groupsIterator), Duration.Inf)
+    val pointsSeriesMap = Await.result(HBaseStorage.collectSeries(seriesIterator), Duration.Inf)
     results.size should equal(1)
     val expectedPoints = points.map(point => Point(point.getTimestamp.toInt, point.getTimestamp))
-    groups.groupsMap(SortedMap())(SortedMap("cluster" -> "test")).iterator.toList should equal(expectedPoints)
+    pointsSeriesMap.seriesMap(SortedMap("cluster" -> "test")).iterator.toList should equal(expectedPoints)
   }
 
 
