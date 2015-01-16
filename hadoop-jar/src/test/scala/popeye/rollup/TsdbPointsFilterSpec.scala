@@ -25,7 +25,7 @@ class TsdbPointsFilterSpec extends AkkaTestKitSpec("points-storage") with Matche
     import popeye.storage.hbase.TsdbFormat._
     UnsignedBytes.compare(SingleValueTypeStructureId, ListValueTypeStructureId) should be < 0
     uniqueIdGenerationOffset should equal(0)
-    val offsetOrder = Seq(metricOffset, valueTypeIdOffset, shardIdOffset, timestampOffset, attributesOffset)
+    val offsetOrder = Seq(metricOffset, valueTypeIdOffset, shardIdOffset, baseTimeOffset, attributesOffset)
     offsetOrder.sorted should equal(offsetOrder)
   }
 

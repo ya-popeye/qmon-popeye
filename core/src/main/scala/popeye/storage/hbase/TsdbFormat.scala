@@ -62,7 +62,7 @@ object TsdbFormat {
   }
 
   case object NoDownsampling extends Downsampling {
-    override def rowTimespanInSeconds: Int = RAW_TIMESPAN
+    override def rowTimespanInSeconds: Int = DownsamplingResolution.secondsInHour
 
     override def resolutionInSeconds: Int = 1
   }
@@ -118,9 +118,9 @@ object TsdbFormat {
     }
 
     def timespanInSeconds(resolution: DownsamplingResolution) = resolution match {
-      case Minute5 => secondsInHour * 5
-      case Hour => secondsInDay * 3
-      case Day => secondsInDay * 60
+      case Minute5 => secondsInHour * 4
+      case Hour => secondsInDay * 2
+      case Day => secondsInDay * 14
     }
   }
 
@@ -162,7 +162,7 @@ object TsdbFormat {
   metricOffset,
   valueTypeIdOffset,
   shardIdOffset,
-  timestampOffset,
+  baseTimeOffset,
   attributesOffset
   ) = {
     val widths = Seq(
@@ -453,7 +453,7 @@ object TsdbFormat {
     val generationId = new BytesKey(copyOfRange(row, 0, uniqueIdGenerationWidth))
     val metricId = new BytesKey(copyOfRange(row, metricOffset, metricOffset + metricWidth))
     val shardId = new BytesKey(copyOfRange(row, shardIdOffset, shardIdOffset + attributeValueWidth))
-    val baseTime = Bytes.toInt(row, timestampOffset, baseTimeWidth)
+    val baseTime = Bytes.toInt(row, baseTimeOffset, baseTimeWidth)
     val attributesBytes = copyOfRange(row, attributesOffset, row.length)
     val timeseriedId = TimeseriesId(generationId, metricId, shardId, createAttributesMap(attributesBytes))
     (timeseriedId, baseTime)
@@ -632,7 +632,6 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
     val (startTime, stopTime) = timeRange
     val ranges = getTimeRanges(startTime, stopTime)
     val shardNames = getShardNames(attributeValueFilters)
-    val downsamplingByte = renderDownsamplingByte(downsampling)
     info(s"getScans metric: $metric, shard names: $shardNames, ranges: $ranges")
     ranges.map {
       range =>
@@ -656,7 +655,7 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
             (range.start, range.stop),
             attrIdFilters,
             valueTypeStructureId,
-            downsamplingByte
+            downsampling
           )
         }
     }.collect { case Some(scans) => scans }.flatten
@@ -731,9 +730,10 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
                             timeRange: (Int, Int),
                             attributePredicates: Map[BytesKey, ValueIdFilterCondition],
                             valueTypeStructureId: Byte,
-                            downsamplingByte: Byte): Seq[Scan] = {
+                            downsampling: Downsampling): Seq[Scan] = {
     val (startTime, endTime) = timeRange
-    val baseStartTime = startTime - (startTime % RAW_TIMESPAN)
+    val baseStartTime = startTime - (startTime % downsampling.rowTimespanInSeconds)
+    val downsamplingByte = renderDownsamplingByte(downsampling)
     val rowPrefix = (generationId.bytes :+ downsamplingByte) ++ metricId.bytes :+ valueTypeStructureId
     val startTimeBytes = Bytes.toBytes(baseStartTime)
     val stopTimeBytes = Bytes.toBytes(endTime)

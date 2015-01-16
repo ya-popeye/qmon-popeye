@@ -1,5 +1,9 @@
 package popeye.storage.hbase
 
+import org.apache.hadoop.hbase.CellUtil
+import org.apache.hadoop.hbase.client.Put
+import popeye.storage.hbase.TsdbFormat.{AggregationType, DownsamplingResolution, EnabledDownsampling}
+import popeye.storage.{QualifiedName, QualifiedId}
 import popeye.{AsyncIterator, Point, ListPoint}
 import popeye.test.PopeyeTestUtils._
 import popeye.test.{PopeyeTestUtils, MockitoStubs}
@@ -258,9 +262,43 @@ class PointsStorageSpec extends AkkaTestKitSpec("points-storage") with MockitoSt
     listPointSeries should equal(Seq(expectedListPointSeries))
   }
 
+  it should "load downsampled timeseries" in {
+    val storageStub = new PointsStorageStub(shardAttrs = Set("a"))
+    val point = messagePoint(
+      metricName = "metric",
+      timestamp = DownsamplingResolution.secondsInDay * 10,
+      value = 1,
+      attrs = Seq("a" -> "foo")
+    )
+    def resolveQName(qName: QualifiedName) = {
+      val future = storageStub.uniqueId.resolveIdByName(qName, create = true)(5 seconds)
+      Await.result(future, Duration.Inf)
+    }
+
+    val downsampling = EnabledDownsampling(DownsamplingResolution.Day, AggregationType.Max)
+    val SuccessfulConversion(kv) = storageStub.tsdbFormat.convertToKeyValue(
+      point,
+      qName => Some(resolveQName(qName)),
+      10,
+      downsampling)
+    storageStub.pointsTable.put(new Put(CellUtil.cloneRow(kv)).add(kv))
+    val future = storageStub.storage.getPoints(
+      "metric",
+      (0, DownsamplingResolution.secondsInDay * 11),
+      Map("a" -> SingleValueName("foo")),
+      downsampling
+    )
+    val groupsMap = toGroupsMap(future)
+    val group = groupsMap(SortedMap())
+    group.size should equal(1)
+    val series = group(SortedMap("a" -> "foo")).iterator.toList
+
+    series should contain(Point(DownsamplingResolution.secondsInDay * 10, 1))
+  }
+
   def toGroupsMap(groupsIterator: AsyncIterator[PointsGroups]): Map[PointAttributes, PointsGroup] = {
     val groupsFuture = HBaseStorage.collectAllGroups(groupsIterator)(executionContext)
-    Await.result(groupsFuture, 5 seconds).groupsMap
+    Await.result(groupsFuture, Duration.Inf).groupsMap
   }
 
   def toListPoints(listPointSeriesIterator: AsyncIterator[Seq[ListPointTimeseries]]): Seq[ListPointTimeseries] = {

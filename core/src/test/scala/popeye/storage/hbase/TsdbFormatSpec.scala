@@ -135,8 +135,10 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
 
   it should "use longer timespans for downsampled timeseries" in {
     val tsdbFormat = createTsdbFormat()
-    val point = createPoint("test", 3600 * 24 * 59, Seq(defaultShardAttributeName -> "value"), Right(1))
-    val downsampling = EnabledDownsampling(DownsamplingResolution.Day, AggregationType.Max)
+    import DownsamplingResolution._
+    val timestamp = timespanInSeconds(Day) - resolutionInSeconds(Day)
+    val point = createPoint("test", timestamp, Seq(defaultShardAttributeName -> "value"), Right(1))
+    val downsampling = EnabledDownsampling(Day, AggregationType.Max)
     val SuccessfulConversion(keyValue) = tsdbFormat.convertToKeyValue(point, sampleIdMap.get, 0, downsampling)
     val (tsId, baseTime) = TsdbFormat.parseTimeseriesIdAndBaseTime(CellUtil.cloneRow(keyValue))
     baseTime should equal(0)
@@ -458,6 +460,23 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     )
     scans.size should equal(1)
     scans(0).getStartRow()(downsamplingQualByteOffset) should equal(0x12.toByte)
+  }
+
+  it should "use correct timespan (downsampling case)" in {
+    import DownsamplingResolution._
+    val timestamp = timespanInSeconds(Day) - resolutionInSeconds(Day)
+    val tsdbFormat = createTsdbFormat()
+    val scans = tsdbFormat.getScans(
+      metric = "test",
+      timeRange = (0, 1),
+      attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
+      idMap = sampleIdMap,
+      TsdbFormat.ValueTypes.ListValueTypeStructureId,
+      EnabledDownsampling(Day, AggregationType.Min)
+    )
+    scans.size should equal(1)
+    val row = scans(0).getStartRow()
+    Bytes.toInt(row, baseTimeOffset) should equal(0)
   }
 
   behavior of "TsdbFormat.createRowRegexp"

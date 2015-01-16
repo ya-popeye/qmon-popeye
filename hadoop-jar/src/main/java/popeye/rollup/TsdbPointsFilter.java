@@ -57,7 +57,7 @@ public class TsdbPointsFilter extends FilterBase {
   private ReturnCode filterKeyValueBaseCase(byte[] rowArray, int rowOffset) {
     byte pointValueTypeId = rowArray[rowOffset + TsdbFormat.valueTypeIdOffset()];
     boolean valueTypeMatches = pointValueTypeId == valueTypeId;
-    int pointBaseTime = Bytes.toInt(rowArray, rowOffset + TsdbFormat.timestampOffset(), TsdbFormat.baseTimeWidth());
+    int pointBaseTime = Bytes.toInt(rowArray, rowOffset + TsdbFormat.baseTimeOffset(), TsdbFormat.baseTimeWidth());
     boolean timestampIsInRange = baseTimeStartSeconds <= pointBaseTime && pointBaseTime < baseTimeStopSeconds;
     if (valueTypeMatches && timestampIsInRange) {
       return ReturnCode.INCLUDE;
@@ -89,10 +89,10 @@ public class TsdbPointsFilter extends FilterBase {
     byte pointValueTypeId = rowArray[rowOffset + TsdbFormat.valueTypeIdOffset()];
     int valueTypeComparison = UnsignedBytes.compare(pointValueTypeId, valueTypeId);
     if (valueTypeComparison == 0) {
-      int pointBaseTime = Bytes.toInt(rowArray, rowOffset + TsdbFormat.timestampOffset(), TsdbFormat.baseTimeWidth());
+      int pointBaseTime = Bytes.toInt(rowArray, rowOffset + TsdbFormat.baseTimeOffset(), TsdbFormat.baseTimeWidth());
       if (pointBaseTime < baseTimeStartSeconds) {
         byte[] rowHint = Bytes.copy(rowArray, rowOffset, TsdbFormat.attributesOffset());
-        Bytes.putInt(rowHint, TsdbFormat.timestampOffset(), baseTimeStartSeconds);
+        Bytes.putInt(rowHint, TsdbFormat.baseTimeOffset(), baseTimeStartSeconds);
         return KeyValue.createFirstOnRow(rowHint);
       } else if (pointBaseTime >= baseTimeStopSeconds) {
         return nextMetricRow(rowArray, rowOffset);

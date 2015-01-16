@@ -10,7 +10,7 @@ import org.apache.hadoop.hbase.{CellUtil, KeyValue}
 import popeye._
 import popeye.proto.{Message, PackedPoints}
 import popeye.storage.hbase.HBaseStorage._
-import popeye.storage.hbase.TsdbFormat.NoDownsampling
+import popeye.storage.hbase.TsdbFormat.{Downsampling, NoDownsampling}
 import popeye.storage.{QualifiedId, QualifiedName, ValueNameFilterCondition}
 import popeye.util.hbase.HBaseUtils
 import popeye.util.hbase.HBaseUtils.ChunkedResultsMetrics
@@ -95,14 +95,21 @@ class HBaseStorage(tableName: String,
 
   def getPoints(metric: String,
                 timeRange: (Int, Int),
-                attributes: Map[String, ValueNameFilterCondition])
+                attributes: Map[String, ValueNameFilterCondition],
+                downsampling: Downsampling = NoDownsampling)
                (implicit eCtx: ExecutionContext): AsyncIterator[PointsGroups] = {
     val groupByAttributeNames =
       attributes
         .toList
         .filter { case (attrName, valueFilter) => valueFilter.isGroupByAttribute }
         .map(_._1)
-    val resultsIterator = resolveQuery(metric, timeRange, attributes, TsdbFormat.ValueTypes.SingleValueTypeStructureId)
+    val resultsIterator = resolveQuery(
+      metric,
+      timeRange,
+      attributes,
+      TsdbFormat.ValueTypes.SingleValueTypeStructureId,
+      downsampling
+    )
     createPointsGroupsIterator(resultsIterator, timeRange, groupByAttributeNames)
   }
 
@@ -110,7 +117,13 @@ class HBaseStorage(tableName: String,
                     timeRange: (Int, Int),
                     attributes: Map[String, ValueNameFilterCondition])
                    (implicit eCtx: ExecutionContext): AsyncIterator[Seq[ListPointTimeseries]] = {
-    val resultsIterator = resolveQuery(metric, timeRange, attributes, TsdbFormat.ValueTypes.ListValueTypeStructureId)
+    val resultsIterator = resolveQuery(
+      metric,
+      timeRange,
+      attributes,
+      TsdbFormat.ValueTypes.ListValueTypeStructureId,
+      NoDownsampling
+    )
     def resultsToListPointsTimeseries(results: Array[Result]): Future[Seq[ListPointTimeseries]] = {
       val rowResults = results.map(TsdbFormat.parseListValueRowResult)
       val ids = rowResults.flatMap(rr => rr.timeseriesId.getUniqueIds).toSet
@@ -130,7 +143,8 @@ class HBaseStorage(tableName: String,
   private def resolveQuery(metric: String,
                            timeRange: (Int, Int),
                            attributes: Map[String, ValueNameFilterCondition],
-                           valueTypeStructureId: Byte)
+                           valueTypeStructureId: Byte,
+                           downsampling: Downsampling)
                           (implicit eCtx: ExecutionContext): AsyncIterator[Array[Result]] = {
     val scanNames = tsdbFormat.getScanNames(metric, timeRange, attributes)
     val scanNameIdPairsFuture = Future.traverse(scanNames) {
@@ -149,7 +163,7 @@ class HBaseStorage(tableName: String,
         attributes,
         scanNameToIdMap,
         valueTypeStructureId,
-        NoDownsampling
+        downsampling
       )
       val scansString = scans.map {
         scan =>
