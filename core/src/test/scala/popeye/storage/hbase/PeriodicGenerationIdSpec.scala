@@ -4,41 +4,43 @@ import org.scalatest.{Matchers, FlatSpec}
 import org.apache.hadoop.hbase.util.Bytes
 import PeriodicGenerationId._
 import GenerationIdMapping._
+import TsdbFormat._
 
 class PeriodicGenerationIdSpec extends FlatSpec with Matchers {
   behavior of "PeriodicTimeRangeId"
+  val MTS = MAX_TIMESPAN
 
   it should "find timerange" in {
     val configs = Seq(
-      PeriodConfig(0, 1, 0)
+      PeriodConfig(startTime = 0, periodInTimespans = 1, firstPeriodId = 0)
     )
     val timeRangeIdMapping = PeriodicGenerationId(configs)
-    timeRangeIdMapping.backwardIterator(7200).next() should equal(TimeRangeAndId(7200, 10800, 2))
-    timeRangeIdMapping.getGenerationId(7200, 7200) should equal(2)
+    timeRangeIdMapping.backwardIterator(MTS * 2).next() should equal(TimeRangeAndId(MTS * 2, MTS * 3, 2))
+    timeRangeIdMapping.getGenerationId(MTS * 2, MTS * 2) should equal(2)
   }
 
   it should "find timerange in second config" in {
     val configs = Seq(
       PeriodConfig(0, 1, 0),
-      PeriodConfig(7200, 2, 2)
+      PeriodConfig(MTS * 2, 2, 2)
     )
     val timeRangeIdMapping = PeriodicGenerationId(configs)
-    timeRangeIdMapping.backwardIterator(7200).next() should equal(TimeRangeAndId(7200, 14400, 2))
+    timeRangeIdMapping.backwardIterator(MTS * 2).next() should equal(TimeRangeAndId(MTS * 2, MTS * 4, 2))
   }
 
   it should "iterate over timeranges" in {
     val configs = Seq(
       PeriodConfig(0, 1, 0),
-      PeriodConfig(7200, 2, 2)
+      PeriodConfig(MTS * 2, 2, 2)
     )
     val timeRangeIdMapping = PeriodicGenerationId(configs)
     val expected = List(
-      TimeRangeAndId(14400, 21600, 3),
-      TimeRangeAndId(7200, 14400, 2),
-      TimeRangeAndId(3600, 7200, 1),
-      TimeRangeAndId(0, 3600, 0)
+      TimeRangeAndId(MTS * 4, MTS * 6, 3),
+      TimeRangeAndId(MTS * 2, MTS * 4, 2),
+      TimeRangeAndId(MTS, MTS * 2, 1),
+      TimeRangeAndId(0, MTS, 0)
     )
-    timeRangeIdMapping.backwardIterator(20000).toList should equal(expected)
+    timeRangeIdMapping.backwardIterator(MTS * 6 - 1).toList should equal(expected)
   }
 
   it should "be aware of outlanders" in {
@@ -48,14 +50,14 @@ class PeriodicGenerationIdSpec extends FlatSpec with Matchers {
     val timeRangeIdMapping = PeriodicGenerationId(configs)
 
     timeRangeIdMapping.getGenerationId(
-      timestampInSeconds = 7200,
+      timestampInSeconds = MTS * 2,
       currentTimeInSeconds = 0
     ) should equal(outlanderGenerationId)
   }
 
   it should "return outlanders id if timestamp is smaller than start time" in {
     val configs = Seq(
-      PeriodConfig(3600, 1, 0)
+      PeriodConfig(MTS, 1, 0)
     )
     val timeRangeIdMapping = PeriodicGenerationId(configs)
 
@@ -67,11 +69,11 @@ class PeriodicGenerationIdSpec extends FlatSpec with Matchers {
 
   it should "handle non-null start times" in {
     val configs = Seq(
-      PeriodConfig(3600, 10, 0)
+      PeriodConfig(MTS, 10, 0)
     )
     val timeRangeIdMapping = PeriodicGenerationId(configs)
 
-    timeRangeIdMapping.backwardIterator(3600).next().id should equal(0)
+    timeRangeIdMapping.backwardIterator(MTS).next().id should equal(0)
   }
 
   behavior of "PeriodicTimeRangeId.createPeriodConfigs"
@@ -85,22 +87,22 @@ class PeriodicGenerationIdSpec extends FlatSpec with Matchers {
 
   it should "create two configs" in {
     val first = StartTimeAndPeriod("01/01/14", 1)
-    val second = StartTimeAndPeriod("02/01/14", 10)
+    val second = StartTimeAndPeriod("29/01/14", 10)
     val startTimeAndPeriods = Seq(first, second)
 
     createPeriodConfigs(startTimeAndPeriods) should equal(Seq(
       PeriodConfig(first.startTimeUnixSeconds, 1, 0),
-      PeriodConfig(second.startTimeUnixSeconds, 10, 24)
+      PeriodConfig(second.startTimeUnixSeconds, 10, 2)
     ))
   }
 
   it should "be aware of outlanders" in {
-    val first = StartTimeAndPeriod("01/01/14", 24)
-    val second = StartTimeAndPeriod("01/01/14", 48)
+    val first = StartTimeAndPeriod("01/01/14", 1)
+    val second = StartTimeAndPeriod("01/01/14", 2)
     val startTimeAndPeriods = Seq(first, second)
     createPeriodConfigs(startTimeAndPeriods) should equal(Seq(
-      PeriodConfig(first.startTimeUnixSeconds, 24, 0),
-      PeriodConfig(first.startTimeUnixSeconds + 24 * 3600 * (outlanderThreshold + 1), 48, 2)
+      PeriodConfig(first.startTimeUnixSeconds, 1, 0),
+      PeriodConfig(first.startTimeUnixSeconds + 1 * MTS * (outlanderThreshold + 1), 2, 2)
     ))
   }
 

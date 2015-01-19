@@ -59,7 +59,7 @@ object PopeyeTestUtils {
 
   def bytesKey(bytes: Byte*) = new BytesKey(Array[Byte](bytes: _*))
 
-  def createTimeRangeIdMapping(ranges: (Int, Int, Short)*) = new GenerationIdMapping {
+  def createGenerationIdMapping(ranges: (Int, Int, Short)*) = new GenerationIdMapping {
     val sortedRanges = ranges.sortBy(r => -r._1)
 
     override def backwardIterator(timestampInSeconds: Int): Iterator[TimeRangeAndId] = {

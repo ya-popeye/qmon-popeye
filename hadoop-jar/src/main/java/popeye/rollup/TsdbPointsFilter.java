@@ -30,8 +30,8 @@ public class TsdbPointsFilter extends FilterBase {
 
   private void checkAlignment(int baseTimeStopSeconds, String variableName) {
     Preconditions.checkArgument(
-      baseTimeStopSeconds % TsdbFormat.RAW_TIMESPAN() == 0,
-      variableName + " (" + baseTimeStopSeconds + ") should be divisible by " + TsdbFormat.RAW_TIMESPAN()
+      baseTimeStopSeconds % TsdbFormat.MAX_TIMESPAN()== 0,
+      variableName + " (" + baseTimeStopSeconds + ") should be divisible by " + TsdbFormat.MAX_TIMESPAN()
     );
   }
 

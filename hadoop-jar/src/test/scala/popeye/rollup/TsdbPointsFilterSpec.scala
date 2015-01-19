@@ -14,6 +14,7 @@ import popeye.test.{AkkaTestKitSpec, PopeyeTestUtils}
 import scala.collection.JavaConverters._
 import scala.concurrent.Await
 import scala.concurrent.duration._
+import TsdbFormat._
 
 class TsdbPointsFilterSpec extends AkkaTestKitSpec("points-storage") with Matchers {
 
@@ -56,7 +57,7 @@ class TsdbPointsFilterSpec extends AkkaTestKitSpec("points-storage") with Matche
     val future = storageStub.storage.writeMessagePoints(point)
     val written = Await.result(future, 5 seconds)
     val scan = new Scan
-    scan.setFilter(new TsdbPointsFilter(0, SingleValueTypeStructureId, 0, 3600))
+    scan.setFilter(new TsdbPointsFilter(0, SingleValueTypeStructureId, 0, MAX_TIMESPAN))
     val results = storageStub.pointsTable.getScanner(scan).asScala.toList
     results.size should equal(1)
   }
@@ -71,7 +72,7 @@ class TsdbPointsFilterSpec extends AkkaTestKitSpec("points-storage") with Matche
     val future = storageStub.storage.writeMessagePoints(point)
     val written = Await.result(future, 5 seconds)
     val scan = new Scan
-    scan.setFilter(new TsdbPointsFilter(0, SingleValueTypeStructureId, 3600, 7200))
+    scan.setFilter(new TsdbPointsFilter(0, SingleValueTypeStructureId, MAX_TIMESPAN, MAX_TIMESPAN * 2))
     val results = storageStub.pointsTable.getScanner(scan).asScala.toList
     results.size should equal(0)
   }
@@ -86,7 +87,7 @@ class TsdbPointsFilterSpec extends AkkaTestKitSpec("points-storage") with Matche
     val future = storageStub.storage.writeMessagePoints(point)
     val written = Await.result(future, 5 seconds)
     val scan = new Scan
-    scan.setFilter(new TsdbPointsFilter(0, SingleValueTypeStructureId, 0, 3600))
+    scan.setFilter(new TsdbPointsFilter(0, SingleValueTypeStructureId, 0, MAX_TIMESPAN * 2))
     val results = storageStub.pointsTable.getScanner(scan).asScala.toList
     results.size should equal(0)
   }
@@ -110,7 +111,7 @@ class TsdbPointsFilterSpec extends AkkaTestKitSpec("points-storage") with Matche
       ),
       lastPoint
     )
-    val pointsFilter = new TsdbPointsFilter(0, SingleValueTypeStructureId, 0, 3600)
+    val pointsFilter = new TsdbPointsFilter(0, SingleValueTypeStructureId, 0, MAX_TIMESPAN * 2)
     val result = pointsAfterHintRow(currentPoint, points, pointsFilter)
     result should equal(Seq(lastPoint))
   }
@@ -126,7 +127,7 @@ class TsdbPointsFilterSpec extends AkkaTestKitSpec("points-storage") with Matche
       timestamp = 3601,
       attributes = Seq("cluster" -> "test")
     )
-    val pointsFilter = new TsdbPointsFilter(0, SingleValueTypeStructureId, 3600, 7200)
+    val pointsFilter = new TsdbPointsFilter(0, SingleValueTypeStructureId, MAX_TIMESPAN, MAX_TIMESPAN * 2)
     val result = pointsAfterHintRow(currentPoint, Seq(lastPoint), pointsFilter)
     result should equal(Seq(lastPoint))
   }
@@ -142,7 +143,7 @@ class TsdbPointsFilterSpec extends AkkaTestKitSpec("points-storage") with Matche
       timestamp = 200,
       attributes = Seq("cluster" -> "test")
     )
-    val pointsFilter = new TsdbPointsFilter(0, ListValueTypeStructureId, 0, 3600)
+    val pointsFilter = new TsdbPointsFilter(0, ListValueTypeStructureId, 0, MAX_TIMESPAN)
     val result = cellsAfterHintRow(currentPoint, Seq(lastPoint), pointsFilter)
     result.size should equal(1)
   }
@@ -166,7 +167,7 @@ class TsdbPointsFilterSpec extends AkkaTestKitSpec("points-storage") with Matche
       ),
       lastPoint
     )
-    val pointsFilter = new TsdbPointsFilter(0, SingleValueTypeStructureId, 0, 3600)
+    val pointsFilter = new TsdbPointsFilter(0, SingleValueTypeStructureId, 0, MAX_TIMESPAN)
     val result = cellsAfterHintRow(currentPoint, points, pointsFilter)
     result.size should equal(1)
   }

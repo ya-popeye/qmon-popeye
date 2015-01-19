@@ -175,7 +175,7 @@ object PointsStorage {
         case AttributeValueType => TsdbFormat.AttrValueKind
       }
       val currentTimeInSeconds = System.currentTimeMillis() / 1000
-      val currentBaseTime = currentTimeInSeconds - currentTimeInSeconds % TsdbFormat.RAW_TIMESPAN
+      val currentBaseTime = currentTimeInSeconds - currentTimeInSeconds % TsdbFormat.MAX_TIMESPAN
       val generationIds = timeRangeIdMapping.backwardIterator(currentBaseTime.toInt)
         .take(MaxGenerations)
         .map(_.id)

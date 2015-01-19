@@ -53,7 +53,7 @@ object TsdbFormat {
   /** Mask to select all the FLAG_BITS.  */
   final val FLAGS_MASK: Short = (FLAG_FLOAT | LENGTH_MASK).toShort
   /** Max time delta (in seconds) we can store in a column qualifier.  */
-  final val RAW_TIMESPAN: Int = 3600
+  val MAX_TIMESPAN: Int = TsdbFormat.DownsamplingResolution.maxTimespan
 
   trait Downsampling {
     def rowTimespanInSeconds: Int
@@ -93,7 +93,12 @@ object TsdbFormat {
     }
   }
 
+  val downsamplingResolution_java = DownsamplingResolution
+
   object DownsamplingResolution extends Enumeration {
+
+    val downsamplingByteShift = 4
+
     val secondsInHour = 3600
     val secondsInDay = secondsInHour * 24
     type DownsamplingResolution = Value
@@ -105,6 +110,8 @@ object TsdbFormat {
       }
       SortedMap(pairs: _*)
     }
+
+    val maxTimespan = values.map(timespanInSeconds).max
 
     def getId(resolution: DownsamplingResolution) = resolution match {
       case Minute5 => 1
@@ -138,7 +145,7 @@ object TsdbFormat {
       case EnabledDownsampling(resolution, aggregationType) =>
         val resId = DownsamplingResolution.getId(resolution)
         val aggrId = AggregationType.getId(aggregationType)
-        (resId << 4 | aggrId).toByte
+        (resId << DownsamplingResolution.downsamplingByteShift | aggrId).toByte
     }
   }
 
@@ -146,7 +153,7 @@ object TsdbFormat {
     if (dsByte == 0) {
       NoDownsampling
     } else {
-      val downsamplingId = (dsByte & 0xf0) >> 4
+      val downsamplingId = (dsByte & 0xf0) >> DownsamplingResolution.downsamplingByteShift
       val aggregationId = dsByte & 0x0f
       EnabledDownsampling(DownsamplingResolution.getById(downsamplingId), AggregationType.getById(aggregationId))
     }
@@ -759,8 +766,8 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
   }
 
   private def getTimeRanges(startTime: Int, stopTime: Int) = {
-    val baseStartTime = getBaseTime(startTime)
-    val baseStopTime = getBaseTime(stopTime)
+    val baseStartTime = maxTimespanFloor(startTime)
+    val baseStopTime = maxTimespanFloor(stopTime)
     val ranges = timeRangeIdMapping.backwardIterator(baseStopTime)
       .takeWhile(_.stop > baseStartTime)
       .toVector
@@ -775,8 +782,8 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
   }
 
   private def getGenerationId(point: Message.Point, currentTimeSeconds: Int): BytesKey = {
-    val pointBaseTime = getBaseTime(point.getTimestamp.toInt)
-    val currentBaseTime = getBaseTime(currentTimeSeconds)
+    val pointBaseTime = maxTimespanFloor(point.getTimestamp.toInt)
+    val currentBaseTime = maxTimespanFloor(currentTimeSeconds)
     val id = timeRangeIdMapping.getGenerationId(pointBaseTime, currentBaseTime)
     val idBytes = new BytesKey(Bytes.toBytes(id))
     require(
@@ -786,8 +793,8 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
     idBytes
   }
 
-  private def getBaseTime(timestamp: Int) = {
-    timestamp - (timestamp % RAW_TIMESPAN)
+  private def maxTimespanFloor(timestamp: Int) = {
+    timestamp - (timestamp % MAX_TIMESPAN)
   }
 
   private def mkKeyValue(timeRangeId: BytesKey,

@@ -63,15 +63,6 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     names.toSet should equal(allQualifiedNames)
   }
 
-  it should "choose generation id by base time" in {
-    val prefixMapping = createTimeRangeIdMapping((3600, 4000, 0), (4000, 5000, 1))
-    val tsdbFormat = createTsdbFormat(prefixMapping)
-    val point = createPoint(metric = "test", timestamp = 4000, attributes = Seq("name" -> "value"))
-    val metricQName = QualifiedName(MetricKind, bytesKey(0, 0), "test")
-    val names: Seq[QualifiedName] = tsdbFormat.getAllQualifiedNames(point, point.getTimestamp.toInt)
-    names.toSet should contain(metricQName)
-  }
-
   behavior of "TsdbFormat.convertToKeyValue"
 
   it should "create KeyValue rows" in {
@@ -79,9 +70,10 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     val SuccessfulConversion(keyValue) = tsdbFormat.convertToKeyValue(samplePoint, sampleIdMap.get, 0)
     val metricId = Array[Byte](1, 0, 1)
     val valueTypeStructureId = Array[Byte](TsdbFormat.ValueTypes.SingleValueTypeStructureId)
-    val downsamplingByte = Array[Byte](TsdbFormat.renderDownsamplingByte(NoDownsampling))
+    val downsampling = NoDownsampling
+    val downsamplingByte = Array[Byte](TsdbFormat.renderDownsamplingByte(downsampling))
     val timestamp = samplePoint.getTimestamp.toInt
-    val timestampBytes = Bytes.toBytes(timestamp - timestamp % TsdbFormat.RAW_TIMESPAN)
+    val timestampBytes = Bytes.toBytes(timestamp - timestamp % downsampling.rowTimespanInSeconds)
 
     val attr = Array[Byte](2, 0, 1 /*name*/ , 3, 0, 1 /*value*/)
     val anotherAttr = Array[Byte](2, 0, 2 /*name*/ , 3, 0, 2 /*value*/)
@@ -300,7 +292,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
   behavior of "TsdbFormat.getScanNames"
 
   it should "get qualified names" in {
-    val prefixMapping = createTimeRangeIdMapping((0, 3600, 0), (3600, 7200, 1))
+    val prefixMapping = createGenerationIdMapping((0, MAX_TIMESPAN, 0), (MAX_TIMESPAN, MAX_TIMESPAN * 2, 1))
     val tsdbFormat = createTsdbFormat(prefixMapping, shardAttributes = Set("shard"))
     val attrs = Map(
       "shard" -> SingleValueName("shard_1"),
@@ -308,7 +300,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       "mult" -> MultipleValueNames(Seq("mult1", "mult2")),
       "all" -> AllValueNames
     )
-    val names = tsdbFormat.getScanNames("test", (0, 4000), attrs)
+    val names = tsdbFormat.getScanNames("test", (0, MAX_TIMESPAN + 1), attrs)
 
     val expected = Seq(
       (MetricKind, "test"),
@@ -333,16 +325,6 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
       expected.diff(names).foreach(println)
     }
     names should equal(expected)
-  }
-
-  it should "choose generation id by base time" in {
-    val prefixMapping = createTimeRangeIdMapping((3600, 4000, 0), (4000, 5000, 1))
-    val tsdbFormat = createTsdbFormat(prefixMapping)
-    tsdbFormat.getScanNames(
-      metric = "",
-      timeRange = (4000, 4001),
-      attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value"))
-    ) should contain(QualifiedName(MetricKind, bytesKey(0, 0), ""))
   }
 
   behavior of "TsdbFormat.getScans"
@@ -376,7 +358,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
   }
 
   it should "create 2 scans over generations" in {
-    val prefixMapping = createTimeRangeIdMapping((0, 3600, 0), (3600, 7200, 1))
+    val prefixMapping = createGenerationIdMapping((0, MAX_TIMESPAN, 0), (MAX_TIMESPAN, MAX_TIMESPAN * 2, 1))
     val tsdbFormat = createTsdbFormat(prefixMapping)
     val idMap = sampleNamesToIdMapping.flatMap {
       case ((kind, name), id) => Seq(
@@ -386,7 +368,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
     }.toMap
     val scans = tsdbFormat.getScans(
       metric = "test",
-      timeRange = (0, 4000),
+      timeRange = (0, MAX_TIMESPAN + 1),
       attributeValueFilters = Map(defaultShardAttributeName -> SingleValueName("value")),
       idMap = idMap,
       TsdbFormat.ValueTypes.SingleValueTypeStructureId,
@@ -398,7 +380,7 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
   }
 
   it should "not create scan if not enough ids resolved" in {
-    val prefixMapping = createTimeRangeIdMapping((0, 3600, 0), (3600, 7200, 1))
+    val prefixMapping = createGenerationIdMapping((0, 3600, 0), (3600, 7200, 1))
     val tsdbFormat = createTsdbFormat(prefixMapping)
     val idMap = sampleNamesToIdMapping.map {
       case ((kind, name), id) => QualifiedName(kind, bytesKey(0, 0), name) -> id
