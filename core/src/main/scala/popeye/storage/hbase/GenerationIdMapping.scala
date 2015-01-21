@@ -25,8 +25,11 @@ case class TimeRangeAndId(start: Int, stop: Int, id: Short) {
   override def toString: String = f"${ getClass.getSimpleName }($start, $stop, ${ new BytesKey(Bytes.toBytes(id)) }})"
 }
 
-// points are packed in rows by timespans, so period must be timespan-aligned
+// points are packed in rows by timespans, so period and start time must be timespan-aligned
 case class PeriodConfig(startTime: Int, periodInTimespans: Int, firstPeriodId: Short) {
+
+  require(startTime % TsdbFormat.MAX_TIMESPAN == 0)
+
   def periodInSeconds: Int = {
     periodInTimespans * TsdbFormat.MAX_TIMESPAN
   }
@@ -40,8 +43,8 @@ case class PeriodConfig(startTime: Int, periodInTimespans: Int, firstPeriodId: S
 
 case class StartTimeAndPeriod(startDateString: String, periodInHours: Int) {
   val startTimeUnixSeconds = {
-    val time = StartTimeAndPeriod.dateFormatter.parse(startDateString).getTime
-    (time / 1000).toInt
+    val time = (StartTimeAndPeriod.dateFormatter.parse(startDateString).getTime / 1000).toInt
+    time - time % TsdbFormat.MAX_TIMESPAN
   }
 }
 

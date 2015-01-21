@@ -7,8 +7,18 @@ import GenerationIdMapping._
 import TsdbFormat._
 
 class PeriodicGenerationIdSpec extends FlatSpec with Matchers {
-  behavior of "PeriodicTimeRangeId"
   val MTS = MAX_TIMESPAN
+
+  behavior of "StartTimeAndPeriod.apply"
+
+  it should "align start time" in {
+    val dateString = "01/01/14"
+    val time = (StartTimeAndPeriod.dateFormatter.parse(dateString).getTime / 1000).toInt
+    (time % MTS) should not equal 0
+    StartTimeAndPeriod(dateString, 1).startTimeUnixSeconds should equal(time - time % MTS)
+  }
+
+  behavior of "PeriodicTimeRangeId"
 
   it should "find timerange" in {
     val configs = Seq(
