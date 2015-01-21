@@ -9,29 +9,38 @@ import org.apache.hadoop.hbase.util.Bytes;
 import popeye.storage.hbase.TsdbFormat;
 
 import java.io.*;
+import java.util.Arrays;
 
 public class TsdbPointsFilter extends FilterBase {
 
+  private final byte[] generationId;
+  private final int downsamplingResolutionId;
+  private final byte valueTypeId;
   private final int baseTimeStartSeconds;
   private final int baseTimeStopSeconds;
-  private final byte[] generationId;
-  private final byte valueTypeId;
+
   private boolean done = false;
 
-  public TsdbPointsFilter(short generationId, byte valueTypeId, int baseTimeStartSeconds, int baseTimeStopSeconds) {
-    this.valueTypeId = valueTypeId;
+  public TsdbPointsFilter(short generationId,
+                          int downsamplingResolutionId,
+                          byte valueTypeId,
+                          int baseTimeStartSeconds,
+                          int baseTimeStopSeconds) {
     this.generationId = Bytes.toBytes(generationId);
-    checkAlignment(baseTimeStartSeconds, "start time");
-    checkAlignment(baseTimeStopSeconds, "stop time");
+    this.valueTypeId = valueTypeId;
+    this.downsamplingResolutionId = downsamplingResolutionId;
+    checkAlignment(baseTimeStartSeconds, downsamplingResolutionId, "start time");
+    checkAlignment(baseTimeStopSeconds, downsamplingResolutionId, "stop time");
     Preconditions.checkArgument(baseTimeStartSeconds < baseTimeStopSeconds, "start time should be less than stop time");
     this.baseTimeStartSeconds = baseTimeStartSeconds;
     this.baseTimeStopSeconds = baseTimeStopSeconds;
   }
 
-  private void checkAlignment(int baseTimeStopSeconds, String variableName) {
+  private static void checkAlignment(int baseTimeStopSeconds, int downsamplingResolutionId, String variableName) {
+    int timespan = TsdbFormat.getTimespanByDownsamplingId(downsamplingResolutionId);
     Preconditions.checkArgument(
-      baseTimeStopSeconds % TsdbFormat.MAX_TIMESPAN()== 0,
-      variableName + " (" + baseTimeStopSeconds + ") should be divisible by " + TsdbFormat.MAX_TIMESPAN()
+      baseTimeStopSeconds % timespan == 0,
+      variableName + " (" + baseTimeStopSeconds + ") should be divisible by " + timespan
     );
   }
 
@@ -39,19 +48,36 @@ public class TsdbPointsFilter extends FilterBase {
   public ReturnCode filterKeyValue(Cell cell) throws IOException {
     byte[] rowArray = cell.getRowArray();
     int rowOffset = cell.getRowOffset();
+    int generationAndDownsamplingKeyComparison = compareGenerationAndDownsamplingKey(rowArray, rowOffset);
+    if (generationAndDownsamplingKeyComparison == 0) {
+      return filterKeyValueBaseCase(rowArray, rowOffset);
+    } else if (generationAndDownsamplingKeyComparison < 0) {
+      return ReturnCode.SEEK_NEXT_USING_HINT;
+    } else {
+      done = true;
+      return ReturnCode.NEXT_ROW;
+    }
+  }
+
+  private int compareGenerationAndDownsamplingKey(byte[] rowArray, int rowOffset) {
     int generationIdWidth = TsdbFormat.uniqueIdGenerationWidth();
     int generationComparison = KeyValue.COMPARATOR.compareRows(
       rowArray, rowOffset, generationIdWidth,
       generationId, 0, generationIdWidth
     );
     if (generationComparison == 0) {
-      return filterKeyValueBaseCase(rowArray, rowOffset);
-    } else if (generationComparison < 0) {
-      return ReturnCode.SEEK_NEXT_USING_HINT;
+      int downsamplingByteIndex = rowOffset + TsdbFormat.downsamplingQualByteOffset();
+      return compareDownsamplingKey(rowArray[downsamplingByteIndex]);
     } else {
-      done = true;
-      return ReturnCode.NEXT_ROW;
+      return generationComparison;
     }
+  }
+
+  private int compareDownsamplingKey(byte downsamplingByte) {
+    return Integer.compare(
+      TsdbFormat.parseDownsamplingResolution(downsamplingByte),
+      this.downsamplingResolutionId
+    );
   }
 
   private ReturnCode filterKeyValueBaseCase(byte[] rowArray, int rowOffset) {
@@ -70,19 +96,27 @@ public class TsdbPointsFilter extends FilterBase {
   public Cell getNextCellHint(Cell cell) throws IOException {
     byte[] rowArray = cell.getRowArray();
     int rowOffset = cell.getRowOffset();
-    int generationIdWidth = TsdbFormat.uniqueIdGenerationWidth();
-    int generationComparison = KeyValue.COMPARATOR.compareRows(
-      rowArray, rowOffset, generationIdWidth,
-      generationId, 0, generationIdWidth
-    );
-    if (generationComparison == 0) {
+    int generationAndDownsamplingKeyComparison = compareGenerationAndDownsamplingKey(rowArray, rowOffset);
+    if (generationAndDownsamplingKeyComparison == 0) {
       return getNextCellHintBaseCase(rowArray, rowOffset);
-    } else if (generationComparison < 0) {
+    } else if (generationAndDownsamplingKeyComparison < 0) {
       // skip to desired generation
-      return KeyValue.createFirstOnRow(generationId);
+      return generationIdAndDsByteHint();
     } else {
       throw new IOException(new AssertionError());
     }
+  }
+
+  private Cell generationIdAndDsByteHint() {
+    byte dsByte = TsdbFormat.renderDownsamplingByteFromIds(this.downsamplingResolutionId, 0);
+    byte[] generationIdAndDsByte = appendByte(generationId, dsByte);
+    return KeyValue.createFirstOnRow(generationIdAndDsByte);
+  }
+
+  private byte[] appendByte(byte[] array, byte b) {
+    byte[] newArray = Arrays.copyOf(array, array.length + 1);
+    newArray[array.length] = b;
+    return newArray;
   }
 
   private Cell getNextCellHintBaseCase(byte[] rowArray, int rowOffset) throws IOException {
@@ -136,6 +170,7 @@ public class TsdbPointsFilter extends FilterBase {
 
   private void writeTo(DataOutputStream stream) throws IOException {
     stream.writeShort(Bytes.toShort(generationId));
+    stream.writeInt(downsamplingResolutionId);
     stream.writeByte(valueTypeId);
     stream.writeInt(baseTimeStartSeconds);
     stream.writeInt(baseTimeStopSeconds);
@@ -146,10 +181,17 @@ public class TsdbPointsFilter extends FilterBase {
     DataInputStream dataIn = new DataInputStream(inputStream);
     try {
       short generationId = dataIn.readShort();
+      int downsamplingResolutionId = dataIn.readInt();
       byte valueTypeId = dataIn.readByte();
       int baseTimeStartSeconds = dataIn.readInt();
       int baseTimeStopSeconds = dataIn.readInt();
-      return new TsdbPointsFilter(generationId, valueTypeId, baseTimeStartSeconds, baseTimeStopSeconds);
+      return new TsdbPointsFilter(
+        generationId,
+        downsamplingResolutionId,
+        valueTypeId,
+        baseTimeStartSeconds,
+        baseTimeStopSeconds
+      );
     } catch (IOException e) {
       // impossible
       throw new AssertionError();

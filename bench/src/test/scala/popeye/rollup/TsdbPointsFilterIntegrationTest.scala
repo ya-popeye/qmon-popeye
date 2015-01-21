@@ -38,7 +38,7 @@ class TsdbPointsFilterIntegrationTest extends FlatSpec with Matchers with Loggin
       resolveTimeout = 10 seconds,
       uidsCacheInitialCapacity = 1000,
       uidsCacheMaxCapacity = 10000,
-      tsdbFormatConfig = TsdbFormatConfig(Seq(StartTimeAndPeriod("25/06/14", 336)), shardAttributeNames),
+      tsdbFormatConfig = TsdbFormatConfig(Seq(StartTimeAndPeriod("25/06/14", 1)), shardAttributeNames),
       storageName = "hbase"
     )
   }
@@ -54,13 +54,15 @@ class TsdbPointsFilterIntegrationTest extends FlatSpec with Matchers with Loggin
     val actorSystem = ActorSystem()
     implicit val exct = actorSystem.dispatcher
     val storage = new HBaseStorageConfigured(storageConfig, actorSystem, new MetricRegistry())
-    val endTime = 1419865200
+    val endTime = 1419865200 // 29/12/14
     val points = createTestPoints(endTime)
     val writeFuture = storage.storage.writeMessagePoints(points: _*)
     Await.result(writeFuture, 5 seconds)
 
+    val generationId = storageConfig.tsdbFormatConfig.generationIdMapping.getGenerationId(endTime, endTime)
     val pointsFilter = new TsdbPointsFilter(
-      13,
+      generationId,
+      0,
       TsdbFormat.ValueTypes.SingleValueTypeStructureId,
       endTime - 3600,
       endTime

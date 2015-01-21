@@ -93,11 +93,7 @@ object TsdbFormat {
     }
   }
 
-  val downsamplingResolution_java = DownsamplingResolution
-
   object DownsamplingResolution extends Enumeration {
-
-    val downsamplingByteShift = 4
 
     val secondsInHour = 3600
     val secondsInDay = secondsInHour * 24
@@ -145,7 +141,7 @@ object TsdbFormat {
       case EnabledDownsampling(resolution, aggregationType) =>
         val resId = DownsamplingResolution.getId(resolution)
         val aggrId = AggregationType.getId(aggregationType)
-        (resId << DownsamplingResolution.downsamplingByteShift | aggrId).toByte
+        renderDownsamplingByteFromIds(resId, aggrId)
     }
   }
 
@@ -153,9 +149,25 @@ object TsdbFormat {
     if (dsByte == 0) {
       NoDownsampling
     } else {
-      val downsamplingId = (dsByte & 0xf0) >> DownsamplingResolution.downsamplingByteShift
+      val downsamplingId = parseDownsamplingResolution(dsByte)
       val aggregationId = dsByte & 0x0f
       EnabledDownsampling(DownsamplingResolution.getById(downsamplingId), AggregationType.getById(aggregationId))
+    }
+  }
+
+  def renderDownsamplingByteFromIds(resId: Int, aggrId: Int): Byte = {
+    (resId << 4 | aggrId).toByte
+  }
+
+  def parseDownsamplingResolution(dsByte: Byte): Int = {
+    (dsByte & 0xf0) >> 4
+  }
+
+  def getTimespanByDownsamplingId(downsamplingId: Int): Int = {
+    if (downsamplingId == 0) {
+      NoDownsampling.rowTimespanInSeconds
+    } else {
+      DownsamplingResolution.timespanInSeconds(DownsamplingResolution.getById(downsamplingId))
     }
   }
 
