@@ -11,8 +11,8 @@ import kafka.producer.{KeyedMessage, Producer, ProducerConfig}
 import kafka.utils.ZKStringSerializer
 import org.I0Itec.zkclient.ZkClient
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.hbase.HBaseTestingUtility
-import org.apache.hadoop.hbase.client.{HTable, Result, ResultScanner, Scan}
+import org.apache.hadoop.hbase.{TableName, HBaseTestingUtility}
+import org.apache.hadoop.hbase.client.{Result, ResultScanner, Scan}
 import org.apache.zookeeper.CreateMode
 import popeye.Logging
 import popeye.hadoop.bulkload.{BulkLoadJobRunner, BulkLoadMetrics}
@@ -247,7 +247,7 @@ object BulkLoadTest extends Logging {
     }
     val hbaseConfig = BulkLoadJobRunner.HBaseStorageConfig(
       hBaseZkConnect = rootZkConnect,
-      pointsTableName = pointsTableName,
+      pointsTableName = TableName.valueOf(pointsTableName),
       uidTableName = uIdsTableName,
       tsdbFormatConfig = tsdbFormatConfig
     )

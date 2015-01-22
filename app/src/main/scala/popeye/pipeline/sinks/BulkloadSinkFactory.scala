@@ -1,5 +1,6 @@
 package popeye.pipeline.sinks
 
+import org.apache.hadoop.hbase.TableName
 import popeye.pipeline.{PipelineSinkFactory, PointsSink}
 import popeye.pipeline.kafka.{KafkaSinkStarter, KafkaPointsSinkConfig}
 import popeye.storage.hbase.HBaseStorageConfig
@@ -25,7 +26,7 @@ class BulkloadSinkFactory(sinkFactory: BulkloadSinkStarter,
     }
     val hBaseConfig = BulkLoadJobRunner.HBaseStorageConfig(
       hBaseZkConnect = hbaseStorageConfig.zkQuorum,
-      pointsTableName = hbaseStorageConfig.pointsTableName,
+      pointsTableName = TableName.valueOf(hbaseStorageConfig.pointsTableName),
       uidTableName = hbaseStorageConfig.uidsTableName,
       tsdbFormatConfig = hbaseStorageConfig.tsdbFormatConfig
     )
