@@ -103,10 +103,10 @@ object PointsStorageBench extends Logging {
   }
 
   def hTablePoolResource(hBaseConfigured: HBaseConfigured) =
-    ARM.closableResource(hBaseConfigured.getHTablePool(2))
+    ARM.closableResource(() => hBaseConfigured.getHTablePool(2))
 
   def hTableResource(hTablePool: HTablePool, tableName: String) =
-    ARM.closableResource(hTablePool.getTable(tableName))
+    ARM.closableResource(() => hTablePool.getTable(tableName))
 
   def tsdbFormatBenchmark(numberOfPointsPerSeries: Int,
                           numberOfTagValues: (Int, Int),
@@ -146,13 +146,15 @@ object PointsStorageBench extends Logging {
   }
 
   def actorSystemResource: ARM[ActorSystem] = {
-    ARM.resource(ActorSystem()) {
-      actorSystem =>
+    ARM.resource(
+      () => ActorSystem(),
+      actorSystem => {
         info("stopping actor system")
         actorSystem.shutdown()
         actorSystem.awaitTermination()
         info("actor system terminated")
-    }
+      }
+    )
   }
 
   def createTestPoints(currentTime: Int,

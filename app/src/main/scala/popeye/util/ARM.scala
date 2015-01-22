@@ -6,9 +6,9 @@ import java.io.Closeable
 trait ARM[A] {
   def run(): A
 
-  def compose[B](f: A => ARM[B]): ARM[B] = f(run())
+  def compose[B](f: A => ARM[B]): ARM[B]
 
-  def map[B](f: A => B): ARM[B] = compose(x => ARM.lift(f(x)))
+  def map[B](f: A => B): ARM[B] = compose(x => ARM.lift(() => f(x)))
 
   def flatMap[B](f: A => ARM[B]): ARM[B] = compose(f)
 }
@@ -18,14 +18,12 @@ trait AutoCloseARM[A] extends ARM[A] {
 
   override def compose[B](f: (A) => ARM[B]): ARM[B] = {
     val self = this
-    new ARM[B] {
-      override def run(): B = {
-        val resource = self.run()
-        try {
-          f(resource).run()
-        } finally {
-          close(resource)
-        }
+    ARM.lift { () =>
+      val resource = self.run()
+      try {
+        f(resource).run()
+      } finally {
+        close(resource)
       }
     }
   }
@@ -33,14 +31,16 @@ trait AutoCloseARM[A] extends ARM[A] {
 
 object ARM {
 
-  def lift[A](x: A): ARM[A] = new ARM[A] {
-    override def run(): A = x
+  def lift[A](runFunc: () => A): ARM[A] = new ARM[A] {
+    override def run(): A = runFunc()
+
+    override def compose[B](f: A => ARM[B]): ARM[B] = f(run())
   }
 
-  def closableResource[R <: Closeable](res: R): ARM[R] = resource(res)(_.close())
+  def closableResource[R <: Closeable](res: () => R): ARM[R] = resource(res, _.close())
 
-  def resource[R](resource: => R)(closeFunc: R => Unit): ARM[R] = new AutoCloseARM[R] {
-    override def run(): R = resource
+  def resource[R](resource: () => R, closeFunc: R => Unit): ARM[R] = new AutoCloseARM[R] {
+    override def run(): R = resource()
 
     override def close(x: R): Unit = closeFunc(x)
   }
