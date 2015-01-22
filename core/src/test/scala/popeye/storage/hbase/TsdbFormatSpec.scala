@@ -235,7 +235,8 @@ class TsdbFormatSpec extends FlatSpec with Matchers {
 
   it should "throw meaningful exception if row size is illegal" in {
     val tsdbFormat = createTsdbFormat()
-    val row = Array[Byte](0)
+    val row = Array.ofDim[Byte](valueTypeIdOffset + 1)
+    row(valueTypeIdOffset) = ValueTypes.SingleValueTypeStructureId
     val keyValue = new KeyValue(row, PointsFamily, Array[Byte](0, 0, 0), Array[Byte](0, 0, 0))
     val ex = intercept[IllegalArgumentException] {
       parseSingleValueRowResult(new Result(Seq(keyValue).asJava))

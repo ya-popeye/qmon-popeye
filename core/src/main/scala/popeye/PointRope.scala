@@ -16,6 +16,10 @@ trait PointRope {
   def size: Int
 
   def last: Point
+
+  def asIterable = new Iterable[Point] {
+    override def iterator: Iterator[Point] = PointRope.this.iterator
+  }
 }
 
 

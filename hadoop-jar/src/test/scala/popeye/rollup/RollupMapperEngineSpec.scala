@@ -5,7 +5,9 @@ import org.apache.hadoop.hbase.{CellUtil, KeyValue}
 import org.scalatest.Matchers
 import popeye.Point
 import popeye.hadoop.bulkload.LightweightUniqueId
+import popeye.rollup.RollupMapperEngine.RollupStrategy
 import popeye.storage.ValueNameFilterCondition.SingleValueName
+import popeye.storage.hbase.TsdbFormat.EnabledDownsampling
 import popeye.storage.hbase._
 import popeye.test.{AkkaTestKitSpec, PopeyeTestUtils}
 
@@ -37,8 +39,7 @@ class RollupMapperEngineSpec extends AkkaTestKitSpec("points-storage") with Matc
     val writeFuture = storageStub.storage.writePoints(points)
     Await.result(writeFuture, Duration.Inf)
 
-    val uniqueId = new LightweightUniqueId(storageStub.uniqueIdStorage, 100)
-    val mapperEngine = new RollupMapperEngine(storageStub.tsdbFormat, uniqueId, 100, 100)
+    val mapperEngine = new RollupMapperEngine(storageStub.tsdbFormat, RollupStrategy.HourRollup, 0)
     val results = storageStub.pointsTable.getScanner(new Scan).asScala.toBuffer
     val keyValues = mutable.Buffer[KeyValue]()
     for (result <- results) {
@@ -47,15 +48,16 @@ class RollupMapperEngineSpec extends AkkaTestKitSpec("points-storage") with Matc
     keyValues ++= mapperEngine.cleanup().asScala.map(_.keyValue)
     val puts = keyValues.map(kv => new Put(CellUtil.cloneRow(kv)).add(kv)).asJava
     storageStub.pointsTable.put(puts)
-    val pointsAsyncIter = storageStub.storage.getPoints("test_h1", (0, 3600 * 60), Map("host" -> SingleValueName("yandex.net")))
+    val pointsAsyncIter = storageStub.storage.getPoints(
+      "test",
+      (0, 3600 * 60),
+      Map("host" -> SingleValueName("yandex.net")),
+      EnabledDownsampling(TsdbFormat.DownsamplingResolution.Hour, TsdbFormat.AggregationType.Avg)
+    )
     val seriesFuture = HBaseStorage.collectSeries(pointsAsyncIter, Promise().future)
     val pointSeries = Await.result(seriesFuture, Duration.Inf)
     val allAggregatedPoints = pointSeries.seriesMap(SortedMap("host" -> "yandex.net")).iterator.toList
-    val averageTimestamp = {
-      val singleHourTimestamps = 0 until 3600 by step
-      singleHourTimestamps.sum / singleHourTimestamps.size
-    }
-    val expectedPoints = (0 until numberOfPoints / (3600 / step)).map(i => Point(startTime + i * 3600 + averageTimestamp, i))
+    val expectedPoints = (0 until numberOfPoints / (3600 / step)).map(i => Point(startTime + i * 3600, i))
     allAggregatedPoints should equal(expectedPoints)
   }
 }

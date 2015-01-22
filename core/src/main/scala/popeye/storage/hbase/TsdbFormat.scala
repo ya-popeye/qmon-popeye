@@ -233,7 +233,7 @@ object TsdbFormat {
     val SingleValueTypeStructureId: Byte = 0
     val ListValueTypeStructureId: Byte = 1
 
-    def renderQualifier(timestamp: Long, downsampling: Downsampling, isFloat: Boolean): Array[Byte] = {
+    def renderQualifier(timestamp: Int, downsampling: Downsampling, isFloat: Boolean): Array[Byte] = {
       val delta: Short = ((timestamp % downsampling.rowTimespanInSeconds) / downsampling.resolutionInSeconds).toShort
       val ndelta = delta << FLAG_BITS
       if (isFloat) {
@@ -305,9 +305,13 @@ object TsdbFormat {
 
   case object IntValueType extends ValueType {
     override def mkQualifiedValue(point: Message.Point, downsampling: Downsampling): (Array[Byte], Array[Byte]) = {
-      val qualifier = ValueTypes.renderQualifier(point.getTimestamp, downsampling, isFloat = false)
-      val value = Bytes.toBytes(point.getIntValue)
-      (qualifier, value)
+      makeQualifierAndValue(point.getTimestamp.toInt, point.getIntValue, downsampling)
+    }
+
+    def makeQualifierAndValue(timestamp: Int, value: Long, downsampling: Downsampling) = {
+      val qualifier = ValueTypes.renderQualifier(timestamp, downsampling, isFloat = false)
+      val valueBytes = Bytes.toBytes(value)
+      (qualifier, valueBytes)
     }
 
     override def getValueTypeStructureId: Byte = ValueTypes.SingleValueTypeStructureId
@@ -315,9 +319,13 @@ object TsdbFormat {
 
   case object FloatValueType extends ValueType {
     override def mkQualifiedValue(point: Message.Point, downsampling: Downsampling): (Array[Byte], Array[Byte]) = {
-      val qualifier = ValueTypes.renderQualifier(point.getTimestamp, downsampling, isFloat = true)
-      val value = Bytes.toBytes(point.getFloatValue)
-      (qualifier, value)
+      makeQualifierAndValue(point.getTimestamp.toInt, point.getFloatValue, downsampling)
+    }
+
+    def makeQualifierAndValue(timestamp: Int, value: Float, downsampling: Downsampling) = {
+      val qualifier = ValueTypes.renderQualifier(timestamp, downsampling, isFloat = true)
+      val valueBytes = Bytes.toBytes(value)
+      (qualifier, valueBytes)
     }
 
     override def getValueTypeStructureId: Byte = ValueTypes.SingleValueTypeStructureId
@@ -325,7 +333,7 @@ object TsdbFormat {
 
   case object IntListValueType extends ValueType {
     override def mkQualifiedValue(point: Message.Point, downsampling: Downsampling): (Array[Byte], Array[Byte]) = {
-      val qualifier = ValueTypes.renderQualifier(point.getTimestamp, downsampling, isFloat = false)
+      val qualifier = ValueTypes.renderQualifier(point.getTimestamp.toInt, downsampling, isFloat = false)
       val value = longsToBytes(point.getIntListValueList.asScala)
       (qualifier, value)
     }
@@ -350,7 +358,7 @@ object TsdbFormat {
 
   case object FloatListValueType extends ValueType {
     override def mkQualifiedValue(point: Message.Point, downsampling: Downsampling): (Array[Byte], Array[Byte]) = {
-      val qualifier = ValueTypes.renderQualifier(point.getTimestamp, downsampling, isFloat = true)
+      val qualifier = ValueTypes.renderQualifier(point.getTimestamp.toInt, downsampling, isFloat = true)
       val value = floatsToBytes(point.getFloatListValueList.asScala)
       (qualifier, value)
     }
@@ -441,6 +449,7 @@ object TsdbFormat {
 
   def parseSingleValueRowResult(result: Result): ParsedSingleValueRowResult = {
     val row = result.getRow
+    require(row(valueTypeIdOffset) == ValueTypes.SingleValueTypeStructureId)
     val (timeseriesId, baseTime) = parseTimeseriesIdAndBaseTime(row)
     val downsampling = parseDownsamplingByte(row(downsamplingQualByteOffset))
     val cells = result.rawCells()
@@ -477,11 +486,20 @@ object TsdbFormat {
       f"illegal row length: ${row.length}, attributes length: $attributesLength, attr size: ${attributeWidth}"
     )
     val generationId = new BytesKey(copyOfRange(row, 0, uniqueIdGenerationWidth))
+    val downsamplingByte = row(downsamplingQualByteOffset)
     val metricId = new BytesKey(copyOfRange(row, metricOffset, metricOffset + metricWidth))
+    val valueTypeId = row(valueTypeIdOffset)
     val shardId = new BytesKey(copyOfRange(row, shardIdOffset, shardIdOffset + attributeValueWidth))
     val baseTime = Bytes.toInt(row, baseTimeOffset, baseTimeWidth)
     val attributesBytes = copyOfRange(row, attributesOffset, row.length)
-    val timeseriedId = TimeseriesId(generationId, metricId, shardId, createAttributesMap(attributesBytes))
+    val timeseriedId = TimeseriesId(
+      generationId,
+      parseDownsamplingByte(downsamplingByte),
+      metricId,
+      valueTypeId,
+      shardId,
+      createAttributesMap(attributesBytes)
+    )
     (timeseriedId, baseTime)
   }
 
@@ -505,7 +523,9 @@ object TsdbFormat {
 }
 
 case class TimeseriesId(generationId: BytesKey,
+                        downsampling: Downsampling,
                         metricId: BytesKey,
+                        valueTypeId: Byte,
                         shardId: BytesKey,
                         attributeIds: SortedMap[BytesKey, BytesKey]) {
   def getMetricName(idMap: Map[QualifiedId, String]) = idMap(QualifiedId(MetricKind, generationId, metricId))
@@ -597,6 +617,32 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
 
     val shardAttribute = shardAttributes.head
     shardAttributeToShardName(shardAttribute.getName, shardAttribute.getValue)
+  }
+
+  def createPointKeyValue(timeseriesId: TimeseriesId,
+                          timestamp: Int,
+                          value: Either[Long, Float],
+                          keyValueTimestamp: Long) = {
+    require(timeseriesId.valueTypeId == ValueTypes.SingleValueTypeStructureId)
+    val qualifiedValue = value.fold(
+      longValue => {
+        IntValueType.makeQualifierAndValue(timestamp, longValue, timeseriesId.downsampling)
+      },
+      floatValue => {
+        FloatValueType.makeQualifierAndValue(timestamp, floatValue, timeseriesId.downsampling)
+      }
+    )
+    mkKeyValue(
+      timeseriesId.generationId,
+      timeseriesId.downsampling,
+      timeseriesId.metricId,
+      timeseriesId.valueTypeId,
+      timeseriesId.shardId,
+      timestamp,
+      timeseriesId.attributeIds.toSeq,
+      keyValueTimestamp,
+      qualifiedValue
+    )
   }
 
   def getAllQualifiedNames(point: Message.Point, currentTimeInSeconds: Int): Seq[QualifiedName] = {
@@ -809,7 +855,7 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
     timestamp - (timestamp % MAX_TIMESPAN)
   }
 
-  private def mkKeyValue(timeRangeId: BytesKey,
+  private def mkKeyValue(generationId: BytesKey,
                          downsampling: Downsampling,
                          metric: BytesKey,
                          valueTypeStructureId: Byte,
@@ -824,7 +870,7 @@ class TsdbFormat(timeRangeIdMapping: GenerationIdMapping, shardAttributeNames: S
     val rowLength = attributesOffset + attributeIds.length * attributeWidth
     val row = new Array[Byte](rowLength)
     var off = 0
-    off = copyBytes(timeRangeId, row, off)
+    off = copyBytes(generationId, row, off)
     row(off) = downsamplingByte
     off += 1
     off = copyBytes(metric, row, off)
