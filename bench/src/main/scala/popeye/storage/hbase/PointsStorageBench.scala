@@ -15,8 +15,7 @@ import popeye.Logging
 import popeye.bench.BenchUtils
 import popeye.pipeline.MetricGenerator
 import popeye.proto.Message
-import popeye.storage.hbase.HBaseStorage.PointsGroups
-import popeye.util.ZkConnect
+import popeye.util.{ARM, ZkConnect}
 import popeye.util.hbase.HBaseConfigured
 import popeye.storage.ValueNameFilterCondition
 
@@ -104,10 +103,10 @@ object PointsStorageBench extends Logging {
   }
 
   def hTablePoolResource(hBaseConfigured: HBaseConfigured) =
-    AFH.closableResource(hBaseConfigured.getHTablePool(2))
+    ARM.closableResource(hBaseConfigured.getHTablePool(2))
 
   def hTableResource(hTablePool: HTablePool, tableName: String) =
-    AFH.closableResource(hTablePool.getTable(tableName))
+    ARM.closableResource(hTablePool.getTable(tableName))
 
   def tsdbFormatBenchmark(numberOfPointsPerSeries: Int,
                           numberOfTagValues: (Int, Int),
@@ -146,8 +145,8 @@ object PointsStorageBench extends Logging {
     bench.run()
   }
 
-  def actorSystemResource: AFH[ActorSystem] = {
-    AFH.resource(ActorSystem()) {
+  def actorSystemResource: ARM[ActorSystem] = {
+    ARM.resource(ActorSystem()) {
       actorSystem =>
         info("stopping actor system")
         actorSystem.shutdown()
@@ -271,50 +270,4 @@ object PointsStorageBench extends Logging {
       def createHTableInterface(config: Configuration, tableNameBytes: Array[Byte]): HTableInterface = hTable
     })
   }
-
-  // Automatic Failure Handling
-  trait AFH[A] {
-    def run(): A
-
-    def compose[B](f: A => AFH[B]): AFH[B] = f(run())
-
-    def map[B](f: A => B): AFH[B] = compose(x => AFH.lift(f(x)))
-
-    def flatMap[B](f: A => AFH[B]): AFH[B] = compose(f)
-  }
-
-  trait AutoCloseAFH[A] extends AFH[A] {
-    def close(x: A): Unit
-
-    override def compose[B](f: (A) => AFH[B]): AFH[B] = {
-      val self = this
-      new AFH[B] {
-        override def run(): B = {
-          val resource = self.run()
-          try {
-            f(resource).run()
-          } finally {
-            close(resource)
-          }
-        }
-      }
-    }
-  }
-
-
-  object AFH {
-
-    def lift[A](x: A): AFH[A] = new AFH[A] {
-      override def run(): A = x
-    }
-
-    def closableResource[R <: Closeable](res: R): AFH[R] = resource(res)(_.close())
-
-    def resource[R](resource: => R)(closeFunc: R => Unit): AFH[R] = new AutoCloseAFH[R] {
-      override def run(): R = resource
-
-      override def close(x: R): Unit = closeFunc(x)
-    }
-  }
-
 }
