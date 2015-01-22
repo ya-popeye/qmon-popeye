@@ -109,6 +109,8 @@ object TsdbFormat {
 
     val maxTimespan = values.map(timespanInSeconds).max
 
+    val noDownsamplingResolutionId = 0
+
     def getId(resolution: DownsamplingResolution) = resolution match {
       case Minute5 => 1
       case Hour => 2

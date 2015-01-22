@@ -63,6 +63,11 @@ object RollupMapperEngine {
     }
 
     def resolutions: Seq[DownsamplingResolution]
+
+    def isTimestampRangeBoundaryAcceptable(timestampRangeBoundary: Int) = {
+      val maxResolution = resolutions.map(TsdbFormat.DownsamplingResolution.resolutionInSeconds).max
+      timestampRangeBoundary % maxResolution == 0
+    }
   }
 
   val aggregators: Map[TsdbFormat.AggregationType.AggregationType, Iterable[Double] => Double] = {
@@ -85,7 +90,7 @@ object RollupMapperEngine {
     val strategyString = conf.get(strategyKey)
     val rollupStrategy = RollupStrategy.parseString(strategyString)
     val tsdbFormat = TsdbFormatConfig.parseString(conf.get(tsdbFormatConfigKey)).tsdbFormat
-    val keyValueTimestamp = conf.get(keyValueTimestampKey).toInt
+    val keyValueTimestamp = conf.get(keyValueTimestampKey).toLong
     new RollupMapperEngine(tsdbFormat, rollupStrategy, keyValueTimestamp)
   }
 
