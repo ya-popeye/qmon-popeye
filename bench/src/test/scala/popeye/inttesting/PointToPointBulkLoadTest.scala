@@ -60,9 +60,9 @@ class PointToPointBulkLoadTest extends FlatSpec with Matchers with BeforeAndAfte
     )
     val metrics = new MetricRegistry()
     actorSystem = ActorSystem("popeye", conf)
-    PipelineCommand.run(actorSystem, metrics, conf)
+    PipelineCommand.run(actorSystem, metrics, conf, None)
     info("popeye pipeline started")
-    QueryCommand.run(actorSystem, metrics, conf)
+    QueryCommand.run(actorSystem, metrics, conf, None)
     info("popeye query started")
   }
 

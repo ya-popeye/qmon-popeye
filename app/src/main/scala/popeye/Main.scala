@@ -10,11 +10,13 @@ import popeye.storage.hbase.PrepareStorageCommand
 
 case class MainConfig(debug: Boolean = false,
                       configPath: Option[File] = None,
-                      command: Option[PopeyeCommand] = None)
+                      command: Option[PopeyeCommand] = None,
+                      commandArgs: Option[Any] = None)
 
 trait PopeyeCommand {
   def prepare(parser: scopt.OptionParser[MainConfig]): scopt.OptionParser[MainConfig]
-  def run(actorSystem: ActorSystem, metrics: MetricRegistry, config: Config): Unit
+
+  def run(actorSystem: ActorSystem, metrics: MetricRegistry, config: Config, commandArgs: Option[Any]): Unit
 }
 
 object Main extends App with MetricsConfiguration with Logging {
@@ -56,7 +58,7 @@ object Main extends App with MetricsConfiguration with Logging {
         }
       }))
       try {
-        cmd.get.run(actorSystem, metrics, conf)
+        cmd.get.run(actorSystem, metrics, conf, main.get.commandArgs)
       } catch {
         case e: Exception=>
           log.error("Failed to start", e)

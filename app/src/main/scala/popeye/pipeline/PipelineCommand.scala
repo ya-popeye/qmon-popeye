@@ -86,7 +86,7 @@ object PipelineCommand extends PopeyeCommand {
     parser
   }
 
-  def run(actorSystem: ActorSystem, metrics: MetricRegistry, config: Config): Unit = {
+  def run(actorSystem: ActorSystem, metrics: MetricRegistry, config: Config, commandArgs: Option[Any]): Unit = {
     val daemonThreadFactory = new ThreadFactoryBuilder().setDaemon(true).build()
     val ectx = ExecutionContexts.fromExecutorService(Executors.newCachedThreadPool(daemonThreadFactory))
     val pc = config.getConfig("popeye.pipeline")
