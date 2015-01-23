@@ -55,11 +55,7 @@ object RollupMapperEngine {
 
   sealed trait RollupStrategy {
     def rollup(points: PointRope): Iterable[DownsamplingPoint] = {
-      val downsamplings = for {
-        resolution <- resolutions
-        aggregation <- TsdbFormat.AggregationType.values
-      } yield EnabledDownsampling(resolution, aggregation)
-      downsamplings.flatMap(ds => rollupPoints(points, ds))
+      resolutions.flatMap(resolution => rollupPoints(points, resolution))
     }
 
     def resolutions: Seq[DownsamplingResolution]
@@ -103,16 +99,18 @@ object RollupMapperEngine {
     conf.set(keyValueTimestampKey, keyValueTimestamp.toString)
   }
 
-  def rollupPoints(points: PointRope, enabledDownsampling: EnabledDownsampling): Iterable[DownsamplingPoint] = {
+  def rollupPoints(points: PointRope, resolution: DownsamplingResolution): Iterable[DownsamplingPoint] = {
     import TsdbFormat.DownsamplingResolution._
-    val EnabledDownsampling(resolution, aggregation) = enabledDownsampling
     def baseTime(timestamp: Int): Int = timestamp - timestamp % resolutionInSeconds(resolution)
     val groupedByBaseTime = points.asIterable.groupBy(point => baseTime(point.timestamp))
-    groupedByBaseTime.view.map {
-      case (baseTimestamp, pointsToAggregate) =>
-        val pointsView = pointsToAggregate.view
-        val downsampledValue = RollupMapperEngine.aggregators(aggregation)(pointsView.map(_.value))
-        DownsamplingPoint(baseTimestamp, downsampledValue.toFloat, enabledDownsampling)
+    for {
+      (baseTimestamp, pointsToAggregate) <- groupedByBaseTime
+      aggregation <- TsdbFormat.AggregationType.values
+    } yield {
+      val downsampling = EnabledDownsampling(resolution, aggregation)
+      val pointsView = pointsToAggregate.view
+      val downsampledValue = RollupMapperEngine.aggregators(aggregation)(pointsView.map(_.value))
+      DownsamplingPoint(baseTimestamp, downsampledValue.toFloat, downsampling)
     }
   }
 }
