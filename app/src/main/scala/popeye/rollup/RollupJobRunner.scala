@@ -21,7 +21,7 @@ class RollupJobRunner(hBaseConfiguration: Configuration,
                       pointsTableName: TableName,
                       hadoopConfiguration: Configuration,
                       restoreDirParent: Path,
-                      outputPath: Path,
+                      outputPathParent: Path,
                       jarPaths: Seq[Path],
                       tsdbFormatConfig: TsdbFormatConfig) extends Logging {
   def doRollup(generationId: Short,
@@ -38,6 +38,7 @@ class RollupJobRunner(hBaseConfiguration: Configuration,
       hTable <- hTableResource(hBaseConfiguration, pointsTableName)
       hdfs <- hdfsResource(hadoopConfiguration)
       restoreDir <- tempHdfsDirectoryResource(hdfs, restoreDirParent)
+      outputPath <- tempHdfsDirectoryResource(hdfs, outputPathParent)
     } yield {
       info("resources were successfully created")
       val job = Job.getInstance(hadoopConfiguration)
@@ -125,9 +126,12 @@ class RollupJobRunner(hBaseConfiguration: Configuration,
   }
 
   def checkRangeBoundary(rollupStrategy: RollupStrategy, baseStartTime: Int) {
+    val resolutionInSeconds = rollupStrategy.maxResolutionInSeconds
     require(
-      rollupStrategy.isTimestampRangeBoundaryAcceptable(baseStartTime),
-      f"$rollupStrategy do not accept $baseStartTime as a range boundary"
+      baseStartTime % resolutionInSeconds == 0,
+      f"$rollupStrategy do not accept $baseStartTime as a range boundary; " +
+        f"max resolution in seconds = $resolutionInSeconds; " +
+        f"$baseStartTime ${"%"} $resolutionInSeconds = ${baseStartTime % resolutionInSeconds}, not 0"
     )
   }
 }

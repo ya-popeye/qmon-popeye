@@ -60,9 +60,8 @@ object RollupMapperEngine {
 
     def resolutions: Seq[DownsamplingResolution]
 
-    def isTimestampRangeBoundaryAcceptable(timestampRangeBoundary: Int) = {
-      val maxResolution = resolutions.map(TsdbFormat.DownsamplingResolution.resolutionInSeconds).max
-      timestampRangeBoundary % maxResolution == 0
+    def maxResolutionInSeconds = {
+      resolutions.map(TsdbFormat.DownsamplingResolution.resolutionInSeconds).max
     }
   }
 
