@@ -132,7 +132,7 @@ object PointSeriesUtils {
       val buf = ArrayBuffer[Double]()
       if (source.hasNext) {
         val Point(firstTimestamp, firstValue) = source.next()
-        currentIntervalStart = firstTimestamp
+        currentIntervalStart = firstTimestamp - firstTimestamp % intervalLength
         buf += firstValue
       }
       buf
@@ -146,26 +146,27 @@ object PointSeriesUtils {
         buffer.clear()
         return point
       }
-      var newPoint = source.next()
-      while(source.hasNext && newPoint.timestamp < (currentIntervalStart + intervalLength)) {
-        buffer += newPoint.value
-        newPoint = source.next()
+      var nextPoint = source.next()
+      val nextIntervalStart = currentIntervalStart + intervalLength
+      while(source.hasNext && nextPoint.timestamp < nextIntervalStart) {
+        buffer += nextPoint.value
+        nextPoint = source.next()
       }
       val aggregatedValue =
-        if (source.hasNext || newPoint.timestamp >= (currentIntervalStart + intervalLength)) {
+        if (source.hasNext || nextPoint.timestamp >= nextIntervalStart) {
           val value = aggregator(buffer)
           buffer.clear()
-          buffer += newPoint.value
+          buffer += nextPoint.value
           value
         }
         else {
-          buffer += newPoint.value
+          buffer += nextPoint.value
           val value = aggregator(buffer)
           buffer.clear()
           value
         }
       val intervalTime = currentIntervalStart + intervalLength / 2
-      currentIntervalStart += intervalLength * ((newPoint.timestamp - currentIntervalStart) / intervalLength)
+      currentIntervalStart = nextPoint.timestamp - nextPoint.timestamp % intervalLength
 
       Point(intervalTime, aggregatedValue)
     }

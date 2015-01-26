@@ -101,10 +101,18 @@ class PointSeriesUtilsSpec extends FlatSpec with Matchers {
     output.map(_.value) should equal(expectedOutputValues)
   }
 
+  // https://github.com/OpenTSDB/opentsdb/pull/325
+  it should "align the start of downsampling" in {
+    val input = Seq(Point(100, 1), Point(200, 1), Point(350, 2), Point(500, 2))
+    val output = PointSeriesUtils.downsample(input.iterator, 300, maxAggregator).toList
+    val expectedOutputValues = Seq(Point(150, 1), Point(450, 2))
+    output.toList should equal(expectedOutputValues)
+  }
+
   it should "pass randomized test" in {
     val random = new Random(0)
     val input = randomInput(random)
-    val intervalLength = 1 + random.nextInt(10)
+    val intervalLength = 1000 //1 + random.nextInt(10)
     val output = PointSeriesUtils.downsample(input.iterator, intervalLength, maxAggregator).toList
     val expectedOutput = slowDownsampling(input, intervalLength, maxAggregator)
     if (output != expectedOutput) {
@@ -151,21 +159,16 @@ class PointSeriesUtilsSpec extends FlatSpec with Matchers {
 
   private def slowDownsampling(source: Seq[Point],
                                intervalLength: Int,
-                               aggregator: Seq[Double] => Double,
-                               currentIntervalStartOption: Option[Int] = None): List[Point] = {
-    if (source.isEmpty) return Nil
-    val currentIntervalStart = currentIntervalStartOption.getOrElse(source.head.timestamp)
-    val (currentIntervalPoints, rest) = source.span(_.timestamp < (currentIntervalStart + intervalLength))
-    val nextStart: Option[Int] = rest.headOption.map {
-      head => currentIntervalStart + intervalLength * ((head.timestamp - currentIntervalStart) / intervalLength)
+                               aggregator: Seq[Double] => Double): List[Point] = {
+    def intervalStartTime(timestamp: Int) = timestamp - timestamp % intervalLength
+    val groupedByIntervals = source.groupBy(p => intervalStartTime(p.timestamp))
+    val aggregations = groupedByIntervals.map {
+      case (intervalStartTime, points) =>
+        val intervalTs = intervalStartTime + intervalLength / 2
+        val intervalValue = aggregator(points.map(_.value))
+        Point(intervalTs, intervalValue)
     }
-    if (currentIntervalPoints.isEmpty) {
-      slowDownsampling(rest, intervalLength, aggregator, nextStart)
-    } else {
-      val intervalTimestamp = currentIntervalStart + intervalLength / 2
-      val intervalValue = aggregator(currentIntervalPoints.map(_.value))
-      Point(intervalTimestamp, intervalValue) :: slowDownsampling(rest, intervalLength, aggregator, nextStart)
-    }
+    aggregations.toList.sortBy(_.timestamp)
   }
 
   private def maxAggregator(seq: Seq[Double]): Double = seq.max
