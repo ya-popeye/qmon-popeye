@@ -2,7 +2,7 @@ package popeye.query
 
 import org.apache.hadoop.hbase.util.Bytes
 import popeye.PointRope
-import popeye.storage.{TimeseriesStorage, PointsGroups, PointsSeriesMap, ValueNameFilterCondition}
+import popeye.storage._
 import popeye.storage.hbase.TsdbFormat.{EnabledDownsampling, DownsamplingResolution, Downsampling, NoDownsampling}
 import scala.concurrent.{ExecutionContext, Future}
 import popeye.storage.hbase._
@@ -22,16 +22,6 @@ trait PointsStorage {
 
 object PointsStorage {
 
-  val aggregators = {
-    import TsdbFormat.AggregationType._
-    Map[AggregationType, Seq[Double] => Double](
-      Sum -> (seq => seq.sum),
-      Min -> (seq => seq.min),
-      Max -> (seq => seq.max),
-      Avg -> (seq => seq.sum / seq.size)
-    )
-  }
-
   val MaxGenerations = 3
 
   object NameType extends Enumeration {
@@ -44,18 +34,21 @@ object PointsStorage {
                           timeRangeIdMapping: GenerationIdMapping,
                           executionContext: ExecutionContext) = new PointsStorage {
 
+    val transparentDownsampling = new StorageWithTransparentDownsampling(pointsStorage)
+
     def getPoints(metric: String,
                   timeRange: (Int, Int),
                   attributes: Map[String, ValueNameFilterCondition],
                   downsampling: Option[(Int, TsdbFormat.AggregationType.AggregationType)],
                   cancellation: Future[Nothing]) = {
       implicit val exct = executionContext
-      val eventualPointsSeriesMap = downsampling.map {
-        downsampling =>
-          getDownsampledTimeseriesFuture(metric, timeRange, attributes, downsampling, cancellation)
-      }.getOrElse {
-        pointsStorage.getSeries(metric, timeRange, attributes, NoDownsampling, cancellation)
-      }
+      val eventualPointsSeriesMap = transparentDownsampling.getSeries(
+        metric,
+        timeRange,
+        attributes,
+        downsampling,
+        cancellation
+      )
       eventualPointsSeriesMap.map {
         seriesMap =>
           val groupByAttributeNames =
@@ -70,89 +63,6 @@ object PointsStorage {
           }.mapValues(series => PointsSeriesMap(series))
           PointsGroups(groups)
       }
-    }
-
-    def getDownsampledTimeseriesFuture(metric: String,
-                                       timeRange: (Int, Int),
-                                       attributes: Map[String, ValueNameFilterCondition],
-                                       downsampling: (Int, TsdbFormat.AggregationType.AggregationType),
-                                       cancellation: Future[Nothing])
-                                      (implicit extc: ExecutionContext): Future[PointsSeriesMap] = {
-      val (downsampleInterval, aggregationType) = downsampling
-      val closestResolutionOption = DownsamplingResolution.resolutions.to(downsampleInterval).lastOption.map(_._2)
-      val storageDownsampling = closestResolutionOption.map {
-        resolution => EnabledDownsampling(resolution, aggregationType)
-      }.getOrElse {
-        NoDownsampling
-      }
-      getDownsampledTimeseriesFutureRecursively(
-        metric,
-        timeRange,
-        attributes,
-        downsampleInterval,
-        aggregationType,
-        storageDownsampling,
-        cancellation
-      )
-    }
-
-    def getDownsampledTimeseriesFutureRecursively(metric: String,
-                                                  timeRange: (Int, Int),
-                                                  attributes: Map[String, ValueNameFilterCondition],
-                                                  downsampleInterval: Int,
-                                                  aggregationType: TsdbFormat.AggregationType.AggregationType,
-                                                  storageDownsampling: Downsampling,
-                                                  cancellation: Future[Nothing])
-                                                 (implicit extc: ExecutionContext): Future[PointsSeriesMap] = {
-      val (startTime, stopTime) = timeRange
-      val seriesMapFuture = pointsStorage.getSeries(metric, timeRange, attributes, storageDownsampling, cancellation)
-      seriesMapFuture.flatMap {
-        pointsSeriesMap =>
-          val downsampledSeries = downsampleSeries(pointsSeriesMap, downsampleInterval, aggregators(aggregationType))
-          val maxTimestamp = pointsSeriesMap.seriesMap.mapValues(_.last.timestamp).values.max
-          val maxTimespanBoundary = {
-            val baseTime = maxTimestamp - maxTimestamp % storageDownsampling.rowTimespanInSeconds
-            baseTime + storageDownsampling.rowTimespanInSeconds
-          }
-          if (storageDownsampling != NoDownsampling && maxTimespanBoundary < stopTime) {
-            val higherResolutionDs = getHigherResolution(storageDownsampling)
-            val higherResolutionSeriesFuture = getDownsampledTimeseriesFutureRecursively(
-              metric,
-              (maxTimespanBoundary, stopTime),
-              attributes,
-              downsampleInterval,
-              aggregationType,
-              higherResolutionDs,
-              cancellation
-            )
-            higherResolutionSeriesFuture.map {
-              higherResolutionSeriesMap =>
-                val downsampledHighResSeries =
-                  downsampleSeries(pointsSeriesMap, downsampleInterval, aggregators(aggregationType))
-                PointsSeriesMap.concat(downsampledSeries, downsampledHighResSeries)
-            }
-          } else {
-            Future.successful(downsampledSeries)
-          }
-      }
-    }
-
-    def getHigherResolution(downsampling: Downsampling) = {
-      val resolutionOption =
-        DownsamplingResolution.resolutions.to(downsampling.resolutionInSeconds).init.lastOption.map(_._2)
-      resolutionOption.map {
-        resolution =>
-          downsampling.asInstanceOf[EnabledDownsampling].copy(downsamplingResolution = resolution)
-      }.getOrElse(NoDownsampling)
-    }
-
-    def downsampleSeries(pointsSeriesMap: PointsSeriesMap, interval: Int, aggregation: Seq[Double] => Double) = {
-      val downsampledSeries = pointsSeriesMap.seriesMap.mapValues {
-        series =>
-          val downsampledIterator = PointSeriesUtils.downsample(series.iterator, interval, aggregation)
-          PointRope.fromIterator(downsampledIterator)
-      }.view.force
-      PointsSeriesMap(downsampledSeries)
     }
 
     def getSuggestions(namePrefix: String, nameType: NameType, maxSuggestions: Int): Seq[String] = {
