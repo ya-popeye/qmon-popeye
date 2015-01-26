@@ -38,7 +38,7 @@ class RollupJobRunner(hBaseConfiguration: Configuration,
       hTable <- hTableResource(hBaseConfiguration, pointsTableName)
       hdfs <- hdfsResource(hadoopConfiguration)
       restoreDir <- tempHdfsDirectoryResource(hdfs, restoreDirParent)
-      outputPath <- tempHdfsDirectoryResource(hdfs, outputPathParent)
+      outputPath <- tempHdfsDirectoryResource(hdfs, outputPathParent, create = false)
     } yield {
       info("resources were successfully created")
       val job = Job.getInstance(hadoopConfiguration)
@@ -50,6 +50,8 @@ class RollupJobRunner(hBaseConfiguration: Configuration,
         }
       }
       val currentTime = System.currentTimeMillis()
+      info(f"rollup mapper config: rollupStrategy: $rollupStrategy, tsdb format config: $tsdbFormatConfig," +
+        f"current time = $currentTime")
       RollupMapperEngine.setConfiguration(job.getConfiguration, rollupStrategy, tsdbFormatConfig, currentTime)
       val scan = new Scan()
       val filter = new TsdbPointsFilter(
@@ -60,6 +62,7 @@ class RollupJobRunner(hBaseConfiguration: Configuration,
         baseStopTime
       )
       scan.setFilter(filter)
+      info(f"initializing table snapshot job: snapshot: $snapshotName, scan: $scan, restore dir: $restoreDir")
       TableMapReduceUtil.initTableSnapshotMapperJob(
         snapshotName,
         scan,
@@ -74,7 +77,7 @@ class RollupJobRunner(hBaseConfiguration: Configuration,
       // HFileOutputFormat2.configureIncrementalLoad abuses tmpjars
       job.getConfiguration.unset("tmpjars")
       FileOutputFormat.setOutputPath(job, outputPath)
-
+      info(f"jar paths: $jarPaths")
       for (path <- jarPaths) {
         job.addFileToClassPath(path)
       }
@@ -104,11 +107,13 @@ class RollupJobRunner(hBaseConfiguration: Configuration,
     snapshotName => hBaseAdmin.deleteSnapshot(snapshotName)
   )
 
-  def tempHdfsDirectoryResource(hdfs: FileSystem, parentPath: Path) = ARM.resource[Path](
+  def tempHdfsDirectoryResource(hdfs: FileSystem, parentPath: Path, create: Boolean = true) = ARM.resource[Path](
     () => {
       val tempDirName = UUID.randomUUID().toString.replaceAll("-", "")
       val tempDirPath = new Path(parentPath, tempDirName)
-      hdfs.mkdirs(tempDirPath)
+      if (create) {
+        hdfs.mkdirs(tempDirPath)
+      }
       tempDirPath
     },
     tempDirPath => hdfs.delete(tempDirPath, true)

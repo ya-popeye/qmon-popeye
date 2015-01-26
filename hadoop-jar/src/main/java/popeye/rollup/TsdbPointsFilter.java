@@ -156,7 +156,14 @@ public class TsdbPointsFilter extends FilterBase {
 
   @Override
   public String toString() {
-    return super.toString();
+    return "TsdbPointsFilter{" +
+      "generationId=" + Arrays.toString(generationId) +
+      ", downsamplingResolutionId=" + downsamplingResolutionId +
+      ", valueTypeId=" + valueTypeId +
+      ", baseTimeStartSeconds=" + baseTimeStartSeconds +
+      ", baseTimeStopSeconds=" + baseTimeStopSeconds +
+      ", done=" + done +
+      '}';
   }
 
   @Override
