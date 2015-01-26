@@ -11,7 +11,7 @@ import popeye._
 import popeye.proto.{Message, PackedPoints}
 import popeye.storage.hbase.HBaseStorage._
 import popeye.storage.hbase.TsdbFormat.{Downsampling, NoDownsampling}
-import popeye.storage.{QualifiedId, QualifiedName, ValueNameFilterCondition}
+import popeye.storage._
 import popeye.util.hbase.HBaseUtils
 import popeye.util.hbase.HBaseUtils.ChunkedResultsMetrics
 
@@ -23,26 +23,6 @@ import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future, Promise}
 
 object HBaseStorage {
-
-  type PointAttributes = SortedMap[String, String]
-
-  object PointsSeriesMap {
-    def empty = PointsSeriesMap(Map.empty)
-
-    def concat(left: PointsSeriesMap, right: PointsSeriesMap) = {
-      val concatinatedSeries = right.seriesMap.foldLeft(left.seriesMap) {
-        case (accGroup, (attrs, newPoints)) =>
-          val pointsOption = accGroup.get(attrs)
-          val pointArray = pointsOption.map(oldPoints => oldPoints.concat(newPoints)).getOrElse(newPoints)
-          accGroup.updated(attrs, pointArray)
-      }
-      PointsSeriesMap(concatinatedSeries)
-    }
-  }
-
-  case class PointsSeriesMap(seriesMap: Map[PointAttributes, PointRope])
-
-  case class PointsGroups(groupsMap: Map[PointAttributes, PointsSeriesMap])
 
   case class ListPointTimeseries(tags: SortedMap[String, String], lists: Seq[ListPoint])
 
@@ -77,9 +57,18 @@ class HBaseStorage(tableName: String,
                    tsdbFormat: TsdbFormat,
                    metrics: HBaseStorageMetrics,
                    resolveTimeout: Duration = 15 seconds,
-                   readChunkSize: Int) extends Logging {
+                   readChunkSize: Int) extends TimeseriesStorage with Logging {
 
   val tableBytes = tableName.getBytes(TsdbFormat.Encoding)
+
+  override def getSeries(metric: String,
+                         timeRange: (Int, Int),
+                         attributes: Map[String, ValueNameFilterCondition],
+                         downsampling: Downsampling,
+                         cancellation: Future[Nothing])
+                        (implicit eCtx: ExecutionContext): Future[PointsSeriesMap] = {
+    collectSeries(getPoints(metric, timeRange, attributes, downsampling), cancellation)
+  }
 
   def getPoints(metric: String,
                 timeRange: (Int, Int),
@@ -94,7 +83,7 @@ class HBaseStorage(tableName: String,
       downsampling
     )
 
-    def resultsToPointsGroups(results: Array[Result]): Future[PointsSeriesMap] = {
+    def resultsToPointsSequences(results: Array[Result]): Future[PointsSeriesMap] = {
       val rowResults = results.map(TsdbFormat.parseSingleValueRowResult)
       val ids = rowResults.flatMap(rr => rr.timeseriesId.getUniqueIds).toSet
       val idNamePairsFuture = Future.traverse(ids) {
@@ -108,7 +97,7 @@ class HBaseStorage(tableName: String,
           PointsSeriesMap(pointSequences)
       }
     }
-    resultsIterator.map(resultsToPointsGroups)
+    resultsIterator.map(resultsToPointsSequences)
   }
 
   def getListPoints(metric: String,

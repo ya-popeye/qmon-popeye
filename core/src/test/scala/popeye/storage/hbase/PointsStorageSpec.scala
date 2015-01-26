@@ -3,7 +3,7 @@ package popeye.storage.hbase
 import org.apache.hadoop.hbase.CellUtil
 import org.apache.hadoop.hbase.client.Put
 import popeye.storage.hbase.TsdbFormat.{AggregationType, DownsamplingResolution, EnabledDownsampling}
-import popeye.storage.{QualifiedName, QualifiedId}
+import popeye.storage.{PointAttributes, PointsSeriesMap, QualifiedName}
 import popeye.{PointRope, AsyncIterator, Point, ListPoint}
 import popeye.test.PopeyeTestUtils._
 import popeye.test.{PopeyeTestUtils, MockitoStubs}

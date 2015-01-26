@@ -8,8 +8,7 @@ import popeye.{PointRope, Point}
 import popeye.query.PointsStorage.NameType
 import popeye.query.PointsStorage.NameType.NameType
 import popeye.storage.ValueNameFilterCondition.{MultipleValueNames, AllValueNames, SingleValueName}
-import popeye.storage.ValueNameFilterCondition
-import popeye.storage.hbase.HBaseStorage._
+import popeye.storage.{PointsGroups, PointAttributes, PointsSeriesMap, ValueNameFilterCondition}
 
 import scala.collection.immutable.SortedMap
 import scala.concurrent.Future

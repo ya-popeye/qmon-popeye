@@ -2,8 +2,7 @@ package popeye.query
 
 import org.apache.hadoop.hbase.util.Bytes
 import popeye.PointRope
-import popeye.storage.hbase.HBaseStorage.{PointsSeriesMap, PointsGroups}
-import popeye.storage.ValueNameFilterCondition
+import popeye.storage.{TimeseriesStorage, PointsGroups, PointsSeriesMap, ValueNameFilterCondition}
 import popeye.storage.hbase.TsdbFormat.{EnabledDownsampling, DownsamplingResolution, Downsampling, NoDownsampling}
 import scala.concurrent.{ExecutionContext, Future}
 import popeye.storage.hbase._
@@ -40,7 +39,7 @@ object PointsStorage {
     val MetricType, AttributeNameType, AttributeValueType = Value
   }
 
-  def createPointsStorage(pointsStorage: HBaseStorage,
+  def createPointsStorage(pointsStorage: TimeseriesStorage,
                           uniqueIdStorage: UniqueIdStorage,
                           timeRangeIdMapping: GenerationIdMapping,
                           executionContext: ExecutionContext) = new PointsStorage {
@@ -55,7 +54,7 @@ object PointsStorage {
         downsampling =>
           getDownsampledTimeseriesFuture(metric, timeRange, attributes, downsampling, cancellation)
       }.getOrElse {
-        getSeriesMapFuture(metric, timeRange, attributes, cancellation, NoDownsampling)
+        pointsStorage.getSeries(metric, timeRange, attributes, NoDownsampling, cancellation)
       }
       eventualPointsSeriesMap.map {
         seriesMap =>
@@ -106,7 +105,7 @@ object PointsStorage {
                                                   cancellation: Future[Nothing])
                                                  (implicit extc: ExecutionContext): Future[PointsSeriesMap] = {
       val (startTime, stopTime) = timeRange
-      val seriesMapFuture = getSeriesMapFuture(metric, timeRange, attributes, cancellation, storageDownsampling)
+      val seriesMapFuture = pointsStorage.getSeries(metric, timeRange, attributes, storageDownsampling, cancellation)
       seriesMapFuture.flatMap {
         pointsSeriesMap =>
           val downsampledSeries = downsampleSeries(pointsSeriesMap, downsampleInterval, aggregators(aggregationType))
@@ -154,16 +153,6 @@ object PointsStorage {
           PointRope.fromIterator(downsampledIterator)
       }.view.force
       PointsSeriesMap(downsampledSeries)
-    }
-
-    def getSeriesMapFuture(metric: String,
-                           timeRange: (Int, Int),
-                           attributes: Map[String, ValueNameFilterCondition],
-                           cancellation: Future[Nothing],
-                           storageDownsampling: Downsampling)
-                          (implicit extc: ExecutionContext): Future[PointsSeriesMap] = {
-      val groupsIterator = pointsStorage.getPoints(metric, timeRange, attributes, storageDownsampling)
-      HBaseStorage.collectSeries(groupsIterator, cancellation)
     }
 
     def getSuggestions(namePrefix: String, nameType: NameType, maxSuggestions: Int): Seq[String] = {

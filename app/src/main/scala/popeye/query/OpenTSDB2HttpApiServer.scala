@@ -3,8 +3,7 @@ package popeye.query
 import com.codahale.metrics.MetricRegistry
 import org.codehaus.jackson.JsonNode
 import org.codehaus.jackson.node.{ObjectNode, JsonNodeFactory}
-import popeye.storage.hbase.HBaseStorage._
-import popeye.storage.ValueNameFilterCondition
+import popeye.storage.{PointsGroups, PointAttributes, ValueNameFilterCondition}
 import popeye.storage.ValueNameFilterCondition.{SingleValueName, MultipleValueNames, AllValueNames}
 import popeye.storage.hbase.TsdbFormat
 import scala.collection.JavaConverters._

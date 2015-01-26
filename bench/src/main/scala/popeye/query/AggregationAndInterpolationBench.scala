@@ -1,8 +1,9 @@
 package popeye.query
 
+import popeye.storage.PointsSeriesMap
 import popeye.{PointRope, Point}
 import popeye.bench.BenchUtils
-import popeye.storage.hbase.HBaseStorage.{PointsSeriesMap, PointsGroups}
+import popeye.storage.PointsGroups
 
 import scala.collection.immutable.SortedMap
 import scala.util.Random

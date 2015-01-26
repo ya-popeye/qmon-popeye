@@ -6,13 +6,12 @@ import spray.http._
 import spray.http.HttpMethods._
 import spray.can.Http
 import scala.concurrent.{Promise, ExecutionContext}
-import popeye.storage.hbase.HBaseStorage._
-import popeye.storage.ValueNameFilterCondition
+import popeye.storage.{PointAttributes, ValueNameFilterCondition}
 import scala.util.Try
 import java.io.{PrintWriter, StringWriter}
 import HttpQueryServer._
 import spray.http.HttpResponse
-import popeye.storage.hbase.HBaseStorage.PointsGroups
+import popeye.storage.PointsGroups
 import spray.http.HttpRequest
 
 

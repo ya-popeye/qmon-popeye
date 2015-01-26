@@ -5,7 +5,7 @@ import akka.actor.{ActorRef, Props, ActorSystem, Actor}
 import popeye.Logging
 import spray.http._
 import scala.util.Try
-import popeye.storage.hbase.HBaseStorage.PointsGroups
+import popeye.storage.PointsGroups
 import spray.http.HttpRequest
 import spray.http.HttpResponse
 import spray.can.Http

@@ -2,11 +2,10 @@ package popeye.query
 
 import org.scalatest.mock.MockitoSugar
 import org.mockito.Mockito._
-import popeye.storage.hbase.TsdbFormat.{Downsampling, NoDownsampling}
+import popeye.storage.PointsSeriesMap
 import popeye.test.AkkaTestKitSpec
 import scala.concurrent.{ExecutionContext, Await, Future}
 import scala.collection.immutable.SortedMap
-import popeye.storage.hbase.HBaseStorage
 import scala.concurrent.duration._
 import java.util.concurrent.Executors
 import akka.testkit.TestActorRef
@@ -14,7 +13,7 @@ import akka.actor.Props
 import akka.pattern.ask
 import spray.http.{StatusCodes, HttpResponse, Uri, HttpRequest}
 import spray.http.HttpMethods._
-import popeye.storage.hbase.HBaseStorage.PointsGroups
+import popeye.storage.PointsGroups
 import org.mockito.Matchers._
 import org.mockito.Matchers.{eq => equalTo}
 import akka.util.Timeout
@@ -92,7 +91,7 @@ class HealthCheckServerSpec extends AkkaTestKitSpec("http-query") with MockitoSu
 
   def createPointsGroup(groupKeyAttributes: Seq[Seq[(String, String)]]) = {
     val groupsKeys = groupKeyAttributes.map(attrs => SortedMap(attrs: _*))
-    val emptySeriesMap = HBaseStorage.PointsSeriesMap.empty
+    val emptySeriesMap = PointsSeriesMap.empty
     PointsGroups(groupsKeys.map(key => (key, emptySeriesMap)).toMap)
   }
 

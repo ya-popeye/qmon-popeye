@@ -9,7 +9,7 @@ import akka.testkit.TestActorRef
 import akka.actor.Props
 import akka.pattern.ask
 import spray.http.HttpRequest
-import popeye.storage.hbase.HBaseStorage.PointsGroups
+import popeye.storage.PointsGroups
 import popeye.storage.ValueNameFilterCondition
 import spray.http.HttpResponse
 import akka.util.Timeout
