@@ -34,7 +34,7 @@ object RollupMapperEngine {
     def parseString(str: String): RollupStrategy = str match {
       case "hour" => HourRollup
       case "day" => DayRollup
-      case _ => throw new IllegalArgumentException(f"bad rollup strategy key: $str")
+      case _ => throw new IllegalArgumentException(f"bad rollup strategy key: $str, only 'hour' and 'day' are supported")
     }
 
     case object HourRollup extends RollupStrategy {
