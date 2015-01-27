@@ -76,30 +76,60 @@ class StorageWithTransparentDownsampling(timeseriesStorage: TimeseriesStorage) e
                                        startingDownsampling: Downsampling)
                                       (implicit eCtx: ExecutionContext): AsyncIterator[PointsSeriesMap] = {
     val (startTime, stopTime) = timeRange
-    def fetchPoints(downsampling: Downsampling, timeRange: (Int, Int)): Future[(Downsampling, PointsSeriesMap)] = {
-      timeseriesStorage.getSeries(metric, timeRange, attributes, downsampling, cancellation).map {
-        pointSeriesMap => (downsampling, pointSeriesMap)
+    case class FetchRequest(startTime: Int, downsampling: Downsampling)
+    def fetchPoints(request: FetchRequest): Future[(FetchRequest, PointsSeriesMap)] = {
+      info(f"fetching: $request")
+      val pointSeriesMapFuture = timeseriesStorage.getSeries(
+        metric,
+        (request.startTime, stopTime),
+        attributes,
+        request.downsampling,
+        cancellation
+      )
+      pointSeriesMapFuture.map {
+        pointSeriesMap => (request, pointSeriesMap)
       }
     }
-    def fetchNextPointsIfNeeded(currentPoints: (Downsampling, PointsSeriesMap)) = {
-      val (currentDownsampling, pointsSeriesMap) = currentPoints
-      val maxTimestamp = pointsSeriesMap.seriesMap.mapValues(_.last.timestamp).values.max
-      val maxTimespanBoundary = {
-        val baseTime = maxTimestamp - maxTimestamp % currentDownsampling.resolutionInSeconds
-        baseTime + currentDownsampling.resolutionInSeconds
-      }
-      info(f"fetched series has timestamps up to $maxTimestamp, max boundary: $maxTimespanBoundary")
-      if (currentDownsampling != NoDownsampling && maxTimespanBoundary < stopTime) {
-        val higherResolutionDs = getHigherResolution(currentDownsampling)
-        val future = fetchPoints(higherResolutionDs, (maxTimespanBoundary, stopTime))
-        Some(future)
-      } else {
+    def fetchNextPointsIfNeeded(currentPoints: (FetchRequest, PointsSeriesMap)) = {
+      val (previousRequest, pointsSeriesMap) = currentPoints
+      val previousDownsampling = previousRequest.downsampling
+      if (previousDownsampling == NoDownsampling) {
         None
+      } else {
+        val latestTimestampOption = getLatestTimestamp(pointsSeriesMap)
+        val maxResolutionBoundaryOption = latestTimestampOption.map {
+          latestTimestamp =>
+            val baseTime = latestTimestamp - latestTimestamp % previousDownsampling.resolutionInSeconds
+            baseTime + previousDownsampling.resolutionInSeconds
+        }
+        info(f"fetched series has timestamps up to $latestTimestampOption, max boundary: $maxResolutionBoundaryOption")
+        val isMoreDataRequired = maxResolutionBoundaryOption.map(_ < stopTime).getOrElse(true)
+        if (isMoreDataRequired) {
+          val higherResolutionDs = getHigherResolution(previousDownsampling)
+          val newStartTime = maxResolutionBoundaryOption.getOrElse(previousRequest.startTime)
+          val future = fetchPoints(FetchRequest(newStartTime, higherResolutionDs))
+          Some(future)
+        } else {
+          None
+        }
       }
     }
-    val initialFetch = fetchPoints(startingDownsampling, timeRange)
+    val initialFetch = fetchPoints(FetchRequest(startTime, startingDownsampling))
     AsyncIterator.iterate(initialFetch)(fetchNextPointsIfNeeded).map {
-      case (downsampling, points) => Future.successful(points)
+      case (request, points) => Future.successful(points)
+    }
+  }
+
+  private def getLatestTimestamp(pointsSeriesMap: PointsSeriesMap): Option[Int] = {
+    val lastTimestamps = pointsSeriesMap.seriesMap.values.map {
+      rope => rope.lastOption.map(_.timestamp)
+    }.collect {
+      case Some(ts) => ts
+    }
+    if (lastTimestamps.nonEmpty) {
+      Some(lastTimestamps.max)
+    } else {
+      None
     }
   }
 

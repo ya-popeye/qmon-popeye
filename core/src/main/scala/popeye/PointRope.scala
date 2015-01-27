@@ -15,7 +15,7 @@ trait PointRope {
 
   def size: Int
 
-  def last: Point
+  def lastOption: Option[Point]
 
   def asIterable = new Iterable[Point] {
     override def iterator: Iterator[Point] = PointRope.this.iterator
@@ -30,7 +30,7 @@ object PointRope {
 
     override def size: Int = pointRopes.map(_.size).sum
 
-    override def last: Point = pointRopes.last.last
+    override def lastOption = pointRopes.lastOption.flatMap(_.lastOption)
   }
 
   private[PointRope] class SinglePointArrayRope(pointArray: PointArray) extends PointRope {
@@ -38,7 +38,7 @@ object PointRope {
 
     override def size: Int = pointArray.size
 
-    override def last: Point = pointArray.last
+    override def lastOption = pointArray.lastOption
   }
 
   def fromIterator(points: Iterator[Point]) = {
@@ -73,7 +73,13 @@ class PointArray(protected val timestamps: Array[Int],
 
   def size = timestamps.length
 
-  def last = Point(timestamps.last, values.last)
+  def lastOption =
+    if (timestamps.nonEmpty) {
+      Some(Point(timestamps.last, values.last))
+    } else {
+      None
+    }
+
 
   override def toString: String = iterator.mkString("PointArray(", ", ", ")")
 }

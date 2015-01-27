@@ -1,6 +1,6 @@
 package popeye.storage
 
-import java.util.concurrent.Executors
+import java.util.concurrent.{Executor, Executors}
 
 import org.scalatest.{Matchers, FlatSpec}
 import popeye.storage.hbase.TsdbFormat
@@ -16,7 +16,11 @@ import scala.concurrent.{Await, Promise, ExecutionContext, Future}
 
 class StorageWithTransparentDownsamplingSpec extends FlatSpec with Matchers {
 
-  implicit val exct = ExecutionContext.fromExecutor(Executors.newSingleThreadExecutor())
+  implicit val exct = ExecutionContext.fromExecutor(
+    new Executor {
+      override def execute(command: Runnable): Unit = command.run()
+    }
+  )
   behavior of "StorageWithTransparentDownsampling"
 
   it should "not downsample series" in {
@@ -28,17 +32,34 @@ class StorageWithTransparentDownsamplingSpec extends FlatSpec with Matchers {
 
   it should "choose 5 minute downsampling" in {
     val stub = storageStub(Map(
-      EnabledDownsampling(Minute5, Avg) -> Seq(Point(0, 1), Point(300, 1))
+      EnabledDownsampling(Minute5, Max) -> Seq(Point(0, 1), Point(300, 1))
     ))
-    getSeries(stub, (0, 400), Some((300, Avg))) should equal(Seq(Point(150, 1), Point(450, 1)))
+    getSeries(stub, (0, 400), Some((300, Max))) should equal(Seq(Point(150, 1), Point(450, 1)))
   }
 
   it should "choose 5 minute downsampling and then failover to raw data" in {
     val stub = storageStub(Map(
-      EnabledDownsampling(Minute5, Avg) -> Seq(Point(0, 1)),
+      EnabledDownsampling(Minute5, Max) -> Seq(Point(0, 1)),
       NoDownsampling -> Seq(Point(450, 2))
     ))
-    getSeries(stub, (0, 600), Some((300, Avg))) should equal(Seq(Point(150, 1), Point(450, 2)))
+    getSeries(stub, (0, 600), Some((300, Max))) should equal(Seq(Point(150, 1), Point(450, 2)))
+  }
+
+  it should "not fail if no data was predownsampled" in {
+    val stub = storageStub(Map(
+      EnabledDownsampling(Minute5, Max) -> Seq(),
+      NoDownsampling -> Seq(Point(150, 1), Point(450, 2))
+    ))
+    getSeries(stub, (0, 600), Some((300, Max))) should equal(Seq(Point(150, 1), Point(450, 2)))
+  }
+
+  it should "not fail if middle-grained data is absent" in {
+    val stub = storageStub(Map(
+      EnabledDownsampling(Hour, Max) -> Seq(Point(0, 1)),
+      EnabledDownsampling(Minute5, Max) -> Seq(),
+      NoDownsampling -> Seq(Point(1800, 1), Point(3600 + 1800, 2))
+    ))
+    getSeries(stub, (0, 7200), Some((3600, Max))) should equal(Seq(Point(1800, 1), Point(3600 + 1800, 2)))
   }
 
   def getSeries(stub: StorageWithTransparentDownsampling,
