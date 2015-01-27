@@ -43,6 +43,8 @@ class EmptyImmutableIterator[A] extends ImmutableIterator[A] {
 
 object AsyncIterator {
 
+  def empty[A] = new EmptyAsyncIterator[A]
+
   def fromImmutableIterator[A](iter: ImmutableIterator[A]): AsyncIterator[A] =
     new AsyncIterator[A] {
       override def next(implicit eCtx: ExecutionContext): Future[Option[(A, AsyncIterator[A])]] = Future {
@@ -106,6 +108,10 @@ class MappedAsyncIterator[A, B](iter: AsyncIterator[A], f: A => Future[B]) exten
       case None => Future.successful(None)
     }
   }
+}
+
+class EmptyAsyncIterator[A] extends AsyncIterator[A] {
+  override def next(implicit eCtx: ExecutionContext): Future[Option[(A, AsyncIterator[A])]] = Future.successful(None)
 }
 
 
