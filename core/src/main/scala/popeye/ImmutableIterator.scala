@@ -1,6 +1,6 @@
 package popeye
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{Promise, ExecutionContext, Future}
 
 trait ImmutableIterator[A] {
 
@@ -82,6 +82,29 @@ object AsyncIterator {
 
   def unwrapFuture[A](future: Future[AsyncIterator[A]]): AsyncIterator[A] = new AsyncIterator[A] {
     override def next(implicit eCtx: ExecutionContext): Future[Option[(A, AsyncIterator[A])]] = future.flatMap(_.next)
+  }
+
+  def iterate[A](initFuture: Future[A])(f: A => Option[Future[A]]) = {
+    iterateInner(Some(initFuture), f)
+  }
+
+  private def iterateInner[A](init: Option[Future[A]], f: A => Option[Future[A]]): AsyncIterator[A] = {
+    new AsyncIterator[A] {
+      override def next(implicit eCtx: ExecutionContext): Future[Option[(A, AsyncIterator[A])]] = init match {
+        case Some(future) =>
+          future.map {
+            item =>
+              val next = f(item)
+              Some((item, iterateInner(next, f)))
+          }
+        case None => Future.successful(None)
+      }
+    }
+  }
+
+  def toStrictSeq[A](iter: AsyncIterator[A], cancellation: Future[Nothing] = Promise().future)
+                    (implicit eCtx: ExecutionContext): Future[Seq[A]] = {
+    foldLeft[A,Seq[A]](iter, Vector.empty, (vec, elem) => vec :+ elem, cancellation)
   }
 
 }
