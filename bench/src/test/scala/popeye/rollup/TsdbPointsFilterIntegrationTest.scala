@@ -10,8 +10,8 @@ import org.scalatest.{Matchers, FlatSpec}
 import popeye.Logging
 import popeye.clients.TsPoint
 import popeye.inttesting.TestDataUtils
-import popeye.proto.Message
 import popeye.storage.hbase._
+import popeye.test.PopeyeTestUtils
 import popeye.util.ZkConnect
 
 import scala.collection.JavaConverters._
@@ -99,25 +99,7 @@ class TsdbPointsFilterIntegrationTest extends FlatSpec with Matchers with Loggin
     val points = TestDataUtils.createSinTsPoints("sin", timestamps, periods, amps, shifts, "cluster" -> "test")
     points.map {
       case TsPoint(metricName, timestamp, value, attrs) =>
-        val builder = Message.Point.newBuilder()
-        builder.setTimestamp(timestamp)
-        builder.setMetric(metricName)
-        value.fold(
-          longValue => {
-            builder.setIntValue(longValue)
-            builder.setValueType(Message.Point.ValueType.INT)
-          },
-          floatValue => {
-            builder.setFloatValue(floatValue)
-            builder.setValueType(Message.Point.ValueType.FLOAT)
-          }
-        )
-        for ((name, value) <- attrs) {
-          builder.addAttributesBuilder()
-            .setName(name)
-            .setValue(value)
-        }
-        builder.build()
+        PopeyeTestUtils.createPoint(metricName, timestamp, attrs.toSeq, value)
     }
   }
 }
