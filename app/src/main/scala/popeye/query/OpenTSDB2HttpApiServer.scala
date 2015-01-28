@@ -27,6 +27,8 @@ class OpenTSDB2HttpApiServerHandler(storage: PointsStorage,
   var storageRequestCancellation = Promise[Nothing]()
   implicit val exct = executionContext
 
+  private val CORSHeader = `Access-Control-Allow-Origin`(AllOrigins)
+
   override def receive: Receive = {
     case request@HttpRequest(GET, path@Uri.Path("/api/suggest"), _, _, _) =>
       def parameter(name: String, errorMsg: => String) = path.query.get(name).toRight(errorMsg)
@@ -43,22 +45,26 @@ class OpenTSDB2HttpApiServerHandler(storage: PointsStorage,
         }
       val client = sender
       suggestionsFutureOrErrorMsg.fold(
-        errorMsg => client ! HttpResponse(status = StatusCodes.BadRequest, entity = HttpEntity(errorMsg)),
+        errorMsg => client ! HttpResponse(
+          status = StatusCodes.BadRequest,
+          entity = HttpEntity(errorMsg),
+          headers = List(CORSHeader)
+        ),
         responseFuture => responseFuture.map {
           json =>
             val responseEntity = HttpEntity(ContentType(`application/json`), json)
-            client ! HttpResponse(entity = responseEntity, headers = List(`Access-Control-Allow-Origin`(AllOrigins)))
+            client ! HttpResponse(entity = responseEntity, headers = List(CORSHeader))
             info(f"suggest request served: $request)")
             info(json)
         }.onFailure {
           case t: Throwable =>
-            client ! HttpResponse(status = StatusCodes.InternalServerError)
+            client ! HttpResponse(status = StatusCodes.InternalServerError, headers = List(CORSHeader))
             info(f"suggest query failed", t)
         }
       )
     case request@HttpRequest(OPTIONS, path@Uri.Path("/api/query"), _, _, _) =>
       val headers = List(
-        `Access-Control-Allow-Origin`(AllOrigins),
+        CORSHeader,
         `Access-Control-Allow-Methods`(OPTIONS, POST),
         `Access-Control-Allow-Headers`("Content-Type")
       )
@@ -108,7 +114,7 @@ class OpenTSDB2HttpApiServerHandler(storage: PointsStorage,
           objectMapper.writeValueAsString(resultsArray)
       }
       val headers = List(
-        `Access-Control-Allow-Origin`(AllOrigins),
+        CORSHeader,
         `Access-Control-Allow-Headers`("Content-Type")
       )
       val client = sender
@@ -124,7 +130,11 @@ class OpenTSDB2HttpApiServerHandler(storage: PointsStorage,
           log.error("request failed", e)
           self ! FinalizeRequest(
             client,
-            HttpResponse(status = StatusCodes.InternalServerError, entity = HttpEntity(e.getMessage))
+            HttpResponse(
+              headers = headers,
+              status = StatusCodes.InternalServerError,
+              entity = HttpEntity(e.getMessage)
+            )
           )
       }
 
