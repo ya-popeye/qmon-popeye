@@ -53,7 +53,8 @@ object AggregationAndInterpolationBench {
       aggregatePoints(
         pointsGroups,
         aggregator,
-        rate
+        rate,
+        None
       ).toList
     }
     println(f"number of series: $numberOfSeries, points per series: $pointsPerSeries, rate: $rate")

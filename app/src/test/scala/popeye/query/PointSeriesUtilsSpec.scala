@@ -25,6 +25,18 @@ class PointSeriesUtilsSpec extends FlatSpec with Matchers {
     lines should equal(expectedLines)
   }
 
+  behavior of "PointSeriesUtils.interpolateAndDownsample"
+
+  it should "not output duplicate points" in {
+    val input = Seq(
+      Seq(Point(0, 0), Point(1, 0)),
+      Seq(Point(0, 0), Point(1, 0)),
+      Seq(Point(0, 0), Point(1, 0))
+    )
+    val result = PointSeriesUtils.interpolateAndDownsample(input.map(_.iterator), seq => seq.max, Some(10)).toList
+    result should equal(Seq(Point(5, 0)))
+  }
+
   behavior of "PointSeriesUtils.interpolateAndAggregate"
 
   it should "behave as no-op on single input" in {

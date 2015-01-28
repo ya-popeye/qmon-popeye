@@ -91,7 +91,7 @@ class OpenTSDB2HttpApiServerHandler(storage: PointsStorage,
             storageReadTimeContext.stop()
             debug(s"got point groups sizes: ${ pointGroups.groupsMap.mapValues(_.seriesMap.mapValues(_.size)) }")
             val aggregatedPoints = metrics.aggregationTime.time {
-              aggregatePoints(pointGroups, aggregator, query.isRate)
+              aggregatePoints(pointGroups, aggregator, query.isRate, downsampleOption.map(_._1))
             }
             (query.metricName, aggregatedPoints)
           }
@@ -268,7 +268,8 @@ object OpenTSDB2HttpApiServer {
 
   def aggregatePoints(pointsGroups: PointsGroups,
                       interpolationAggregator: Seq[Double] => Double,
-                      rate: Boolean): Map[PointAttributes, Seq[Point]] = {
+                      rate: Boolean,
+                      downsamplingInterval: Option[Int]): Map[PointAttributes, Seq[Point]] = {
     def toGraphPointIterator(points: PointRope) = {
       val graphPoints = points.iterator
       if (rate) {
@@ -279,9 +280,13 @@ object OpenTSDB2HttpApiServer {
     }
     pointsGroups.groupsMap.mapValues {
       group =>
-        val graphPointIterators = group.seriesMap.values.map(toGraphPointIterator).toSeq
-        val aggregated = PointSeriesUtils.interpolateAndAggregate(graphPointIterators, interpolationAggregator)
-        aggregated.toBuffer
+        val graphPointIterators = group.seriesMap.values.map(toGraphPointIterator).toVector
+        val points = PointSeriesUtils.interpolateAndDownsample(
+          graphPointIterators,
+          interpolationAggregator,
+          downsamplingInterval
+        )
+        points.toBuffer
     }.view.force
   }
 }

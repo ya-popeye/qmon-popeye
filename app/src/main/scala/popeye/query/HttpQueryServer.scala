@@ -125,6 +125,6 @@ object HttpQueryServer extends HttpServerFactory {
 
   private def aggregatePoints(pointsGroups: PointsGroups,
                               interpolationAggregator: Seq[Double] => Double): Map[PointAttributes, Seq[Point]] = {
-    OpenTSDB2HttpApiServer.aggregatePoints(pointsGroups, interpolationAggregator, false)
+    OpenTSDB2HttpApiServer.aggregatePoints(pointsGroups, interpolationAggregator, false, None)
   }
 }

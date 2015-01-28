@@ -118,6 +118,19 @@ object PointSeriesUtils {
     }
   }
 
+  def interpolateAndDownsample(graphPointIterators: Seq[Iterator[Point]],
+                               interpolationAggregator: (Seq[Double]) => Double,
+                               downsamplingInterval: Option[Int]): Iterator[Point] = {
+    val aggregated = interpolateAndAggregate(graphPointIterators, interpolationAggregator)
+    downsamplingInterval.map {
+      interval =>
+        val average: (Seq[Double]) => Double = seq => seq.sum / seq.size
+        PointSeriesUtils.downsample(aggregated, interval, average)
+    }.getOrElse {
+      aggregated
+    }
+  }
+
   def downsample(source: Iterator[Point],
                  intervalLength: Int,
                  aggregator: Seq[Double] => Double): Iterator[Point] = {
